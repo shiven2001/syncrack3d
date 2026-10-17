@@ -1,0 +1,17 @@
+{
+  "seed": 17,
+  "module": "flat",
+  "width_m": 4.2,
+  "height_m": 2.7,
+  "thickness_m": 0.16,
+  "skirting": false,
+  "material": {
+    "finish": "paint",
+    "base_color": [0.72, 0.69, 0.64, 1.0],
+    "roughness": 0.68,
+    "color_variation": 0.018,
+    "texture_scale": 52.0,
+    "micro_bump_strength": 0.09,
+    "micro_bump_distance_m": 0.00014
+  }
+}

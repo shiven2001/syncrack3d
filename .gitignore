@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+outputs/
+*.blend
+
+# Real BD3 photos and masks. Their licence is separate from this code.
+bd3_eval/images/
+bd3_eval/gt/

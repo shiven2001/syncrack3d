@@ -1,0 +1,32 @@
+# Python 3.11 (required by bpy 4.2). Versions are those of the environment the
+# standalone build was verified in (infinigen_v2). Packages are imported at
+# load time by the vendored Infinigen modules even where the generator does not
+# call them, so all are needed.
+bpy==4.2.0
+numpy==1.26.4
+gin-config==0.5.0
+opencv-python==4.8.1.78
+Pillow==10.0.1
+OpenEXR==3.4.3
+imageio==2.31.6
+scipy==1.16.3
+scikit-image==0.19.3
+scikit-learn==1.3.2
+matplotlib==3.10.7
+networkx==3.5
+pandas==2.3.3
+shapely==2.0.5
+trimesh==3.22.5
+rtree==1.4.1
+python-fcl==0.7.0.10
+geomdl==5.4.0
+landlab==2.6.0
+pyrender==0.1.45
+PyOpenGL==3.1.0
+pyglet==1.5.31
+freetype-py==2.5.1
+psutil==7.1.3
+tqdm==4.67.1
+PyYAML==6.0.3
+statsmodels==0.14.5
+xarray==2025.10.1
