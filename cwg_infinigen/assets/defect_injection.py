@@ -378,6 +378,7 @@ def _inject_crack(
     crack_clean_fraction=0.30,
     crack_grime_focus=2.2,
     crack_width_scale=1.0,
+    crack_profile="legacy",
     crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
     crack_fit_path=False,
@@ -401,7 +402,7 @@ def _inject_crack(
     nt = state.material.node_tree
     from cwg_infinigen.assets.defect_fields import adapt_crack_branches, adapt_crack_morphology, adapt_crack_path
 
-    p = sample_crack_morphology(seed, half=min(extent, 0.42) * 0.42)
+    p = sample_crack_morphology(seed, half=min(extent, 0.42) * 0.42, profile=crack_profile)
     p = adapt_crack_morphology(
         p, width_scale=crack_width_scale, jitter_scale=crack_jitter_scale,
         depth_scale=crack_depth_scale, fit_path=crack_fit_path,
@@ -585,6 +586,11 @@ def _inject_crack(
         "crack_width_min_m": round(float(p["w_min"]), 6),
         "crack_width_max_m": round(float(p["w_max"]), 6),
         "crack_depth_m": round(float(p["crack_depth"]), 6),
+        # Historical crack_width_* fields are channel radii, retained for compatibility.
+        "width_convention": "channel_radius_before_tip_taper",
+        "full_opening_min_m": round(2 * float(p["w_min"]), 6),
+        "full_opening_max_m": round(2 * float(p["w_max"]), 6),
+        "profile": crack_profile,
         "width_scale": float(crack_width_scale),
         "jitter_scale": float(crack_jitter_scale),
         "depth_scale": float(crack_depth_scale),

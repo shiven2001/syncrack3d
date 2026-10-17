@@ -71,7 +71,7 @@ def _nodes(nt):
 # --------------------------------------------------------------------------- #
 
 
-def sample_crack_morphology(seed: int, half: float = 0.14) -> dict:
+def sample_crack_morphology(seed: int, half: float = 0.14, profile: str = "legacy") -> dict:
     """Mirror of the morphology draws at the top of create_crack_material.
 
     Replayed rather than shared because those draws sit inside a 200-line block
@@ -80,6 +80,11 @@ def sample_crack_morphology(seed: int, half: float = 0.14) -> dict:
     _drift.py records the factory's RNG calls and asserts this reproduces them,
     so an edit to either side fails the suite instead of silently diverging.
     """
+    if profile not in ("legacy", "major", "mixed"):
+        raise ValueError("crack profile must be legacy, major or mixed")
+    from cwg_infinigen.core.util.math import int_hash
+    profile_rng = np.random.default_rng(int_hash((seed, "major_crack_v1")))
+    major = profile == "major" or (profile == "mixed" and profile_rng.random() < 0.5)
     with FixedSeed(seed):
         style = str(
             np.random.choice(
@@ -87,7 +92,17 @@ def sample_crack_morphology(seed: int, half: float = 0.14) -> dict:
                 p=[0.14, 0.16, 0.28, 0.20, 0.16, 0.06],
             )
         )
-        if style == "hairline":
+        if major:
+            style = str(profile_rng.choice(["major_open", "major_branched"]))
+        if style in ("major_open", "major_branched"):
+            # Radius in metres: full untapered openings 3–24 mm before scaling.
+            # An appearance profile, not a structural severity diagnosis.
+            w_min = np.random.uniform(0.0015, 0.0035)
+            w_max = np.random.uniform(0.0050, 0.0120)
+            n_kinks = int(np.random.randint(2, 5))
+            n_forks = int(np.random.randint(3, 7)) if style == "major_branched" else 1
+            y_split_enabled = style == "major_branched"
+        elif style == "hairline":
             w_min = np.random.uniform(0.00018, 0.00040)
             w_max = np.random.uniform(0.00050, 0.0016)
             n_kinks = int(np.random.randint(0, 2))
@@ -134,6 +149,9 @@ def sample_crack_morphology(seed: int, half: float = 0.14) -> dict:
         # at 3-7 mm deep is steep enough that the camera mostly sees the
         # shadowed walls. MUST stay identical to create_crack_material.
         crack_depth = np.random.uniform(0.0030, 0.0070)
+        if major:
+            crack_depth = float(profile_rng.uniform(0.008, 0.018))
+            w_fork_floor = float(profile_rng.uniform(0.0004, 0.0012))
 
         crack_angle = np.random.uniform(0, 2 * np.pi)
         crack_offset = np.random.uniform(-0.08, 0.08)

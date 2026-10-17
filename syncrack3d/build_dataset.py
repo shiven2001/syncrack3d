@@ -232,6 +232,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             gin.bind_parameter("_inject_crack.crack_render", args.crack_render)
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
+        gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
         gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
@@ -316,6 +317,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "aim_jitter": args.closeup_aim_jitter,
         },
         "crack_field_settings": {
+            "profile": args.crack_profile,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
             "render": args.crack_render,
@@ -428,6 +430,8 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
+    parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed"), default="legacy",
+                        help="legacy mix, broad open/branched cracks, or 50%% of each")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,
                         help="physical crack width multiplier (.25-4), also changes AOV")
     parser.add_argument("--crack-jitter-scale", type=float, default=1.0,
