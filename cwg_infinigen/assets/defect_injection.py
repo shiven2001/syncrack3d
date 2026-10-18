@@ -36,6 +36,8 @@ from mathutils import Vector
 
 from cwg_infinigen.assets.defect_fields import (
     build_crack_field,
+    crack_layer_mode,
+    sample_crack_layer,
     sample_crack_morphology,
 )
 from cwg_infinigen.core.rendering.defect_aov import (
@@ -414,42 +416,14 @@ def _inject_crack(
     prof = build_crack_field(nt, uv, p, out=geo)
     height = _math(nt, "MULTIPLY", prof, -float(p["crack_depth"]))
 
-    # Two-layer crack, opt-in per crack. A crack in a painted wall cuts the
-    # paint film and the plaster under it: the film tears with small lifted
-    # lips, chips flake off along the edges for a few millimetres (exposing the
-    # undercoat), the gap shows plaster/concrete colour, and one side is often
-    # a little proud of the other. Those are the cues a peel edge has, so a
-    # model that saw only clean grooves learned "edge with a different region
-    # beside it = peel". Chips stay within ~5 mm of the crack and are labelled
-    # crack, matching the BD3 polygons (e.g. minor_crack_0401/0304).
-    from cwg_infinigen.core.util.math import int_hash as _ih
-
-    lay = None
-    if layered_fraction > 0.0:
-        lr = np.random.default_rng(_ih((seed, "crack_layered")))
-        if lr.random() < layered_fraction:
-            core = str(lr.choice(["plaster", "cement", "putty"], p=[0.45, 0.35, 0.20]))
-            if core == "plaster":
-                v_ = float(lr.uniform(0.74, 0.90))
-                core_rgb = (v_, v_ * 0.98, v_ * 0.94, 1.0)
-            elif core == "cement":
-                v_ = float(lr.uniform(0.42, 0.60))
-                core_rgb = (v_, v_ * 0.99, v_ * 0.96, 1.0)
-            else:
-                v_ = float(lr.uniform(0.76, 0.86))
-                core_rgb = (v_, v_ * 0.95, v_ * 0.83, 1.0)
-            lay = dict(
-                core=core, core_rgb=core_rgb,
-                margin=float(lr.uniform(0.0015, 0.0040)),  # chip/lip band each side of the groove
-                film=float(lr.uniform(0.0002, 0.0007)),  # paint film the chips cut through
-                lip=float(lr.uniform(0.00008, 0.00035)),  # torn film lifted at the edge
-                chip_scale=float(lr.uniform(120.0, 320.0)),  # chip blobs ~3-8 mm
-                chip_thr=float(lr.uniform(0.50, 0.62)),  # higher = fewer chips
-                offset=float(lr.uniform(0.0003, 0.0012)) if lr.random() < 0.35 else 0.0,
-                side=float(lr.choice([-1.0, 1.0])),
-            )
-            # drawn after every shape parameter, so crack shapes are unchanged
-            lay["dark"] = float(lr.uniform(0.45, 0.70))
+    # Coating edge, opt-in per crack and only on hosts that have one.
+    # Paint and plaster: the film tears, with lips and chips a few millimetres
+    # wide. Stucco: the finish coat breaks, with no lifted film. Brick, stone,
+    # concrete, tile and the other single-material hosts keep the groove alone.
+    # Chips stay labelled crack, matching the BD3 paint polygons
+    # (e.g. minor_crack_0401/0304).
+    gen = state.host.get("cwg_material_generator")
+    lay = sample_crack_layer(seed, crack_layer_mode(gen, state.host.get("surface_finish")), layered_fraction)
     chips = None
     if lay is not None:
         from cwg_infinigen.assets.defect_fields import _nodes
@@ -487,8 +461,6 @@ def _inject_crack(
             # colour read as a white stripe on brick, stone and mid paint, and
             # it did not change with the wall. Darken the colour already in the
             # shader; the displacement supplies the shadow.
-            gen = state.host.get("cwg_material_generator")
-            painted = gen in ("Plaster", "StuccoPlaster") if gen else state.host.get("surface_finish") == "paint"
             exposed = _math(nt, "MAXIMUM", mrange(prof, 0.02, 0.5, 0.0, 1.0), chips, clamp=True)
             dark = nt.nodes.new("ShaderNodeMixRGB")
             dark.blend_type = "MULTIPLY"
@@ -496,7 +468,7 @@ def _inject_crack(
             nt.links.new(src_, dark.inputs["Color1"])
             dark.inputs["Color2"].default_value = (lay["dark"],) * 3 + (1.0,)
             nt.links.new(_mix_rgb(nt, exposed, src_, dark.outputs["Color"]), bsdf_.inputs["Base Color"])
-            lay["painted_host"] = painted
+            lay["painted_host"] = lay.get("mode") == "paint"
 
     # Grime in the channel, sampled per crack rather than applied to all of them.
     #
@@ -607,6 +579,7 @@ def _inject_crack(
         "n_forks": len(p.get("fork_specs") or ()),
         "n_kinks": len(p.get("kink_specs") or ()),
         "layered": None if lay is None else {
+            "mode": lay.get("mode"),
             "core": lay["core"], "margin_m": round(lay["margin"], 6), "film_m": round(lay["film"], 6),
             "lip_m": round(lay["lip"], 6), "offset_m": round(lay["offset"], 6),
             "painted_host": lay.get("painted_host")},

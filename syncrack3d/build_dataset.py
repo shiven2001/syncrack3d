@@ -421,7 +421,7 @@ def main():
     parser.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
                         help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
     parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
-                        help="share of cracks with a two-layer look: paint chips/lips, exposed core, offset (0 disables)")
+                        help="share of coated-host cracks with an edge: paint film lips/chips, or a broken stucco coat. Brick, stone, concrete and tile stay a groove (0 disables)")
     parser.add_argument("--light-profile", choices=LIGHT_PROFILES, default="default",
                         help="hard_mix adds sun, bare-bulb and raking-torch sources (opt-in)")
     parser.add_argument("--relight-per-view", action="store_true",

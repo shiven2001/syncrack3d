@@ -21,7 +21,7 @@ F1 is pooled at a 3-pixel tolerance.
 On 355 plain walls the minor-crack model’s false-alarm rate is 0.002. A plain
 photo counts as an alarm when predicted crack pixels exceed 0.1% of the image.
 The BD3 photo files used for these scores are not included in this repository.
-This v1.0.0 crack-only model remains the recommended zero-shot checkpoint.
+v1.1.0 left this checkpoint in place. v1.2.0 replaces it; see below.
 
 ## v1.1.0 major-crack profile
 
@@ -62,8 +62,51 @@ seed variation, so the F1 gap is weak. The precision drop is consistent: all 5
 mix seeds fall below the v1.0.0 mean. Spalling photos with a false crack rise
 from 46% to 50%. The extra major-crack renders make the model fire more on
 dark edges and on rough spalling or concrete. For a crack-only claim, the
-v1.0.0 model remains the better zero-shot checkpoint. The mix helps wide
-cracks, which these CUBIT CR1 photos mostly do not contain.
+v1.0.0 model was the better zero-shot checkpoint than this mix. The mix helps
+wide cracks, which these CUBIT CR1 photos mostly do not contain.
+
+## v1.2.0 host-gated coating edge
+
+Paint and plaster still get the torn film: lips and 1.5–4 mm chips. Stucco
+gets a thicker broken coat and no lifted lip. Brick, stone, concrete, tile
+and marble stay a groove in the same material. The v1.1.0 training mix was
+retrained after replacing those 577 views at the same seeds. Paint views were
+left as released. Same 1,912 views and 4,000-step, five-seed budget.
+
+BD3, mean of five seeds. Minor cracks improved. Major cracks stayed with the
+v1.1.0 mix.
+
+| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
+|---|---:|---|---:|---:|---:|---:|---:|
+| minor | 487 | v1.0.0 | 0.551 | 0.864 | 0.958 | 0.788 | 0.839 |
+| minor | 487 | v1.1.0 mix | 0.547 | 0.864 | 0.960 | 0.786 | 0.838 |
+| minor | 487 | v1.2.0 | 0.566 | 0.880 | 0.951 | 0.819 | 0.853 |
+| major | 358 | v1.0.0 | 0.339 | 0.765 | 0.969 | 0.633 | 0.741 |
+| major | 358 | v1.1.0 mix | 0.449 | 0.842 | 0.968 | 0.745 | 0.817 |
+| major | 358 | v1.2.0 | 0.443 | 0.839 | 0.962 | 0.745 | 0.814 |
+
+Plain-wall false alarms are 0.002, the same rate as v1.0.0.
+
+CUBIT-InSeg, same 1/3-scale setting as above. Crack F1 is above both earlier
+checkpoints. The gain is recall. Precision is level with v1.1.0 and below
+v1.0.0. Spalling photos with a false crack are 50%, matching v1.1.0 and above
+v1.0.0’s 46%.
+
+| metric | CR1 v1.0.0 | CR1 v1.1.0 | CR1 v1.2.0 | all labelled v1.2.0 |
+|---|---:|---:|---:|---:|
+| centreline F1 at 3 px | 0.818 | 0.807 | 0.829 | 0.756 |
+| precision | 0.945 | 0.922 | 0.918 | 0.758 |
+| recall | 0.723 | 0.719 | 0.756 | 0.756 |
+| clDice | 0.771 | 0.758 | 0.778 | 0.709 |
+| crack IoU | 0.434 | 0.418 | 0.431 | 0.369 |
+
+The CR1 F1 difference versus v1.1.0 is +0.022 [+0.016, +0.028], and versus
+v1.0.0 is +0.011 [+0.003, +0.019]. Four of five seeds beat each earlier mean.
+The precision difference versus v1.0.0 is −0.027 [−0.039, −0.016]. At full
+resolution CR1 F1 is 0.789, matching v1.0.0 (0.790) and above v1.1.0 (0.767).
+v1.2.0 is the recommended zero-shot checkpoint: it keeps the major-crack gain
+and improves minor cracks and CUBIT crack F1. The remaining gap versus v1.0.0
+is CUBIT precision, not missed crack.
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
@@ -107,7 +150,8 @@ python bd3_eval/score.py --pred path/to/pred_dir
 ```
 
 Defaults already match that crack recipe: width scale 1.3, and 70% of cracks
-use the two-layer edge. The style
+on paint, plaster and stucco use a coating edge. Brick, stone, concrete and
+tile stay a single-material groove. The style
 mix is 14% hairline, 16% hairline with a fork, 28% moderate, 20% branched, 16%
 open (0.8–6 mm mouth) and 6% double run. `python syncrack3d/build_dataset.py --help`
 lists every option.
@@ -115,7 +159,7 @@ lists every option.
 | option | effect |
 |---|---|
 | `--material-category` | paint_neutral / paint_colour / paint_colour_mid / stucco_neutral / stucco_colour / brick / stone_block / irregular_stone / tile / large_tile / concrete / marble / wood |
-| `--crack-layered-fraction` | two-layer cracks: torn paint lips, 1.5–4 mm edge chips (labelled crack), plaster/cement/putty in the gap, 35% one-side offset. Default 0.7 |
+| `--crack-layered-fraction` | coating edge on paint, plaster and stucco only. Paint: torn lips and 1.5–4 mm chips. Stucco: a broken finish coat, no lifted film. Brick, stone, concrete and tile are unchanged. Default 0.7 |
 | `--crack-width-scale` | physical width multiplier, also written into the label. Default 1.3 |
 | `--crack-render` | geometry (real displacement), pbr (bump only) or albedo (colour only) |
 | `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |

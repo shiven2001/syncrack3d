@@ -19,7 +19,7 @@ invisible under some lighting while staying correctly annotated.
 
 import numpy as np
 
-from cwg_infinigen.core.util.math import FixedSeed
+from cwg_infinigen.core.util.math import FixedSeed, int_hash
 
 # --------------------------------------------------------------------------- #
 # small node helpers, shared by the three builders
@@ -313,6 +313,70 @@ def adapt_crack_path(p, seed, mode="original"):
     return dict(p, path_mode=mode, path_knots=knots, kink_specs=[], crack_offset=0.,
                 wander_amp=0., jag_amp=min(p["jag_amp"], .015*p["half_u"]),
                 micro_amp=min(p["micro_amp"], .005*p["half_u"]))
+
+
+def crack_layer_mode(generator, surface_finish=None) -> str:
+    """Which coating edge a host may grow around a crack.
+
+    Paint and plaster are a thin film over a different body. Stucco is a finish
+    coat over a similar base, so it breaks rather than tearing a film. Brick,
+    stone, concrete, tile, marble and wood are one material.
+    """
+    gen = str(generator or "")
+    if gen == "StuccoPlaster":
+        return "stucco"
+    if gen == "Plaster" or (not gen and str(surface_finish or "").strip().lower() == "paint"):
+        return "paint"
+    return "none"
+
+
+def sample_crack_layer(seed, mode, fraction):
+    """Coating-edge parameters, or None. Own RNG, so the crack shape is unchanged.
+
+    Paint keeps the historical film, lip and chip draws. Stucco uses a thicker
+    broken coat and no lifted film. ``mode="none"`` never samples an edge.
+    """
+    if mode not in ("paint", "stucco", "none"):
+        raise ValueError("crack layer mode must be paint, stucco or none")
+    if mode == "none" or fraction <= 0.0:
+        return None
+    lr = np.random.default_rng(int_hash((seed, "crack_layered")))
+    if lr.random() >= fraction:
+        return None
+    core = str(lr.choice(["plaster", "cement", "putty"], p=[0.45, 0.35, 0.20]))
+    if core == "plaster":
+        v_ = float(lr.uniform(0.74, 0.90))
+        core_rgb = (v_, v_ * 0.98, v_ * 0.94, 1.0)
+    elif core == "cement":
+        v_ = float(lr.uniform(0.42, 0.60))
+        core_rgb = (v_, v_ * 0.99, v_ * 0.96, 1.0)
+    else:
+        v_ = float(lr.uniform(0.76, 0.86))
+        core_rgb = (v_, v_ * 0.95, v_ * 0.83, 1.0)
+    if mode == "paint":
+        lay = dict(
+            mode=mode, core=core, core_rgb=core_rgb,
+            margin=float(lr.uniform(0.0015, 0.0040)),
+            film=float(lr.uniform(0.0002, 0.0007)),
+            lip=float(lr.uniform(0.00008, 0.00035)),
+            chip_scale=float(lr.uniform(120.0, 320.0)),
+            chip_thr=float(lr.uniform(0.50, 0.62)),
+            offset=float(lr.uniform(0.0003, 0.0012)) if lr.random() < 0.35 else 0.0,
+            side=float(lr.choice([-1.0, 1.0])),
+        )
+        lay["dark"] = float(lr.uniform(0.45, 0.70))
+        return lay
+    return dict(
+        mode="stucco", core=core, core_rgb=core_rgb,
+        margin=float(lr.uniform(0.003, 0.008)),
+        film=float(lr.uniform(0.001, 0.003)),
+        lip=0.0,
+        chip_scale=float(lr.uniform(70.0, 160.0)),
+        chip_thr=float(lr.uniform(0.52, 0.66)),
+        offset=float(lr.uniform(0.0004, 0.0016)) if lr.random() < 0.35 else 0.0,
+        side=float(lr.choice([-1.0, 1.0])),
+        dark=float(lr.uniform(0.62, 0.82)),
+    )
 
 
 def adapt_crack_branches(p, mode="original"):
