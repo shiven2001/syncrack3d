@@ -206,7 +206,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         substrate_finish=surface_finish,
         size_range_m=tuple(args.defect_size_range),
     )
-    placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names)
+    placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
+                               axis_snap=args.crack_axis_snap)
     props = sample_props(rng, spec, placements, count_range=(0, args.max_props))
     lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
     if args.light_profile != "default" and not args.relight_per_view:
@@ -331,6 +332,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_label_mode": args.crack_label_mode,
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
+            "crack_axis_snap": args.crack_axis_snap,
             "paint_profile": args.paint_profile,
             "wall_normal_mode": args.wall_normal_mode,
             "surface_detail": args.surface_detail, "camera_isp": args.camera_isp,
@@ -414,7 +416,9 @@ def main():
     parser.add_argument("--crack-fit-path", action="store_true")
     parser.add_argument("--crack-label-mode", choices=("profile", "support"), default="profile")
     parser.add_argument("--crack-branch-mode", choices=("original", "bounded_curved", "local_curved"), default="original")
-    parser.add_argument("--crack-path-mode", choices=("original", "meander", "angular"), default="original")
+    parser.add_argument("--crack-path-mode", choices=("original", "meander", "angular", "straight"), default="original")
+    parser.add_argument("--crack-axis-snap", type=float, default=0.0,
+                        help="share of cracks turned to run along a wall axis (+-2 deg), like joint cracks")
     parser.add_argument("--defect-size-range", type=float, nargs=2, default=(.10, .45))
     parser.add_argument("--environment", choices=("indoor", "outdoor", "mixed"), default="indoor",
                         help="indoor room, outdoor building facade (ground, sky, sun, weathering), or half each")

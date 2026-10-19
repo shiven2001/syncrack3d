@@ -108,10 +108,14 @@ with false positives, and grout or mortar read as cracks.
 | brick | .10 | Brick | .60 |
 | tile | .14 | NonWoodTile | .60 |
 | marble | .10 | Marble / MarbleRegular / MarbleVoronoi | .60 |
-| wood | .10 | InteriorWood, plywoods, wood tiles | 1.0 (always clean) |
+| wood | .10 | InteriorWood, plywoods, wood tiles | 1.0 (never cracked) |
+| stone_block, large_tile | 0 (forced only) | StoneBlock, LargeTile | 1.0; cracked under `--clean-wall-scale 0` |
+| irregular_stone | 0 (forced only) | IrregularStone | 1.0 (never cracked) |
 
-- **Defect rules are unchanged.** Peel and blister go on paint only; cracks go
-  on any substrate except wood, whose crack morphology is unvalidated.
+- **Defect rules.** Peel and blister go on paint only. Cracks go on any
+  substrate except wood and irregular stone, which stay plain even with
+  `--clean-wall-scale 0`: cracks on them cost real-photo transfer in v1.3.0
+  testing.
 - **Defect-free walls** are close-up negatives: the camera frames virtual
   targets on plain wall.
 - **Geometry fixes for patterned materials.**
@@ -120,7 +124,8 @@ with false positives, and grout or mortar read as cracks.
   - The wall gets metric UVs, without which bricks rendered about 1 m wide.
 - **Options:**
   - `--material-category` forces one category (for QA);
-  - `--clean-wall-scale` scales the defect-free rates.
+  - `--clean-wall-scale` scales the defect-free rates; 0 cracks every wall
+    except wood and irregular stone.
 - **White balance.** Grey-world auto white balance drains a full-frame coloured
   wall to grey. Use `--awb-strength MIN MAX`, for example `0.3 0.7`, for
   partial correction per camera. The default is full correction, as before.

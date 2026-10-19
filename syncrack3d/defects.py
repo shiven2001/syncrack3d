@@ -147,6 +147,7 @@ def build_defects(
     rng: random.Random,
     plan: DefectPlan | None = None,
     legacy_names: bool = False,
+    axis_snap: float = 0.0,
 ) -> list[DefectPlacement]:
     """Spawn and position defect cards on the wall's front face.
 
@@ -175,6 +176,11 @@ def build_defects(
         card.scale = (size / longest,) * 3
 
         spin = rng.uniform(0.0, 2.0 * math.pi)
+        # axis_snap of the cards run along a wall axis, like cracks at panel
+        # joints and floor lines. Own RNG, so the scene stream is unchanged.
+        snap = random.Random(factory_seed ^ 0x534E4150)
+        if snap.random() < axis_snap:
+            spin = snap.choice((0.0, 0.5, 1.0, 1.5)) * math.pi + math.radians(snap.gauss(0.0, 2.0))
         card.rotation_euler = (spin, 0.0, _CARD_YAW)
         card.location = (u, -_STANDOFF_M, v)
         # Injection seeds each defect from int_hash(card.name), so the name must

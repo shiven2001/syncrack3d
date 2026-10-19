@@ -108,6 +108,59 @@ v1.2.0 is the recommended zero-shot checkpoint: it keeps the major-crack gain
 and improves minor cracks and CUBIT crack F1. The remaining gap versus v1.0.0
 is CUBIT precision, not missed crack.
 
+## v1.3.0 more views in the v1.2.0 mix, plus stone block and large tile cracks
+
+The 1,912 v1.2.0 views are kept, and 169 views are added (138 with a crack,
+31 without), for 2,081 views. 133 come from 30 walls in the v1.2.0 material
+mix (seeds 176000–176029). 36 come from 8 cracked stone block and large tile
+walls (seeds 176030–176037), the first cracks on those hosts. All use the
+legacy profile and the angular path. Same 4,000-step, five-seed budget. The
+recipe, seeds and the exact view list are in `releases/v1.3.0_added_views.json`.
+
+Wood and irregular stone are now never cracked. Cracks on wood, stone block,
+large tile and irregular stone as the whole 169-view addition cost CUBIT crack
+F1 (−0.013) and BuildCrack F1 (−0.035). The same count of near-straight
+cracks (`--crack-path-mode straight`) also lowered CUBIT F1 (−0.015) and BD3
+recall. Both stay opt-in experiments, not part of v1.3.0.
+
+BD3, mean of five seeds. Intervals resample duplicate groups and seeds.
+
+| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
+|---|---:|---|---:|---:|---:|---:|---:|
+| minor | 487 | v1.2.0 | 0.566 | 0.880 | 0.951 | 0.819 | 0.853 |
+| minor | 487 | v1.3.0 | 0.573 | 0.883 | 0.961 | 0.817 | 0.857 |
+| major | 358 | v1.2.0 | 0.443 | 0.839 | 0.962 | 0.745 | 0.814 |
+| major | 358 | v1.3.0 | 0.438 | 0.832 | 0.970 | 0.729 | 0.807 |
+
+Minor-crack IoU +0.006 [−0.010, +0.025] and precision +0.010 [+0.002, +0.021].
+Plain-wall false alarms are 0.001.
+
+CUBIT-InSeg at 1/3 scale. CR1 F1 +0.007 [+0.002, +0.012] and recall +0.015
+[+0.007, +0.023]; all five seeds beat the v1.2.0 recall mean. Spalling photos
+with a false crack are 49%.
+
+| metric | CR1 v1.2.0 | CR1 v1.3.0 | all labelled v1.2.0 | all labelled v1.3.0 |
+|---|---:|---:|---:|---:|
+| centreline F1 at 3 px | 0.829 | 0.836 | 0.756 | 0.765 |
+| precision | 0.918 | 0.913 | 0.758 | 0.760 |
+| recall | 0.756 | 0.771 | 0.756 | 0.771 |
+| clDice | 0.778 | 0.784 | 0.709 | 0.715 |
+| crack IoU | 0.431 | 0.431 | 0.369 | 0.374 |
+
+BuildCrack (355 positive tiles, source photos resampled): seed-mean F1 0.525
+versus 0.516 for v1.2.0 (+0.009 [−0.053, +0.078]); empty-tile alarms fall
+from 6.7% to 0%.
+
+Held-out synthetic walls (6 unseen walls, seeds 176040–176045): stone block
+crack recall 0.60 versus 0.50 for v1.2.0. Large tile was already 0.97. These
+13 and 14 cracked views are a small test.
+
+Without the stone block and large tile views, the same addition scores a
+little higher on real photos (BD3 minor IoU 0.583, CUBIT CR1 F1 0.843) but
+finds fewer stone block cracks (0.53). v1.3.0 keeps the stone block cracks.
+v1.3.0 is the recommended zero-shot checkpoint. BD3, CUBIT and BuildCrack have
+all been used to choose between versions, so they are development scores.
+
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
 cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
@@ -158,10 +211,11 @@ lists every option.
 
 | option | effect |
 |---|---|
-| `--material-category` | paint_neutral / paint_colour / paint_colour_mid / stucco_neutral / stucco_colour / brick / stone_block / irregular_stone / tile / large_tile / concrete / marble / wood |
+| `--material-category` | paint_neutral / paint_colour / paint_colour_mid / stucco_neutral / stucco_colour / brick / stone_block / irregular_stone / tile / large_tile / concrete / marble / wood (wood and irregular_stone are never cracked) |
 | `--crack-layered-fraction` | coating edge on paint, plaster and stucco only. Paint: torn lips and 1.5–4 mm chips. Stucco: a broken finish coat, no lifted film. Brick, stone, concrete and tile are unchanged. Default 0.7 |
 | `--crack-width-scale` | physical width multiplier, also written into the label. Default 1.3 |
 | `--crack-render` | geometry (real displacement), pbr (bump only) or albedo (colour only) |
+| `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks; share turned to a wall axis (±2°). Opt-in ablation, not in v1.3.0 |
 | `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |
 | `--camera-isp`, `--awb-strength`, `--exposure-ev-range` | phone-camera processing, partial white balance, exposure spread |
 

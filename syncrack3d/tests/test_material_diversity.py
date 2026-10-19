@@ -23,11 +23,17 @@ def test_forced_category_and_unknown_category():
         md.sample_category(7, "carpet")
 
 
-def test_wood_is_always_clean_and_paint_mostly_has_defects():
-    assert all(md.is_clean_wall(s, "wood") for s in range(200))
-    assert all(md.is_clean_wall(s, "wood", scale=5.0) for s in range(200))
-    # scale 0 is the explicit "no clean walls" switch, used to put defects on any texture
-    assert not any(md.is_clean_wall(s, "wood", scale=0.0) for s in range(200))
+def test_wood_and_irregular_stone_never_crack():
+    for name in ("wood", "irregular_stone"):
+        assert all(md.is_clean_wall(s, name, scale=sc) for s in range(200) for sc in (0.0, 1.0, 5.0))
+
+
+def test_stone_block_and_large_tile_crack_only_when_forced():
+    # Plain at the default scale, so the v1.2.0 negatives regenerate unchanged;
+    # cracked in --clean-wall-scale 0 batches, as in v1.3.0.
+    for name in ("stone_block", "large_tile"):
+        assert all(md.is_clean_wall(s, name) for s in range(120000, 120332))
+        assert not any(md.is_clean_wall(s, name, scale=0.0) for s in range(176030, 176046))
     clean_paint = sum(md.is_clean_wall(s, "paint_colour") for s in range(2000)) / 2000
     assert abs(clean_paint - md.CLEAN_FRACTION["paint_colour"]) < 0.03
     assert not any(md.is_clean_wall(s, "tile", scale=0.0) for s in range(200))

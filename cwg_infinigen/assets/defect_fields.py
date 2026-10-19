@@ -285,9 +285,23 @@ def adapt_crack_path(p, seed, mode="original"):
     """
     if mode == "original":
         return p
-    if mode not in ("meander", "angular"):
+    if mode not in ("meander", "angular", "straight"):
         raise ValueError(f"Unknown crack path mode: {mode}")
     rng = np.random.default_rng(int(seed) ^ 0x4D45414E)
+    if mode == "straight":
+        # Near-straight shrinkage or joint crack: a few knots drifting a few
+        # percent of the card sideways, so the run stays straight over its
+        # length while the edges stay ragged. At most one short fork.
+        count = int(rng.integers(2, 5))
+        vs = np.r_[-p["half_v"], np.sort(rng.uniform(-.9, .9, count-2))*p["half_v"], p["half_v"]]
+        x0 = float(rng.uniform(-.1, .1)*p["half_u"])
+        knots = [[float(v), float(x0 + rng.normal(0, .02)*p["half_u"])] for v in vs]
+        forks = [dict(s, length=min(s["length"], float(rng.uniform(.15, .35))*p["half_v"]))
+                 for s in p["fork_specs"][:int(rng.choice([0, 1], p=[.7, .3]))]]
+        return dict(p, path_mode=mode, path_knots=knots, path_interpolation="LINEAR",
+                    fork_specs=forks, kink_specs=[], crack_offset=0., wander_amp=0.,
+                    jag_amp=float(rng.uniform(.002, .006))*p["half_u"], jag_freq=35/max(2*p["half_v"], .01),
+                    micro_amp=.002*p["half_u"])
     if mode == "angular":
         # Uneven piecewise-linear turns, not smooth periodic strands. Keep
         # short secondary branches sparse so they do not duplicate the trunk.

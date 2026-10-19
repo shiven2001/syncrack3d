@@ -5,11 +5,13 @@ The default Infinigen wall palette is ~90% near-neutral pre-occupancy plaster
 real-photo review found the transfer damage concentrated exactly where that
 palette is silent: coloured and rough walls flooded with false positives,
 grout and mortar joints read as cracks. This module samples a much wider set
-of Infinigen surface materials per wall, and makes non-paint substrates mostly
-DEFECT-FREE, so the model sees tile grout, mortar and wood grain as clean wall.
+of Infinigen surface materials per wall. Non-paint substrates are still mostly
+plain walls, so grout, mortar and wood grain also appear with no crack.
 
-Cracks are allowed on any substrate (`substrate_compatibility`).
-Wood is clean-only because crack morphology on timber has not been validated.
+Wood and irregular stone are never cracked, even with --clean-wall-scale 0:
+cracks on them cost real-photo transfer (v1.3.0 host-crack study). Stone block
+and large tile are plain at the default scale and cracked only in
+--clean-wall-scale 0 batches, as in v1.3.0.
 
 Every choice uses its own seed-derived RNG, so enabling this does not change
 any other mode, and a scene's material is reproducible from its seed.
@@ -35,10 +37,11 @@ CATEGORIES = {
     # Weight 0 and listed last: only used when forced (--material-category), so
     # random category draws for every existing seed are unchanged.
     "paint_colour_mid": (0.0, "paint", [("ceramic", "Plaster", 1.0)]),
-    # Grey split-face stone block cladding, used as clean negatives: mortar joints
-    # were every BD3 plain-wall false alarm. Weight 0, forced only.
+    # Grey split-face stone block cladding: mortar joints were every BD3
+    # plain-wall false alarm. Weight 0, forced only.
     "stone_block": (0.0, "stone", [("ceramic", "StoneBlock", 1.0)]),
-    # CWG9's residual false alarms: large plain wall tile grout, irregular stone joints.
+    # CWG9's residual false alarms: large plain wall tile grout, irregular stone
+    # joints. Weight 0, forced only.
     "large_tile": (0.0, "tile", [("ceramic", "LargeTile", 1.0)]),
     "irregular_stone": (0.0, "stone", [("ceramic", "IrregularStone", 1.0)]),
     # Heavy-texture painted stucco (knockdown, sand-float, skip-trowel, popcorn,
@@ -63,6 +66,8 @@ CLEAN_FRACTION = {
     "stucco_neutral": 0.15, "stucco_colour": 0.15, "stucco_colour_mid": 0.15,
     "cobble_wall": 0.6, "rubble_stone": 0.6, "sandstone": 0.6,
 }
+# Kept as plain walls even under --clean-wall-scale 0.
+NEVER_CRACKED = ("wood", "irregular_stone")
 
 # Plaster paint parameters (gin: plaster_paint_params). Neutral = Infinigen's
 # defaults; colour = any hue, up to medium saturation, light to mid-dark value.
@@ -98,10 +103,12 @@ def sample_category(seed: int, forced: str | None = None) -> str:
 
 
 def is_clean_wall(seed: int, category: str, scale: float = 1.0) -> bool:
+    if category in NEVER_CRACKED:
+        return True  # plain negatives only, at any scale
     if scale == 0:
         return False  # explicit "no clean walls": lets defects go on any texture
     if CLEAN_FRACTION[category] >= 1.0:
-        return True  # clean-only categories (wood) stay clean at any scale
+        return True  # a fraction of 1 keeps every wall of that category plain
     p = min(1.0, CLEAN_FRACTION[category] * scale)
     return _rng(seed, 0x434C4E5F).random() < p
 
