@@ -158,8 +158,8 @@ crack recall 0.60 versus 0.50 for v1.2.0. Large tile was already 0.97. These
 Without the stone block and large tile views, the same addition scores a
 little higher on real photos (BD3 minor IoU 0.583, CUBIT CR1 F1 0.843) but
 finds fewer stone block cracks (0.53). v1.3.0 keeps the stone block cracks.
-v1.3.0 is the recommended zero-shot checkpoint. BD3, CUBIT and BuildCrack have
-all been used to choose between versions, so they are development scores.
+Superseded by v1.4.0. BD3, CUBIT and BuildCrack have all been used to choose
+between versions, so they are development scores.
 
 ## v1.4.0 crack networks (crazing)
 

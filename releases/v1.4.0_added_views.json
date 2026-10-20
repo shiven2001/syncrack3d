@@ -2,819 +2,659 @@
  "release": "v1.4.0",
  "base": "the 2,081 v1.3.0 training views (unchanged)",
  "added_views": 162,
- "recipe": "visible crack networks (--crack-profile network --crack-network-grime .8 1 --crack-width-scale 2 --crack-depth-scale 2) on half the added walls, and the v1.3.0 legacy recipe on the other half; paint/stucco/concrete only; network views kept only if line contrast >= 3%",
- "selection": "even-seed network2 walls and odd-seed networkctl walls; 66 cracked + 16 plain network views and 65 cracked + 15 plain control views (numpy seed 0)",
- "checkpoint": "outputs/domain_transfer/syncrack3d_networkmix_bd3_v1",
+ "added_cracked": 131,
+ "added_plain": 31,
+ "recipe": "build_dataset.py --crack-profile network --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 on paint and stucco; cracked views kept only at >=3% line contrast",
+ "walls": "30 paint and stucco walls, seeds 177000-177025 and 177030-177033",
+ "checkpoint": "outputs/domain_transfer/syncrack3d_network2_bd3_v1",
  "views": [
   {
    "stem": "seed_177000_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177000_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
-   "stem": "seed_177001_rig0_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177000_rig7_resample0_frame0001_camera_0",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig4_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_neutral"
+  },
+  {
+   "stem": "seed_177001_rig5_resample0_frame0001_camera_0",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177001_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig5_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_neutral"
-  },
-  {
-   "stem": "seed_177002_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177002_rig7_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_neutral"
-  },
-  {
-   "stem": "seed_177003_rig1_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_neutral"
-  },
-  {
-   "stem": "seed_177003_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_neutral"
-  },
-  {
-   "stem": "seed_177003_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177004_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177004_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177004_rig2_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_neutral"
+  },
+  {
+   "stem": "seed_177004_rig3_resample0_frame0001_camera_0",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177004_rig5_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_neutral"
+  },
+  {
+   "stem": "seed_177004_rig6_resample0_frame0001_camera_0",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177004_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
+   "stem": "seed_177005_rig0_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
    "stem": "seed_177005_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177005_rig2_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177005_rig3_resample0_frame0001_camera_0",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177005_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177005_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177005_rig6_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177005_rig7_resample0_frame0001_camera_0",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177006_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177006_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177006_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177006_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_colour"
-  },
-  {
-   "stem": "seed_177006_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177007_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177007_rig1_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177007_rig2_resample0_frame0001_camera_0",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177007_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_colour"
-  },
-  {
-   "stem": "seed_177007_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177008_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177008_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177008_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177008_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177008_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour"
   },
   {
    "stem": "seed_177009_rig0_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "paint_colour_mid"
+  },
+  {
+   "stem": "seed_177009_rig1_resample0_frame0001_camera_0",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177009_rig7_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_colour_mid"
-  },
-  {
-   "stem": "seed_177010_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177010_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177010_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177010_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_colour_mid"
-  },
-  {
-   "stem": "seed_177010_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177010_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177010_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
-   "stem": "seed_177010_rig7_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "paint_colour_mid"
-  },
-  {
-   "stem": "seed_177011_rig0_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177011_rig1_resample0_frame0001_camera_0",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177011_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177011_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177011_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177012_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177012_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177012_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177012_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177012_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_colour_mid"
   },
   {
    "stem": "seed_177013_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
-   "stem": "seed_177013_rig3_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177013_rig2_resample0_frame0001_camera_0",
+   "material": "stucco_neutral"
+  },
+  {
+   "stem": "seed_177013_rig4_resample0_frame0001_camera_0",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177013_rig5_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
-  },
-  {
-   "stem": "seed_177013_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177013_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177014_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177014_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177014_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177014_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
-  },
-  {
-   "stem": "seed_177014_rig4_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
-  },
-  {
-   "stem": "seed_177015_rig0_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
-  },
-  {
-   "stem": "seed_177015_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177015_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177015_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177015_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177015_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177015_rig6_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "stucco_neutral"
+  },
+  {
+   "stem": "seed_177015_rig7_resample0_frame0001_camera_0",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177016_rig0_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
-  },
-  {
-   "stem": "seed_177016_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177016_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177016_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177016_rig5_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "stucco_neutral"
+  },
+  {
+   "stem": "seed_177016_rig7_resample0_frame0001_camera_0",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177017_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
+   "stem": "seed_177018_rig0_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
    "stem": "seed_177018_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177018_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177018_rig3_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_colour"
-  },
-  {
-   "stem": "seed_177018_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177019_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177019_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
-   "stem": "seed_177019_rig3_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177019_rig2_resample0_frame0001_camera_0",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177019_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177020_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177020_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177020_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177020_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177020_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177021_rig0_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177021_rig1_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177021_rig2_resample0_frame0001_camera_0",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177021_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
-   "stem": "seed_177021_rig6_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177021_rig4_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177021_rig5_resample0_frame0001_camera_0",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177021_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour"
   },
   {
    "stem": "seed_177022_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177022_rig1_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_colour_mid"
-  },
-  {
-   "stem": "seed_177022_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177022_rig3_resample0_frame0001_camera_0",
-   "source": "network",
+   "material": "stucco_colour_mid"
+  },
+  {
+   "stem": "seed_177022_rig6_resample0_frame0001_camera_0",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177022_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177023_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177023_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177023_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177023_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177023_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177024_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177024_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177024_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
-   "stem": "seed_177024_rig4_resample0_frame0001_camera_0",
-   "source": "network",
+   "stem": "seed_177024_rig3_resample0_frame0001_camera_0",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
    "stem": "seed_177025_rig7_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_colour_mid"
   },
   {
-   "stem": "seed_177027_rig0_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177027_rig3_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177027_rig4_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig0_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig1_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig2_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig4_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig5_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
-   "stem": "seed_177029_rig6_resample0_frame0001_camera_0",
-   "source": "control",
-   "material": "concrete"
-  },
-  {
    "stem": "seed_177030_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig3_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig4_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig5_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
    "stem": "seed_177030_rig6_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "paint_neutral"
   },
   {
+   "stem": "seed_177031_rig0_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177031_rig1_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177031_rig3_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177031_rig4_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177031_rig5_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
+   "stem": "seed_177031_rig6_resample0_frame0001_camera_0",
+   "material": "paint_colour"
+  },
+  {
    "stem": "seed_177032_rig0_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177032_rig1_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
    "stem": "seed_177032_rig2_resample0_frame0001_camera_0",
-   "source": "network",
    "material": "stucco_neutral"
   },
   {
-   "stem": "seed_177032_rig4_resample0_frame0001_camera_0",
-   "source": "network",
-   "material": "stucco_neutral"
+   "stem": "seed_177033_rig0_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177033_rig1_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177033_rig2_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
+  },
+  {
+   "stem": "seed_177033_rig3_resample0_frame0001_camera_0",
+   "material": "stucco_colour"
   }
  ]
 }
