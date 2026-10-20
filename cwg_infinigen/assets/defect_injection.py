@@ -381,6 +381,9 @@ def _inject_crack(
     crack_grime_focus=2.2,
     crack_width_scale=1.0,
     crack_profile="legacy",
+    crack_network_fraction=0.0,
+    crack_network_spacing=(0.02, 0.06),
+    crack_network_grime=(0.15, 0.60),
     crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
     crack_fit_path=False,
@@ -404,13 +407,22 @@ def _inject_crack(
     nt = state.material.node_tree
     from cwg_infinigen.assets.defect_fields import adapt_crack_branches, adapt_crack_morphology, adapt_crack_path
 
-    p = sample_crack_morphology(seed, half=min(extent, 0.42) * 0.42, profile=crack_profile)
+    from cwg_infinigen.assets.defect_fields import sample_crack_network
+    from cwg_infinigen.core.util.math import int_hash
+    if not 0 <= crack_network_fraction <= 1:
+        raise ValueError("network fraction must be 0..1")
+    network_rng = np.random.default_rng(int_hash((int(seed), "network_selection_v1")))
+    network = crack_profile == "network" or network_rng.random() < crack_network_fraction
+    half = min(extent, 0.42) * 0.42
+    p = (sample_crack_network(seed, half, crack_network_spacing, crack_network_grime) if network else
+         sample_crack_morphology(seed, half=half, profile=crack_profile))
     p = adapt_crack_morphology(
         p, width_scale=crack_width_scale, jitter_scale=crack_jitter_scale,
-        depth_scale=crack_depth_scale, fit_path=crack_fit_path,
+        depth_scale=crack_depth_scale, fit_path=crack_fit_path and not network,
     )
-    p = adapt_crack_path(p, seed, crack_path_mode)
-    p = adapt_crack_branches(p, crack_branch_mode)
+    if not network:
+        p = adapt_crack_path(p, seed, crack_path_mode)
+        p = adapt_crack_branches(p, crack_branch_mode)
     uv, _tex = _uv_socket(nt, *frame)
     geo = {}
     prof = build_crack_field(nt, uv, p, out=geo)
@@ -424,6 +436,8 @@ def _inject_crack(
     # (e.g. minor_crack_0401/0304).
     gen = state.host.get("cwg_material_generator")
     lay = sample_crack_layer(seed, crack_layer_mode(gen, state.host.get("surface_finish")), layered_fraction)
+    if network:
+        lay = None  # Crazing is shallow: no broad chips or one-sided wall step.
     chips = None
     if lay is not None:
         from cwg_infinigen.assets.defect_fields import _nodes
@@ -504,8 +518,17 @@ def _inject_crack(
     clean_cut = int(round(max(0.0, min(1.0, float(crack_clean_fraction))) * 1000))
     grimy = (int_hash(("crack_grime", int(seed))) % 1000) >= clean_cut
     strength = float(crack_grime_strength) if grimy else 0.0
+    if network:
+        # Shallow crazing needs weak pigment evidence even in the clean bucket.
+        # A zero crack_grime_strength still explicitly disables it for ablations.
+        strength = float(crack_grime_strength) * p["network"]["grime_strength"]
 
     bsdf = _principled(nt)
+    if network and bsdf is not None and not bsdf.inputs["Base Color"].is_linked:
+        # Controlled paint uses a constant color instead of a texture link.
+        base = nt.nodes.new("ShaderNodeRGB")
+        base.outputs["Color"].default_value = bsdf.inputs["Base Color"].default_value
+        nt.links.new(base.outputs["Color"], bsdf.inputs["Base Color"])
     if strength > 0.0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked:
         src = bsdf.inputs["Base Color"].links[0].from_socket
         hsv = nt.nodes.new("ShaderNodeHueSaturation")
@@ -559,17 +582,20 @@ def _inject_crack(
         "crack_width_max_m": round(float(p["w_max"]), 6),
         "crack_depth_m": round(float(p["crack_depth"]), 6),
         # Historical crack_width_* fields are channel radii, retained for compatibility.
-        "width_convention": "channel_radius_before_tip_taper",
+        "width_convention": ("channel_radius_before_coordinate_warp" if network else
+                             "channel_radius_before_tip_taper"),
         "full_opening_min_m": round(2 * float(p["w_min"]), 6),
         "full_opening_max_m": round(2 * float(p["w_max"]), 6),
         "profile": crack_profile,
+        "network": p.get("network"),
+        "grime_strength_effective": strength,
         "width_scale": float(crack_width_scale),
         "jitter_scale": float(crack_jitter_scale),
         "depth_scale": float(crack_depth_scale),
-        "fit_path": bool(crack_fit_path),
-        "branch_mode": crack_branch_mode,
+        "fit_path": bool(crack_fit_path and not network),
+        "branch_mode": "cellular" if network else crack_branch_mode,
         "branch_specs": p["fork_specs"],
-        "path_mode": crack_path_mode,
+        "path_mode": "cellular" if network else crack_path_mode,
         "path_knots_m": p.get("path_knots"),
         "label_mode": crack_label_mode,
         "render": crack_render,

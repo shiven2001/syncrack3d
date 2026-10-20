@@ -1,6 +1,6 @@
 """Width-insensitive crack metrics: centreline precision/recall/F1 and clDice.
 
-Same definition as domain_transfer/crack_metrics.py. Pixel IoU rewards matching
+Shared by the BD3, CUBIT, and BuildCrack scorers. Pixel IoU rewards matching
 an annotator's polygon width as well as finding the crack. Centreline metrics
 thin both masks to 1-px skeletons: recall is the share of labelled crack length
 within `tol` px of the prediction, precision the share of predicted length

@@ -4,23 +4,25 @@
 355 plain photos: false-alarm rate. A plain photo is an alarm when predicted
 crack pixels exceed 0.1% of the image. Peeling photos are not in this set.
 
-Predictions are uint8 class maps named <id>.png. Crack is class 1, the same
-encoding as domain_transfer.multiclass_seg.predict. Class 2 is not crack.
+Predictions are uint8 class maps named <id>.png. Crack is class 1. Class 2
+is not crack.
 
-    python bd3_eval/score.py --pred path/to/pred_dir
+    python eval/bd3/score.py --pred path/to/pred_dir
 """
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from crack_metrics import centreline_counts, centreline_scores, cldice_counts
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from metrics import centreline_counts, centreline_scores, cldice_counts
 
 HERE = Path(__file__).resolve().parent
-ALARM_FRACTION = 0.001  # crack pixels / image; same plain-alarm rule as decal_ablation.compare
+ALARM_FRACTION = 0.001
 
 
 def manifest():

@@ -161,6 +161,94 @@ finds fewer stone block cracks (0.53). v1.3.0 keeps the stone block cracks.
 v1.3.0 is the recommended zero-shot checkpoint. BD3, CUBIT and BuildCrack have
 all been used to choose between versions, so they are development scores.
 
+## v1.4.0 crack networks (crazing)
+
+The 2,081 v1.3.0 views are kept and 162 are added (131 with a crack, 31
+without), for 2,243 views. They come from 30 paint and stucco walls (seeds
+177000–177025 and 177030–177033) rendered with `--crack-profile network
+--crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1`. A
+cracked view is kept only when its labelled lines are at least 3% darker than
+the wall 2–4 px beside them; 13 of 153 were dropped. Same 4,000-step,
+five-seed budget. The recipe, seeds and view list are in
+`releases/v1.4.0_added_views.json`.
+
+Why: on BuildCrack, v1.3.0 found 13% of the crack length on the 49 drone
+tiles. Most of it is dense hairline crazing on painted render, a pattern no
+earlier version rendered.
+
+### Study
+
+Each arm adds 131 cracked and 31 plain views to v1.3.0, from walls rendered
+twice at the same seeds (same lights, cameras and defect positions). Five
+seeds each. The choice rule was fixed before the last arm was scored: the
+largest mean gain over v1.3.0 in BD3 minor IoU, CUBIT CR1 F1 and BuildCrack
+F1; within 0.005, fewer BD3 plain-wall false alarms.
+
+| arm | added cracks | BD3 minor IoU | CUBIT CR1 F1 | BuildCrack F1 | drone-tile F1 | BD3 plain alarms | CUBIT spalling false crack |
+|---|---|---:|---:|---:|---:|---:|---:|
+| v1.3.0 | – | 0.573 | 0.836 | 0.525 | 0.22 | 0.001 | 49% |
+| control | v1.3.0 cracks, paint, stucco and concrete | 0.579 | 0.840 | 0.517 | 0.26 | 0.006 | 53% |
+| faint networks | default staining (.15–.60), every wall | 0.592 | 0.843 | 0.590 | 0.57 | 0.020 | 69% |
+| faint, half dose | faint networks on even seeds, control cracks on odd | 0.593 | 0.864 | 0.634 | 0.49 | 0.017 | 67% |
+| **visible networks (v1.4.0)** | staining .8–1, ≥3% contrast, paint and stucco | **0.607** | 0.861 | 0.612 | **0.59** | 0.016 | 68% |
+| visible, half dose | visible networks on even seeds, control cracks on odd | 0.597 | 0.862 | 0.602 | 0.49 | 0.007 | 58% |
+
+Mean gains are 0.052 (faint, half dose), 0.049 (visible), 0.042 (visible,
+half dose) and 0.030 (faint). The first two are within 0.005, and visible
+networks have fewer plain-wall alarms. The control shows that 162 more
+ordinary crack views change nothing, so the gain comes from the networks.
+
+With default staining the networks are 2–4% darker than the wall at 640 px,
+close to invisible. BuildCrack's drone crazing is about 4–8%.
+`--crack-network-grime .8 1` gives 4–8% on paint and stucco and, against
+faint networks, raises BD3 IoU by +0.015 [+0.007, +0.024] and CUBIT CR1 F1
+by +0.019 [+0.015, +0.024]. On concrete the networks stayed invisible, so
+v1.4.0 has none there.
+
+Every network arm trades precision for recall. Raising the decision
+threshold does not buy it back: at 0.95 the faint-network arm reaches CUBIT
+precision 0.846 against v1.3.0's 0.913. Where false alarms cost more than
+missed cracks, the visible half-dose arm has half the BD3 plain-wall alarms
+of v1.4.0 for a smaller gain, and v1.3.0 has the fewest.
+
+### v1.4.0 against v1.3.0
+
+BD3, mean of five seeds. Intervals resample duplicate groups and seeds.
+
+| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
+|---|---:|---|---:|---:|---:|---:|---:|
+| minor | 487 | v1.3.0 | 0.573 | 0.883 | 0.961 | 0.817 | 0.857 |
+| minor | 487 | v1.4.0 | 0.607 | 0.902 | 0.931 | 0.875 | 0.880 |
+| major | 358 | v1.3.0 | 0.438 | 0.832 | 0.970 | 0.729 | 0.807 |
+| major | 358 | v1.4.0 | 0.454 | 0.849 | 0.944 | 0.772 | 0.824 |
+
+Minor IoU +0.034 [+0.024, +0.045], F1 +0.019 [+0.007, +0.031], precision
+−0.030 [−0.044, −0.018]. Plain-wall false alarms rise from 0.001 to 0.016
+(+0.015 [+0.004, +0.027]), about 6 of 355 photos. Some of those alarms
+follow faint lines that may be unlabelled hairlines.
+
+CUBIT-InSeg at 1/3 scale. CR1 F1 +0.025 [+0.011, +0.039]; all five seeds
+beat the v1.3.0 mean. On all labelled photos F1 falls, −0.027 [−0.047,
+−0.007], because spalling photos with a false crack rise from 49% to 68%.
+
+| metric | CR1 v1.3.0 | CR1 v1.4.0 | all labelled v1.3.0 | all labelled v1.4.0 |
+|---|---:|---:|---:|---:|
+| centreline F1 at 3 px | 0.836 | 0.861 | 0.765 | 0.738 |
+| precision | 0.913 | 0.839 | 0.760 | 0.634 |
+| recall | 0.771 | 0.885 | 0.771 | 0.885 |
+| clDice | 0.784 | 0.810 | 0.715 | 0.691 |
+| crack IoU | 0.431 | 0.453 | 0.374 | 0.359 |
+
+BuildCrack (355 positive tiles, source photos resampled): seed-mean F1 0.612
+versus 0.525 (+0.088 [+0.030, +0.149]); 5-seed vote F1 +0.101 [+0.048,
++0.161]. Precision 0.784 versus 0.850, recall 0.504 versus 0.380. Drone tiles
+F1 0.59 versus 0.22, other tiles 0.62 versus 0.58. Empty-tile alarms stay 0%.
+
+v1.4.0 is the recommended zero-shot checkpoint. It finds more cracks on all
+three benchmarks, at the cost of more false cracks on plain and spalled
+walls. All three benchmarks have been used to choose between versions, so
+these are development scores.
+
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
 cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
@@ -197,9 +285,14 @@ python tools/prepare_defect_annotated_dataset.py -i out/walls/frames -o out/pack
 # 3. check the instance/label contract
 python tools/check_instance_contract.py --pack out/pack
 
-# 4. score crack predictions on the frozen BD3 crack-only set
-#    (487 minor_crack + 355 plain negatives; see bd3_eval/README.md)
-python bd3_eval/score.py --pred path/to/pred_dir
+# 4. score a crack model. Checkpoints are runs/s*/last.pt under --model.
+#    BD3: 487 minor_crack + 355 plain (eval/bd3/README.md)
+python eval/bd3/score.py --pred path/to/pred_dir
+#    CUBIT-InSeg at 1/3 scale (1500x1000). Crack photos and spalling false alarms.
+python eval/cubit/score.py --model path/to/checkpoint_dir --out path/to/cubit_out
+python eval/cubit/compare.py --a path/to/cubit_a --b path/to/cubit_b --out compare.json
+#    BuildCrack tiles, grouped by source photo. Pass one --model per checkpoint.
+python eval/buildcrack/score.py --model v1.2.0=path/to/checkpoint_dir --out path/to/buildcrack_out
 ```
 
 Defaults already match that crack recipe: width scale 1.3, and 70% of cracks
@@ -307,3 +400,59 @@ including the two-layer peel. Rebuilding this app from the repo with
 `python build_from_repo.py` would put that code back and overwrite the
 crack-only edits; do that only after those edits have been ported, and pass
 `--overwrite-local-edits` if you mean to discard them.
+
+## Crack networks (v1.4.0)
+
+Use `--crack-profile network` for map cracking/crazing: connected, irregular
+closed cells and shared junctions across each defect patch. A smoothly warped
+2-D Voronoi edge field drives both the shallow groove and its crack AOV.
+This is a procedural appearance model, not a fracture simulation.
+
+From this repository's root, with the usual Blender Python environment:
+
+```bash
+python -m syncrack3d.build_dataset --seeds 190010-190019 --output out/networks \
+  --wall-materials diverse --material-category paint_neutral --clean-wall-scale 0 \
+  --crack-profile network --crack-network-spacing .02 .06 \
+  --crack-width-scale 2 --crack-label-mode support \
+  --defect-size-range .3 .45 --min-defects 1 --max-defects 2 --max-props 0 \
+  --resolution 1024 --samples 64 --dicing-rate 1 --wall-normal-mode explicit \
+  --closeup-fill .9 1.1 --closeups-per-defect 2
+```
+
+For a mixture, keep `--crack-profile legacy` (or `major`/`mixed`) and add
+`--crack-network-fraction .3`. That replaces approximately 30% of defect
+instances, chosen deterministically from each instance seed. The default is
+zero; existing profile/seed behavior stays unchanged.
+
+`--crack-network-spacing MIN MAX` is the cell spacing in metres; smaller
+values produce denser webs. Before width scaling, channel radii vary from
+0.06–0.32 mm (full openings 0.12–0.64 mm), and groove depth from 0.04–0.18 mm.
+Width/depth controls apply to networks. Coordinate warping slightly changes
+local opening widths. Networks always use weak variable channel staining (including seeds in the
+isolated-crack clean bucket) and omit the broad
+coating chips and wall offsets used by large isolated cracks. Path fitting,
+branch modes and path modes apply only to isolated cracks. Each network patch
+is one crack instance; cells and edges are not separate instances. Manifests
+record the sampled spacing, warp, seed offset, width and depth.
+
+Resolution, standoff, exposure and lighting determine whether these hairlines
+remain visible. Include close-ups and context views, and inspect export
+curation: invisible/subpixel annotations can be ignored or held out rather
+than accepted as training targets. The first 512 px, three-scene smoke test
+produced six views with zero instance-contract issues, but only two close-ups
+passed the existing evidence filter.
+
+`--crack-network-grime MIN MAX` sets the channel staining as a share of crack
+grime strength (default .15 .60). It only rescales the existing draw, so a
+seed's cells, widths and depth stay the same. At 640 px the default leaves
+lines 2–4% darker than the wall; v1.4.0 uses `.8 1` (4–8%) with width and
+depth scale 2, and drops views below 3%. See the v1.4.0 study above.
+
+Validation: 33 tests pass. The final controlled-wall pilot (seeds
+190000–190002, 512 px) passes the label contract on six views, with two
+close-ups retained. A 1024 px textured painted-wall check (seed 190010,
+width scale 2, dicing rate 1) shows visible faint networks and passes the
+contract on both views; its close-up is retained. A six-instance mixed
+smoke scene (seed 190020, fraction .5) contains three crazing networks and
+three ordinary cracks. These are generator checks, not transfer results.

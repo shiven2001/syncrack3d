@@ -234,6 +234,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
         gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
+        gin.bind_parameter("_inject_crack.crack_network_fraction", args.crack_network_fraction)
+        gin.bind_parameter("_inject_crack.crack_network_spacing", tuple(args.crack_network_spacing))
+        gin.bind_parameter("_inject_crack.crack_network_grime", tuple(args.crack_network_grime))
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
         gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
@@ -319,6 +322,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         },
         "crack_field_settings": {
             "profile": args.crack_profile,
+            "network_fraction": args.crack_network_fraction,
+            "network_spacing_m": args.crack_network_spacing,
+            "network_grime": args.crack_network_grime,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
             "render": args.crack_render,
@@ -434,8 +440,14 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
-    parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed"), default="legacy",
-                        help="legacy mix, broad open/branched cracks, or 50%% of each")
+    parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed", "network"), default="legacy",
+                        help="legacy mix, broad cracks, 50%% of each, or hairline cellular networks")
+    parser.add_argument("--crack-network-fraction", type=float, default=0.0,
+                        help="replace this fraction of legacy/major/mixed instances with crazing (0..1)")
+    parser.add_argument("--crack-network-spacing", type=float, nargs=2, default=(.02, .06),
+                        metavar=("MIN", "MAX"), help="network cell spacing range in metres")
+    parser.add_argument("--crack-network-grime", type=float, nargs=2, default=(.15, .60), metavar=("MIN", "MAX"),
+                        help="network channel staining, as a share of crack grime strength (0..1)")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,
                         help="physical crack width multiplier (.25-4), also changes AOV")
     parser.add_argument("--crack-jitter-scale", type=float, default=1.0,
@@ -476,6 +488,12 @@ def main():
         parser.error("--closeup-aim-jitter must be in [0, 0.5]")
     if not 0 <= args.closeup_max_yaw < 90 or not 0 <= args.closeup_max_pitch < 90:
         parser.error("camera angles must lie in [0, 90) degrees")
+    if not 0 <= args.crack_network_fraction <= 1:
+        parser.error("crack network fraction must be 0..1")
+    if not 0 < args.crack_network_spacing[0] <= args.crack_network_spacing[1] < float("inf"):
+        parser.error("crack network spacing must be positive and ordered")
+    if not 0 <= args.crack_network_grime[0] <= args.crack_network_grime[1] <= 1:
+        parser.error("crack network grime must be ordered within 0..1")
     if not .25 <= args.crack_width_scale <= 4 or not 0 <= args.crack_jitter_scale <= 2:
         parser.error("crack width scale must be .25..4; jitter scale must be 0..2")
     if not .05 <= args.crack_depth_scale <= 2:

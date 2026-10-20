@@ -6,5 +6,5 @@ outputs/
 *.blend
 
 # Real BD3 photos and masks. Their licence is separate from this code.
-bd3_eval/images/
-bd3_eval/gt/
+eval/bd3/images/
+eval/bd3/gt/

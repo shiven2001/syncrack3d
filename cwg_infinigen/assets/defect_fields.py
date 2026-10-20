@@ -431,12 +431,77 @@ def adapt_crack_branches(p, mode="original"):
     return dict(p, fork_specs=forks, branch_mode=mode)
 
 
+def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.15, 0.60)):
+    """Seeded crazing cells; metric channel radii before coordinate warping.
+
+    grime_range scales the channel staining. It only rescales the existing
+    draw, so every other parameter of a seed is unchanged."""
+    if not (np.isfinite(spacing_range).all() and 0 < spacing_range[0] <= spacing_range[1]):
+        raise ValueError("network spacing must be positive and ordered")
+    if not 0 <= grime_range[0] <= grime_range[1] <= 1:
+        raise ValueError("network grime must be ordered within 0..1")
+    rng = np.random.default_rng(int_hash((int(seed), "crack_network_v1")))
+    return dict(
+        style="crazing", half_u=half, half_v=half,
+        w_min=float(rng.uniform(.00006, .00012)),
+        w_max=float(rng.uniform(.00016, .00032)),
+        w_fork_floor=0., w_lip=0., h_lip=0.,
+        crack_depth=float(rng.uniform(.00004, .00018)),
+        jag_amp=0., micro_amp=0., fork_specs=[], kink_specs=[],
+        network=dict(spacing_m=float(rng.uniform(*spacing_range)),
+                     warp_fraction=float(rng.uniform(.12, .30)),
+                     offset=rng.uniform(-100, 100, 3).tolist(),
+                     grime_strength=float(rng.uniform(*grime_range))),
+    )
+
+
+def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
+    """Warped 2-D Voronoi edges form closed cells with shared junctions.
+
+    Distance, width and depth are physical field units, independent of render
+    resolution. Warp slightly changes local opening width. Border taper bounds
+    the patch; its AOV follows that exact same field.
+    """
+    node, math, remap, noise = _nodes(nt)
+    cfg = p["network"]
+    spacing = cfg["spacing_m"]
+    sep = node("ShaderNodeSeparateXYZ")
+    nt.links.new(coord_socket, sep.inputs["Vector"])
+    xy = node("ShaderNodeCombineXYZ")
+    for axis, source, offset in zip(("X", "Y"), (u_idx, v_idx), cfg["offset"]):
+        nt.links.new(math("ADD", math("DIVIDE", sep.outputs[source], spacing), offset), xy.inputs[axis])
+    warp = node("ShaderNodeTexNoise", noise_dimensions="3D")
+    warp.inputs["Scale"].default_value = 1.7
+    warp.inputs["Detail"].default_value = 2.
+    nt.links.new(xy.outputs["Vector"], warp.inputs["Vector"])
+    centered = node("ShaderNodeVectorMath", operation="SUBTRACT")
+    nt.links.new(warp.outputs["Color"], centered.inputs[0])
+    centered.inputs[1].default_value = (.5, .5, .5)
+    scaled = node("ShaderNodeVectorMath", operation="SCALE")
+    nt.links.new(centered.outputs["Vector"], scaled.inputs[0])
+    scaled.inputs["Scale"].default_value = cfg["warp_fraction"]
+    warped = node("ShaderNodeVectorMath", operation="ADD")
+    nt.links.new(xy.outputs["Vector"], warped.inputs[0])
+    nt.links.new(scaled.outputs["Vector"], warped.inputs[1])
+    cells = node("ShaderNodeTexVoronoi", voronoi_dimensions="2D", feature="DISTANCE_TO_EDGE")
+    cells.inputs["Scale"].default_value = 1.
+    nt.links.new(warped.outputs["Vector"], cells.inputs["Vector"])
+    width = remap(noise(xy.outputs["Vector"], 2.3, 2.), .2, .8, p["w_min"], p["w_max"], "SMOOTHSTEP")
+    distance = math("MULTIPLY", cells.outputs["Distance"], spacing)
+    prof = math("SUBTRACT", 1., math("DIVIDE", distance, width), clamp=True)
+    for axis, half in ((u_idx, p["half_u"]), (v_idx, p["half_v"])):
+        prof = math("MULTIPLY", prof, remap(math("ABSOLUTE", sep.outputs[axis]), .90 * half, half, 1., 0., "SMOOTHSTEP"))
+    return prof
+
+
 def build_crack_field(nt, coord_socket, p, u_idx="X", v_idx="Y", out=None):
     """Emit the crack profile: 1 in the channel, 0 off it, soft at the edges.
 
     ``out`` (optional dict) receives the u/v, centreline and width sockets of the
     main run, for callers that need which side of the crack a point is on.
     """
+    if "network" in p:
+        return build_crack_network_field(nt, coord_socket, p, u_idx, v_idx)
     node, math, rng, _ = _nodes(nt)
     sep = node("ShaderNodeSeparateXYZ")
     nt.links.new(coord_socket, sep.inputs["Vector"])
