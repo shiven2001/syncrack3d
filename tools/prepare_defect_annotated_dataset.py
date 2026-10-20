@@ -792,6 +792,7 @@ def build_instance_sidecar(
     evidence_by_id = evidence_by_id or {}
     demoted_ids = demoted_ids or set()
     view_by_id = {}
+    view_payload = {}
     if view_meta_path is not None:
         view_payload = json.loads(view_meta_path.read_text())
         view_by_id = {
@@ -854,6 +855,7 @@ def build_instance_sidecar(
         "manifest_schema": manifest_payload.get("schema"),
         "manifest_path": str(manifest_path),
         "view_metadata_path": str(view_meta_path) if view_meta_path else None,
+        "camera_role": view_payload.get("camera_role"),
         "hard_coverage_threshold": float(coverage_threshold),
         "min_contrast_codes": float(min_contrast),
         "under_resolution_ignore_floor": (
@@ -1573,6 +1575,13 @@ def _frame_defect_presence(sample_id: str, out_instance_records: Path) -> str:
         return "none"
     if any(i.get("label_status") in DEFECT_PRESENT_STATUSES for i in instances):
         return "present"
+    if (payload.get("camera_role") == "structure"
+            and all(i.get("label_status") == "not_visible" for i in instances)
+            and not payload.get("ambiguous_pixel_count", 0)
+            and not payload.get("under_resolution_pixel_count", 0)):
+        # An intentional background-detail view may contain no visible crack,
+        # even when other views of the same physical scene contain cracks.
+        return "none"
     return "failed_target"
 
 

@@ -244,10 +244,63 @@ versus 0.525 (+0.088 [+0.030, +0.149]); 5-seed vote F1 +0.101 [+0.048,
 +0.161]. Precision 0.784 versus 0.850, recall 0.504 versus 0.380. Drone tiles
 F1 0.59 versus 0.22, other tiles 0.62 versus 0.58. Empty-tile alarms stay 0%.
 
-v1.4.0 is the recommended zero-shot checkpoint. It finds more cracks on all
-three benchmarks, at the cost of more false cracks on plain and spalled
-walls. All three benchmarks have been used to choose between versions, so
-these are development scores.
+Superseded by v1.5.0. It finds more cracks on all three benchmarks than
+v1.3.0, at the cost of more false cracks on plain and spalled walls. All
+three benchmarks have been used to choose between versions, so these are
+development scores.
+
+## v1.5.0 structures beside the v1.4.0 crack networks
+
+The 2,081 v1.3.0 views stay. The same 162 v1.4.0 network views are
+**replaced**, not added: the 30 paint and stucco walls are re-rendered from
+the same seeds and cameras with `--structures auto` (105 indoor background
+assemblies in total). Training stays at 2,243 views with the same crack
+mix. Structures hide 6% of the crack pixels and fully cover the crack in 4
+views, so the swap has 953 cracked views instead of 957. Exact stems:
+`releases/v1.5.0_added_views.json`. Checkpoint:
+`outputs/domain_transfer/syncrack3d_netstruct_bd3_v1`.
+
+Confound: with structures on indoors the generator also closes the room
+(side walls and a ceiling), which changes the lighting. A second control
+re-renders the same walls in the same closed room with no structures
+(`outputs/domain_transfer/syncrack3d_closedroom_bd3_v1`).
+
+### Study
+
+| | v1.4.0 | Closed room only | Structures swap | Swap − closed room [95%] |
+|---|---:|---:|---:|---|
+| BD3 minor-crack IoU | 0.607 | 0.606 | 0.605 | −0.001 (n.s.) |
+| BD3 plain-wall false alarms | 1.6% | 2.1% | 2.0% | n.s. |
+| CUBIT crack-photo F1 | 0.861 | 0.864 | 0.860 | −0.004 [−0.006, −0.001] |
+| CUBIT spalling photos with false crack | 68% | 67% | 66% | |
+| BuildCrack F1 | 0.612 | 0.628 | 0.613 | −0.015 (n.s.) |
+| BuildCrack precision | 0.784 | 0.784 | 0.812 | +0.028 [−0.007, +0.065] |
+| Crack-free walls with fixtures: views with a false alarm | 43% | 37.5% | 24% | |
+| Crack-free walls with fixtures: false-crack area | 0.29% | 0.22% | 0.10% | |
+
+n.s. = 95% interval includes zero. The last two rows are 56 held-out
+crack-free synthetic views with doors, sockets, switches, vents, cables,
+pipes, gutters, hatches and lights (`syncrack3d_structure_fp_probe_v1.json`);
+none of those walls were used in training.
+
+BD3, CUBIT and BuildCrack F1 stay within noise of v1.4.0. Swapping instead
+of adding avoided diluting the crack networks. Against the closed-room
+control the only significant change is a −0.004 dip in CUBIT F1. On the
+clutter probe, comparing closed room alone to the swap isolates the
+assemblies: false-alarm views fall from 37.5% to 24%, and false-crack area
+falls about 2×. About a third of the gain versus v1.4.0 comes from the
+closed room, which this design keeps because structures always come with
+it. BuildCrack precision edges up (+0.028, borderline).
+
+Caveats: the clutter test is small and synthetic, so it shows the model
+learned to ignore these fixtures on generator walls, not that it will on
+real photos. BD3 plain-wall false alarms and CUBIT spalling false cracks
+are untouched. The real benchmarks barely contain clutter, apart from
+BuildCrack's cable labels, so they cannot reward the structures.
+
+v1.5.0 is the recommended zero-shot checkpoint: v1.4.0's crack accuracy
+with fewer false alarms around fixtures, cables and frames. BD3, CUBIT and
+BuildCrack remain development scores.
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
@@ -456,3 +509,70 @@ width scale 2, dicing rate 1) shows visible faint networks and passes the
 contract on both views; its close-up is retained. A six-instance mixed
 smoke scene (seed 190020, fraction .5) contains three crazing networks and
 three ordinary cracks. These are generator checks, not transfer results.
+
+## Structural background details (v1.5.0)
+
+`--structures auto` adds an environment-dependent selection of background
+assemblies: sagging cables with anchor hardware and slack loops, clipped
+vertical cable bundles, conduit runs and elbows, downpipes with sockets and
+brackets, utility boxes with lids/screws/feed conduit, framed windows with
+mullions/sills/lintels, straight sealant panel joints, and projecting ledges.
+Indoor auto sampling excludes the exterior downpipe/ledge assemblies.
+v1.5.0 puts these beside the v1.4.0 crack networks by swapping the same
+162 views; see the v1.5.0 study above.
+
+These objects cast shadows and occlude the injected wall. They are **background**
+in crack masks, including cable edges, joints and shadows. Hidden portions of
+a crack lose their coverage naturally through Cycles visibility. Each assembly
+has an independent seed, metric placement, object list and background semantic
+record under `structures` in `scene.json`. They are never injection hosts.
+
+Use a mixture of cracked and deliberately clean scenes so these details appear
+without cracks as well as beside them:
+
+```bash
+python -m syncrack3d.build_dataset --seeds 192000-192019 --output out/structures \
+  --environment mixed --structures auto --structure-views 2 \
+  --structure-clean-fraction .35 --wall-materials diverse \
+  --min-defects 1 --max-defects 3 --max-props 0 \
+  --resolution 640 --samples 64 --wall-normal-mode explicit \
+  --crack-label-mode support
+
+python tools/prepare_defect_annotated_dataset.py -i out/structures/frames \
+  -o out/structure_pack --aov-masks on --instance-masks on --with-bboxes \
+  --max-negative-fraction .5
+python tools/check_instance_contract.py --pack out/structure_pack
+```
+
+`--structures services` restricts sampling to cables, conduit, pipes and boxes;
+`facade` samples windows, joints, ledges and downpipes. `all` attempts every
+assembly for QA, skipping large pieces if no collision-free placement is found.
+`off` is the default. Structural sampling uses its own random stream. Large
+assemblies avoid crack centres and service footprints; thin services may cross
+cracks. The existing `--max-props` controls furniture independently.
+
+`--structure-views N` adds up to N views of distinct structural assemblies
+(default 2), with role `structure` and no defect-target association. A structural
+view can still contain a real crack, so its labels always come from the rendered
+AOVs. `--structure-clean-fraction` defaults to zero; setting it to 1 generates
+only clean scenes when structures are enabled. Existing material-specific clean
+sampling still applies. Clean scenes now export explicit zero crack/instance
+passes and an empty instance manifest. Keep scene grouping when splitting.
+
+Window glazing is an opaque, recessed-looking surface within a raised frame,
+not a boolean opening through the injection host. This provides window borders,
+mullions and occlusion without labelling cracks behind glass. The assemblies
+are procedural geometry approximations; they do not model entire building
+interiors or construction systems. Panel joints are straight sealant strips,
+not fracture fields. No real BuildCrack annotations are modified by these flags.
+
+Validation on 2026-10-20: structure tests pass, including a rendered AOV
+occlusion fixture. Three retained QA scenes cover indoor positives (seed
+191000, 11 views), outdoor positives (191001, 10 views), and outdoor
+negatives (191002, 12 views). All 33 views pass the instance/class/box
+contract. All 12 clean crack AOVs and exported semantic masks are exactly
+zero, and all 12 negatives survive curation. Structural views with no
+visible crack are eligible negatives even when other views of the same
+scene contain cracks. Views containing faint or under-resolution cracks
+retain the existing evidence/ignore filtering. Transfer evidence for the
+structures swap is in the v1.5.0 study above.

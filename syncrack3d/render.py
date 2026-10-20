@@ -17,6 +17,7 @@ instance moments are not.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -100,7 +101,16 @@ def setup_passes(view_layer=None) -> list[str]:
     """Enable the defect AOVs on the view layer."""
     from cwg_infinigen.core.rendering.defect_aov import setup_defect_aovs
 
-    return setup_defect_aovs(view_layer=view_layer, enabled=True)
+    names = setup_defect_aovs(view_layer=view_layer, enabled=True)
+    # A clean scene still needs explicit zero passes for strict AOV export.
+    # Unwritten Cycles AOVs evaluate to zero; no defect material is introduced.
+    from cwg_infinigen.core.rendering.defect_aov import _ensure_view_layer_aov
+    layer = view_layer if view_layer is not None else bpy.context.view_layer
+    for name in ("DefectCrack", *_INSTANCE_AOVS):
+        _ensure_view_layer_aov(layer, name)
+        if name not in names:
+            names.append(name)
+    return names
 
 
 def _file_output(tree, slot_name: str, base_dir: Path, stem: str, fmt: str):
@@ -198,9 +208,21 @@ def render_cameras(
         bpy.ops.render.render(write_still=False)
         _canonicalise_names(out_dir, stem)
         _write_index_pair(out_dir, stem, scene)
+        write_view_metadata(out_dir, stem, cam)
         stems.append(stem)
         logger.info("rendered %s -> %s", cam_name, stem)
     return stems
+
+
+def write_view_metadata(out_dir, stem, camera):
+    """Keep structural framing separate from failed defect-target close-ups."""
+    folder = Path(out_dir) / "DefectViewMeta" / "camera_0"
+    folder.mkdir(parents=True, exist_ok=True)
+    payload = {"schema": "syncrack3d/capture_role/1", "frame_stem": stem,
+               "camera_role": camera.get("cwg_role", "context"),
+               "structure_target": camera.get("cwg_structure_target"),
+               "defect_target": camera.get("syndefect_target"), "instances": []}
+    (folder / f"DefectViewMeta_{stem}.json").write_text(json.dumps(payload, indent=2))
 
 
 def _canonicalise_names(out_dir: Path, stem: str) -> None:

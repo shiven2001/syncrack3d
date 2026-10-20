@@ -78,9 +78,11 @@ def run_controlled_injection(
     Nothing calls this during base-scene generation.  It becomes active only
     when the caller supplies defect objects.
     """
-    if not bindings:
-        return 0
     from cwg_infinigen.assets.defect_injection import run_injection, write_defect_manifest
+    if not bindings:
+        if manifest_path is not None:
+            write_defect_manifest(manifest_path, scene_id=scene_id, scene_seed=scene_seed)
+        return 0
 
     state, host_by_name = _state_for_bindings(bindings)
     count = run_injection(

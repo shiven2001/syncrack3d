@@ -49,6 +49,14 @@ from syncrack3d.lighting import (  # noqa: E402
     apply_lighting,
     sample_lighting_plan,
 )
+from syncrack3d.structures import (  # noqa: E402
+    PROFILES as STRUCTURE_PROFILES,
+    KINDS as STRUCTURE_KINDS,
+    build_structures,
+    sample_structure_plan,
+    structure_camera_targets,
+    structure_clean_wall,
+)
 from syncrack3d.occlusion import sample_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
@@ -118,7 +126,7 @@ def clear_scene():
             bpy.data.collections.remove(collection)
     # Materials outlive their objects and injection keys its per-host registry
     # on material identity, so orphans here become stale hosts later.
-    for block in (bpy.data.meshes, bpy.data.materials, bpy.data.lights,
+    for block in (bpy.data.meshes, bpy.data.curves, bpy.data.materials, bpy.data.lights,
                   bpy.data.cameras, bpy.data.node_groups, bpy.data.images):
         for datablock in list(block):
             if datablock.users == 0:
@@ -190,9 +198,14 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale)
     else:
         generator_name, surface_finish = "controlled", spec.material.finish
+    clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
     shell_plan = sample_shell_plan(rng)  # drawn for every wall: keeps the shared RNG stream
     environment = environment_for(seed, args.environment)
     outdoor_plan = sample_outdoor_plan(seed, spec.width_m) if environment == "outdoor" else None
+    if outdoor_plan is None and args.structures != "off":
+        # Fixture views reach wall boundaries; close the room so sockets and
+        # door frames are not photographed against the sky outside the slab.
+        shell_plan = replace(shell_plan, has_ceiling=True, returns=("left", "right"))
     if outdoor_plan is None:
         build_room_shell(spec, shell_plan)
     else:
@@ -257,6 +270,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # displacement, or the clean negatives stay bump-only.
     enable_true_displacement(wall, args.dicing_rate)
 
+    structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment, args.structure_kinds)
+    structures = build_structures(structure_plans)
+
     poses = sample_camera_poses(
         rng,
         spec,
@@ -271,6 +287,16 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         preserve_closeup_scale=args.preserve_closeup_scale,
         aim_jitter=args.closeup_aim_jitter,
     )
+    if structures and args.structure_views:
+        structure_rng = random.Random(seed ^ 0x53544341)
+        targets = list(structures)
+        structure_rng.shuffle(targets)
+        poses.extend(sample_camera_poses(
+            structure_rng, spec, structure_camera_targets(targets, args.structure_views),
+            capture_collection, closeups_per_defect=1, frame_fill_range=(.45, .75),
+            index_offset=len(poses), closeup_role="structure", include_context=False,
+            max_yaw_deg=min(args.closeup_max_yaw, 25), max_pitch_deg=min(args.closeup_max_pitch, 20),
+        ))
     if outdoor_plan is not None:
         remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
 
@@ -295,6 +321,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "defects_placed": [p.to_dict() for p in placements],
         "defects_injected": injected,
         "props": [p.to_dict() for p in props],
+        "structures": structures,
+        "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
+                               "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
         "environment": environment,
         "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
@@ -440,6 +469,14 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
+    parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
+                        help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
+    parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,
+                        help="force a subset for QA; requires --structures enabled")
+    parser.add_argument("--structure-views", type=int, default=2,
+                        help="additional views aimed at structural details (0 disables)")
+    parser.add_argument("--structure-clean-fraction", type=float, default=0.0,
+                        help="fraction of structure-enabled scenes forced defect-free (0..1)")
     parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed", "network"), default="legacy",
                         help="legacy mix, broad cracks, 50%% of each, or hairline cellular networks")
     parser.add_argument("--crack-network-fraction", type=float, default=0.0,
@@ -476,6 +513,12 @@ def main():
     args = parser.parse_args(
         sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else None
     )
+    if args.structure_kinds and args.structures == "off":
+        parser.error("--structure-kinds requires --structures enabled")
+    if not 0 <= args.structure_clean_fraction <= 1:
+        parser.error("structure clean fraction must be 0..1")
+    if args.structure_views < 0:
+        parser.error("structure views must be nonnegative")
     if not 0 <= args.crack_layered_fraction <= 1:
         parser.error("--crack-layered-fraction must be 0-1")
     if args.relight_per_view and args.light_profile == "default":
