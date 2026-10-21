@@ -384,6 +384,8 @@ def _inject_crack(
     crack_network_fraction=0.0,
     crack_network_spacing=(0.02, 0.06),
     crack_network_grime=(0.15, 0.60),
+    crack_network_edge="organic",
+    crack_network_extent=1.4,
     crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
     crack_fit_path=False,
@@ -414,7 +416,11 @@ def _inject_crack(
     network_rng = np.random.default_rng(int_hash((int(seed), "network_selection_v1")))
     network = crack_profile == "network" or network_rng.random() < crack_network_fraction
     half = min(extent, 0.42) * 0.42
-    p = (sample_crack_network(seed, half, crack_network_spacing, crack_network_grime) if network else
+    if network:
+        # Network field size relative to the card; the card, its placement and
+        # the close-up framing are unchanged. Draws nothing.
+        half *= float(crack_network_extent)
+    p = (sample_crack_network(seed, half, crack_network_spacing, crack_network_grime, crack_network_edge) if network else
          sample_crack_morphology(seed, half=half, profile=crack_profile))
     p = adapt_crack_morphology(
         p, width_scale=crack_width_scale, jitter_scale=crack_jitter_scale,

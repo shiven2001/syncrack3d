@@ -298,10 +298,10 @@ real photos. BD3 plain-wall false alarms and CUBIT spalling false cracks
 are untouched. The real benchmarks barely contain clutter, apart from
 BuildCrack's cable labels, so they cannot reward the structures.
 
-v1.5.0 is the recommended zero-shot checkpoint: v1.4.0's crack accuracy
+v1.5.0 is the checkpoint for that structures swap: v1.4.0's crack accuracy
 with fewer false alarms around fixtures, cables and frames. BD3, CUBIT and
 BuildCrack remain development scores. v1.6.0 re-shades eight materials on
-this same training list; the checkpoint path above is unchanged.
+this same training list. v1.7.0 is the recommended checkpoint; see below.
 
 ## v1.6.0 material shading
 
@@ -347,7 +347,42 @@ the new marble halves that. False cracks on CUBIT spalling photos rise from
 slightly. The empty-tile 13% is 2 alarms out of 15 checks. The last three
 rows are 150 views of 16 unseen synthetic walls (2 per material) with the
 new textures: a small synthetic check, not real-world evidence. No new
-checkpoint is published; these scores are that 5-seed check.
+checkpoint is published for the texture change alone; these scores are that
+5-seed check. v1.7.0 is the recommended checkpoint.
+
+## v1.7.0 organic networks
+
+The v1.6.0 textures stay. The same 162 network views were re-rendered from
+the same seeds and cameras with `--crack-network-edge organic
+--crack-network-extent 1.4`, then trained for 5 seeds and compared with the
+new-texture model whose networks are still square. Extent scales only the
+network field. The crack cards and the cameras stay the same. At extent 1
+an organic patch kept 57% of the square patch's crack length; at 1.4 it
+keeps 95%. Checkpoint:
+`outputs/domain_transfer/syncrack3d_netorgx_bd3_v1/`.
+
+| | New textures, square networks | Organic ×1.4 | Difference |
+|---|---:|---:|---|
+| BD3 minor-crack IoU | 0.601 | 0.606 | +0.006 (n.s.) |
+| BD3 plain-wall false alarms | 1.7% | 1.2% | n.s. |
+| CUBIT crack-photo F1 | 0.862 | 0.863 | +0.001 (n.s.) |
+| CUBIT spalling photos with false crack | 70% | 72% | |
+| BuildCrack F1 (mean of seeds) | 0.630 | 0.633 | +0.002 (n.s.) |
+| BuildCrack F1 (5-seed vote) | 0.647 | 0.649 | +0.001 (n.s.) |
+| BuildCrack drone tiles F1 | 0.616 | 0.619 | |
+| BuildCrack seed spread | 0.093 | 0.058 | |
+
+n.s. = 95% interval includes zero.
+
+The earlier organic drop was less crack, not the outline. With the crack
+length matched, the two tie on every benchmark. Most rows lean slightly
+toward organic, and none of the differences are significant. Organic is the
+default for new data: no square edges, and no measurable cost. Square with
+extent 1 remains the way to reproduce v1.4.0–v1.5.0.
+
+Against v1.5.0, textures plus organic networks keep BD3 and CUBIT level and
+raise BuildCrack's 5-seed vote from 0.626 to 0.649. The marble false-alarm
+drop (49% to 28%) is the texture change from the v1.6.0 check.
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
@@ -513,7 +548,8 @@ From this repository's root, with the usual Blender Python environment:
 ```bash
 python -m syncrack3d.build_dataset --seeds 190010-190019 --output out/networks \
   --wall-materials diverse --material-category paint_neutral --clean-wall-scale 0 \
-  --crack-profile network --crack-network-spacing .02 .06 \
+  --crack-profile network --crack-network-edge organic --crack-network-extent 1.4 \
+  --crack-network-spacing .02 .06 \
   --crack-width-scale 2 --crack-label-mode support \
   --defect-size-range .3 .45 --min-defects 1 --max-defects 2 --max-props 0 \
   --resolution 1024 --samples 64 --dicing-rate 1 --wall-normal-mode explicit \
@@ -534,7 +570,7 @@ isolated-crack clean bucket) and omit the broad
 coating chips and wall offsets used by large isolated cracks. Path fitting,
 branch modes and path modes apply only to isolated cracks. Each network patch
 is one crack instance; cells and edges are not separate instances. Manifests
-record the sampled spacing, warp, seed offset, width and depth.
+record the sampled spacing, warp, seed offset, width, depth, edge and extent.
 
 Resolution, standoff, exposure and lighting determine whether these hairlines
 remain visible. Include close-ups and context views, and inspect export
@@ -548,6 +584,17 @@ grime strength (default .15 .60). It only rescales the existing draw, so a
 seed's cells, widths and depth stay the same. At 640 px the default leaves
 lines 2–4% darker than the wall; v1.4.0 uses `.8 1` (4–8%) with width and
 depth scale 2, and drops views below 3%. See the v1.4.0 study above.
+
+`--crack-network-edge organic` is the default. The outline is a rounded
+square pushed inwards by low-frequency noise, and the crack lines narrow to
+nothing in a band near it, so the web ends in tapering cracks instead of
+along four straight edges. The outline comes from its own random stream, so
+a seed's cells, widths, depth and staining are unchanged.
+`--crack-network-extent` scales only that field (default 1.4). Extent 1
+keeps about 57% of a square patch's crack length; 1.4 keeps about 95%, and
+that is what ties the square networks in the v1.7.0 study. Pass
+`--crack-network-edge square --crack-network-extent 1` to reproduce the
+v1.4.0–v1.5.0 patches.
 
 Validation: 33 tests pass. The final controlled-wall pilot (seeds
 190000–190002, 512 px) passes the label contract on six views, with two

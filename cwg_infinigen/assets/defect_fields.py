@@ -431,17 +431,21 @@ def adapt_crack_branches(p, mode="original"):
     return dict(p, fork_specs=forks, branch_mode=mode)
 
 
-def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.15, 0.60)):
+def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.15, 0.60), edge="square"):
     """Seeded crazing cells; metric channel radii before coordinate warping.
 
     grime_range scales the channel staining. It only rescales the existing
-    draw, so every other parameter of a seed is unchanged."""
+    draw, so every other parameter of a seed is unchanged. edge="organic" adds
+    an irregular patch outline from its own RNG stream (see
+    build_crack_network_field); "square" keeps the historical patch."""
     if not (np.isfinite(spacing_range).all() and 0 < spacing_range[0] <= spacing_range[1]):
         raise ValueError("network spacing must be positive and ordered")
     if not 0 <= grime_range[0] <= grime_range[1] <= 1:
         raise ValueError("network grime must be ordered within 0..1")
+    if edge not in ("square", "organic"):
+        raise ValueError("network edge must be square or organic")
     rng = np.random.default_rng(int_hash((int(seed), "crack_network_v1")))
-    return dict(
+    p = dict(
         style="crazing", half_u=half, half_v=half,
         w_min=float(rng.uniform(.00006, .00012)),
         w_max=float(rng.uniform(.00016, .00032)),
@@ -453,6 +457,15 @@ def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.
                      offset=rng.uniform(-100, 100, 3).tolist(),
                      grime_strength=float(rng.uniform(*grime_range))),
     )
+    if edge == "organic":
+        er = np.random.default_rng(int_hash((int(seed), "crack_network_edge_v1")))
+        p["network"]["edge"] = dict(
+            aspect=[float(er.uniform(.85, 1.)), float(er.uniform(.85, 1.))],
+            power=float(er.uniform(2.5, 4.)),
+            inner=float(er.uniform(.72, .85)), outer=.95,
+            lobe_scale=float(er.uniform(1.5, 3.)), lobe_amp=float(er.uniform(.10, .22)),
+            offset=er.uniform(-100, 100, 3).tolist())
+    return p
 
 
 def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
@@ -460,7 +473,8 @@ def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
 
     Distance, width and depth are physical field units, independent of render
     resolution. Warp slightly changes local opening width. Border taper bounds
-    the patch; its AOV follows that exact same field.
+    the patch, or with an organic edge the line width tapers to zero inside
+    an irregular outline; its AOV follows that exact same field.
     """
     node, math, remap, noise = _nodes(nt)
     cfg = p["network"]
@@ -488,7 +502,30 @@ def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
     nt.links.new(warped.outputs["Vector"], cells.inputs["Vector"])
     width = remap(noise(xy.outputs["Vector"], 2.3, 2.), .2, .8, p["w_min"], p["w_max"], "SMOOTHSTEP")
     distance = math("MULTIPLY", cells.outputs["Distance"], spacing)
+    edge = cfg.get("edge")
+    if edge:
+        # Irregular outline instead of the square patch: a rounded-square
+        # (superellipse) radius pushed inwards by low-frequency noise
+        # (one-sided, so the patch stays inside the card). Lines narrow to
+        # nothing in a band near it, so cells end in tapering cracks rather
+        # than at a straight border.
+        rad = node("ShaderNodeCombineXYZ")
+        radius = None
+        for axis, source, half, a in zip(("X", "Y"), (u_idx, v_idx), (p["half_u"], p["half_v"]), edge["aspect"]):
+            c = math("DIVIDE", sep.outputs[source], half * a)
+            nt.links.new(c, rad.inputs[axis])
+            term = math("POWER", math("ABSOLUTE", c), edge["power"])
+            radius = term if radius is None else math("ADD", radius, term)
+        radius = math("POWER", radius, 1. / edge["power"])
+        shifted = node("ShaderNodeVectorMath", operation="ADD")
+        nt.links.new(rad.outputs["Vector"], shifted.inputs[0])
+        shifted.inputs[1].default_value = edge["offset"]
+        lobes = math("MULTIPLY", noise(shifted.outputs["Vector"], edge["lobe_scale"], 2.), edge["lobe_amp"])
+        fade = remap(math("ADD", radius, lobes), edge["inner"], edge["outer"], 1., 0., "SMOOTHSTEP")
+        width = math("MAXIMUM", math("MULTIPLY", width, fade), 1e-9)
     prof = math("SUBTRACT", 1., math("DIVIDE", distance, width), clamp=True)
+    if edge:
+        prof = math("MULTIPLY", prof, remap(fade, 0., .1, 0., 1.))
     for axis, half in ((u_idx, p["half_u"]), (v_idx, p["half_v"])):
         prof = math("MULTIPLY", prof, remap(math("ABSOLUTE", sep.outputs[axis]), .90 * half, half, 1., 0., "SMOOTHSTEP"))
     return prof

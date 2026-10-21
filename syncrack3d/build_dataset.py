@@ -250,6 +250,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         gin.bind_parameter("_inject_crack.crack_network_fraction", args.crack_network_fraction)
         gin.bind_parameter("_inject_crack.crack_network_spacing", tuple(args.crack_network_spacing))
         gin.bind_parameter("_inject_crack.crack_network_grime", tuple(args.crack_network_grime))
+        gin.bind_parameter("_inject_crack.crack_network_edge", args.crack_network_edge)
+        gin.bind_parameter("_inject_crack.crack_network_extent", args.crack_network_extent)
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
         gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
@@ -354,6 +356,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "network_fraction": args.crack_network_fraction,
             "network_spacing_m": args.crack_network_spacing,
             "network_grime": args.crack_network_grime,
+            "network_edge": args.crack_network_edge,
+            "network_extent": args.crack_network_extent,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
             "render": args.crack_render,
@@ -485,6 +489,10 @@ def main():
                         metavar=("MIN", "MAX"), help="network cell spacing range in metres")
     parser.add_argument("--crack-network-grime", type=float, nargs=2, default=(.15, .60), metavar=("MIN", "MAX"),
                         help="network channel staining, as a share of crack grime strength (0..1)")
+    parser.add_argument("--crack-network-edge", choices=("square", "organic"), default="organic",
+                        help="network patch outline: organic (v1.7.0) or square, which reproduces v1.4.0-v1.5.0")
+    parser.add_argument("--crack-network-extent", type=float, default=1.4,
+                        help="network field size relative to its card (.5-2); 1.4 keeps organic crack length near a square patch. Cards and cameras are unchanged. Use 1 with --crack-network-edge square to reproduce v1.4.0-v1.5.0")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,
                         help="physical crack width multiplier (.25-4), also changes AOV")
     parser.add_argument("--crack-jitter-scale", type=float, default=1.0,
@@ -537,6 +545,8 @@ def main():
         parser.error("crack network spacing must be positive and ordered")
     if not 0 <= args.crack_network_grime[0] <= args.crack_network_grime[1] <= 1:
         parser.error("crack network grime must be ordered within 0..1")
+    if not .5 <= args.crack_network_extent <= 2:
+        parser.error("crack network extent must be .5..2")
     if not .25 <= args.crack_width_scale <= 4 or not 0 <= args.crack_jitter_scale <= 2:
         parser.error("crack width scale must be .25..4; jitter scale must be 0..2")
     if not .05 <= args.crack_depth_scale <= 2:
