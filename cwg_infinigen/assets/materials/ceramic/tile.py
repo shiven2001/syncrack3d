@@ -56,16 +56,30 @@ def mix_shader(nw, base_shader, offset, rotations, mortar, alternating, selectio
                     color = links[0].from_socket
                 else:
                     color = bsdf.inputs[0].default_value
+                # The draw used to darken the glaze in the joint, which read as a
+                # painted line. Same number now picks a cement shade, and the
+                # joint itself is that cement rather than a darker glaze.
+                grout_v = 0.40 + 0.28 * float(darken_factor)
+                grout_col = (grout_v, grout_v * 0.97, grout_v * 0.92, 1.0)
                 color = nw.new_node(
                     Nodes.MixRGB,
-                    input_kwargs={
-                        0: darken_factor,
-                        6: color,
-                        7: nw.scalar_sub(1, mortar),
-                    },
-                    attrs={"blend_type": "MULTIPLY", "data_type": "RGBA"},
+                    input_kwargs={0: mortar, 6: color, 7: grout_col},
                 ).outputs[2]
                 nw.connect_input(color, bsdf.inputs[0])
+                rough_in = bsdf.inputs["Roughness"]
+                # The glaze musgrave roughness shows up as a liquid swirl in the
+                # highlight. The face stays an even satin; the joint stays matte.
+                rough = nw.scalar_add(
+                    nw.scalar_multiply(nw.scalar_sub(1, mortar), 0.55),
+                    nw.scalar_multiply(mortar, 0.92),
+                )
+                nw.connect_input(rough.outputs["Value"], rough_in)
+                coat = bsdf.inputs.get("Coat Weight")
+                if coat is not None and not coat.is_linked:
+                    coat_mix = nw.scalar_multiply(
+                        nw.scalar_sub(1, mortar), coat.default_value * 0.25
+                    )
+                    nw.connect_input(coat_mix.outputs["Value"], coat)
             match type(n).__name__:
                 case Nodes.GroupOutput:
                     shaders.append(nw.find_from(n.inputs[0])[0].from_socket)
@@ -91,6 +105,9 @@ def mix_shader(nw, base_shader, offset, rotations, mortar, alternating, selectio
                     disps.append(
                         disp_links[0].from_socket if len(disp_links) > 0 else None
                     )
+                    # The base shader's own output would stay active and hide the
+                    # joint displacement wired onto the output created below.
+                    nw.nodes.remove(n)
     shader = shaders[0]
     disp = disps[0]
     rotation = rotations[0]
@@ -111,7 +128,7 @@ def mix_shader(nw, base_shader, offset, rotations, mortar, alternating, selectio
     mortar_disp = nw.new_node(
         Nodes.Displacement,
         input_kwargs={
-            "Height": nw.scalar_multiply(mortar, -uniform(0.016, 0.032)),
+            "Height": nw.scalar_multiply(mortar, -uniform(0.0014, 0.0030)),
             "Midlevel": 0.0,
             "Scale": 1.0,
         },
@@ -128,18 +145,24 @@ def mix_shader(nw, base_shader, offset, rotations, mortar, alternating, selectio
         Nodes.Displacement,
         input_kwargs={
             "Height": nw.scalar_multiply(
-                noise_floor.outputs["Fac"], uniform(0.005, 0.016)
+                noise_floor.outputs["Fac"], uniform(0.0002, 0.0006)
             ),
-            "Midlevel": 0.0,
+            "Midlevel": 0.5,
             "Scale": 1.0,
         },
     )
+    # noise_disp is built so its random draws stay in the stream. It is not
+    # added: that grain, on top of the glaze musgrave, was the swirl in the
+    # highlight. The joint recess is the relief that should show.
     if disp is not None:
-        disp = nw.add(disp, mortar_disp, noise_disp)
+        disp = nw.multiply(disp, (0.0, 0.0, 0.0))
+        disp = nw.add(disp, mortar_disp)
     else:
-        disp = nw.add(mortar_disp, noise_disp)
+        disp = mortar_disp
     nw.new_node(
-        Nodes.MaterialOutput, input_kwargs={"Surface": shader, "Displacement": disp}
+        Nodes.MaterialOutput,
+        input_kwargs={"Surface": shader, "Displacement": disp},
+        attrs={"is_active_output": True},
     )
 
 
@@ -192,6 +215,7 @@ def shader_square_tile(
                 "Row Height": 1,
                 "Brick Width": 1,
                 "Mortar Size": mortar_size,
+                "Mortar Smooth": 0.25,
                 "Color2": (0, 0, 0, 1),
             },
             attrs={"offset": 0.0, "offset_frequency": 1},
@@ -255,6 +279,7 @@ def shader_rectangle_tile(
                 "Row Height": 1,
                 "Brick Width": 1,
                 "Mortar Size": mortar_size,
+                "Mortar Smooth": 0.25,
                 "Color2": (0, 0, 0, 1),
             },
             attrs={"offset": 0.0, "offset_frequency": 1},
@@ -345,7 +370,12 @@ def shader_hexagon_tile(
         ),
         nw.scalar_add(diffs[2], diffs[0]),
     )
-    mortar = nw.math("GREATER_THAN", max_dist, 1 - mortar_size / size / 2)
+    edge = 1 - mortar_size / size / 2
+    mortar = nw.new_node(
+        Nodes.MapRange,
+        input_kwargs={"Value": max_dist, "From Min": edge - 0.05, "From Max": edge},
+        attrs={"interpolation_type": "SMOOTHSTEP", "clamp": True},
+    )
     rotations = np.pi * 2 / 3 * np.arange(3)
     mix_shader(
         nw,

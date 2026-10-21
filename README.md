@@ -300,7 +300,54 @@ BuildCrack's cable labels, so they cannot reward the structures.
 
 v1.5.0 is the recommended zero-shot checkpoint: v1.4.0's crack accuracy
 with fewer false alarms around fixtures, cables and frames. BD3, CUBIT and
-BuildCrack remain development scores.
+BuildCrack remain development scores. v1.6.0 re-shades eight materials on
+this same training list; the checkpoint path above is unchanged.
+
+## v1.6.0 material shading
+
+Same 2,243 views, same seeds. Eight materials were re-rendered (1,019
+views): brick, cobble, concrete, large tile, marble, rubble, sandstone and
+small tile. The other views are untouched. All 138 re-rendered walls matched
+the originals on cameras, cracks, lights and room, so the shader edits kept
+the random draws aligned. Cracked views per material stay the same except
+cobble (39 to 38) and rubble (41 to 44).
+
+Joints, dirt and grain sit on the existing Cycles displacement. Brick and
+sandstone take a dirt amount from none to a light coat. Cobble drops the
+round dome on each stone and puts soil in the joints. Concrete keeps its
+chunks and adds a fine grain across the face. Large-tile grout is cement,
+plaster or resin, and the glaze can be white, cream, gray or a colour.
+Marble veins stay a little clearer. Rubble joints are soil, and the chip
+waves are shading rather than extra displacement. On small tile the crack
+used to replace the grout recess, so the joint was only a darker line; the
+crack now adds onto a shallow cement joint.
+
+A 5-seed retrain of that set, against v1.5.0:
+
+| | v1.5.0 | New textures | Difference |
+|---|---:|---:|---|
+| BD3 minor-crack IoU | 0.605 | 0.602 | −0.003 (n.s.) |
+| BD3 plain-wall false alarms | 2.0% | 1.5% | n.s. |
+| CUBIT crack-photo F1 | 0.860 | 0.862 | +0.002 (n.s.); recall +0.007 ✓ |
+| CUBIT spalling photos with false crack | 66% | 70% | |
+| BuildCrack F1 (mean of seeds) | 0.613 | 0.630 | +0.018 (n.s.) |
+| BuildCrack F1 (5-seed vote) | 0.626 | 0.647 | +0.022 ✓ |
+| BuildCrack empty-tile false alarms | 0% | 13% | 2 of 15 checks, on 3 empty tiles |
+| Crack-free walls with the new textures: views with a false alarm | 10.1% | 8.3% | |
+| …on marble | 49% | 28% | |
+| …on large tile / concrete | 3% / 8% | 9% / 11% | |
+
+n.s. = 95% interval includes zero; ✓ = significant gain.
+
+BD3 and CUBIT stay level. BuildCrack's 5-seed vote is a small significant
+gain. Marble improves most: the old model false-alarmed on half the new
+marble walls, because the sharper veins look like cracks, and training on
+the new marble halves that. False cracks on CUBIT spalling photos rise from
+66% to 70%, and false alarms on the new large tile and concrete rise
+slightly. The empty-tile 13% is 2 alarms out of 15 checks. The last three
+rows are 150 views of 16 unseen synthetic walls (2 per material) with the
+new textures: a small synthetic check, not real-world evidence. No new
+checkpoint is published; these scores are that 5-seed check.
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)

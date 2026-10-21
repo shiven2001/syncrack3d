@@ -355,11 +355,73 @@ def nodegroup_concrete(nw: NodeWrangler):
         attrs={"data_type": "RGBA"},
     )
 
+    # Fine grit over the whole face. The stains and chunks above stay as they
+    # are; this only fills the flat areas between them. It is not displacement.
+    fine_scale = nw.new_node(
+        Nodes.Math,
+        input_kwargs={0: group_input_1.outputs["Scale"], 1: 160.0},
+        attrs={"operation": "MULTIPLY"},
+    )
+    fine = nw.new_node(
+        Nodes.NoiseTexture,
+        input_kwargs={
+            "Vector": texture_coordinate.outputs["Object"],
+            "W": group_input_1.outputs["Seed"],
+            "Scale": fine_scale,
+            "Detail": 8.0,
+        },
+        attrs={"noise_dimensions": "4D"},
+    )
+    grit_scale = nw.new_node(
+        Nodes.Math,
+        input_kwargs={0: group_input_1.outputs["Scale"], 1: 420.0},
+        attrs={"operation": "MULTIPLY"},
+    )
+    grit = nw.new_node(
+        Nodes.NoiseTexture,
+        input_kwargs={
+            "Vector": texture_coordinate.outputs["Object"],
+            "W": group_input_1.outputs["Seed"],
+            "Scale": grit_scale,
+            "Detail": 2.0,
+        },
+        attrs={"noise_dimensions": "4D"},
+    )
+    shade = nw.scalar_add(
+        0.82,
+        nw.scalar_multiply(fine.outputs["Fac"], 0.24),
+        nw.scalar_multiply(grit.outputs["Fac"], 0.14),
+    )
+    color = nw.new_node(
+        Nodes.MixRGB,
+        [1.0, mix_6.outputs[2], shade],
+        attrs={"blend_type": "MULTIPLY"},
+    )
+    rough = nw.scalar_multiply(
+        group_input_1.outputs["Roughness"],
+        nw.scalar_add(0.90, nw.scalar_multiply(fine.outputs["Fac"], 0.16)),
+    )
+    normal = nw.new_node(
+        Nodes.Bump,
+        input_kwargs={"Height": fine.outputs["Fac"], "Distance": 0.00045, "Strength": 0.55},
+        strict=False,
+    )
+    normal = nw.new_node(
+        Nodes.Bump,
+        input_kwargs={
+            "Height": grit.outputs["Fac"],
+            "Distance": 0.00022,
+            "Strength": 0.40,
+            "Normal": normal.outputs["Normal"],
+        },
+        strict=False,
+    )
     principled_bsdf = nw.new_node(
         Nodes.PrincipledBSDF,
         input_kwargs={
-            "Base Color": mix_6.outputs[2],
-            "Roughness": group_input_1.outputs["Roughness"],
+            "Base Color": color,
+            "Roughness": rough,
+            "Normal": normal,
         },
     )
 

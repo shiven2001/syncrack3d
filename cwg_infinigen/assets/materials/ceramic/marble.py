@@ -147,7 +147,9 @@ def shader_marble(nw: NodeWrangler, **kwargs):
     principled_bsdf = nw.new_node(
         Nodes.PrincipledBSDF,
         input_kwargs={
-            "Base Color": mix_1.outputs[2],
+            # mix is the soft ground with the thin vein colour. mix_1 was the
+            # unsharpened noise, so the veins only showed up in the displacement.
+            "Base Color": mix.outputs[2],
             "Specular IOR Level": 0.6000,
             "Roughness": 0.1000,
         },

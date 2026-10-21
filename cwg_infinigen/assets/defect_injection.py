@@ -702,13 +702,24 @@ def _wire_displacement(state: HostInjection) -> None:
                 height_in,
             )
     else:
-        disp = nt.nodes.new("ShaderNodeDisplacement")
-        disp.inputs["Midlevel"].default_value = 0.0
-        disp.inputs["Scale"].default_value = 1.0
-        nt.links.new(total, disp.inputs["Height"])
-        for link in list(out.inputs["Displacement"].links):
-            nt.links.remove(link)
-        nt.links.new(disp.outputs["Displacement"], out.inputs["Displacement"])
+        # Tile (and anything else that sums several Displacement nodes) plugs a
+        # vector into the output, not one Displacement node. Replacing that
+        # link left only the crack, so the grout rendered as a flat colour line.
+        crack = nt.nodes.new("ShaderNodeDisplacement")
+        crack.inputs["Midlevel"].default_value = 0.0
+        crack.inputs["Scale"].default_value = 1.0
+        nt.links.new(total, crack.inputs["Height"])
+        if out.inputs["Displacement"].is_linked:
+            existing = out.inputs["Displacement"].links[0].from_socket
+            added = nt.nodes.new("ShaderNodeVectorMath")
+            added.operation = "ADD"
+            nt.links.new(existing, added.inputs[0])
+            nt.links.new(crack.outputs["Displacement"], added.inputs[1])
+            for link in list(out.inputs["Displacement"].links):
+                nt.links.remove(link)
+            nt.links.new(added.outputs["Vector"], out.inputs["Displacement"])
+        else:
+            nt.links.new(crack.outputs["Displacement"], out.inputs["Displacement"])
     state.material.displacement_method = "DISPLACEMENT"
 
 

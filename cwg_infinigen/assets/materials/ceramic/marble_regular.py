@@ -66,8 +66,10 @@ def shader_marble_regular(nw: NodeWrangler):
     darkness = nw.new_node(Nodes.Value, label="darkness ~ U(0,1)")
     darkness.outputs[0].default_value = uniform(0.0, 1.0)
 
+    # Was 0.2-0.3, which flattened the sine into a gray cloud. The same darkness
+    # draw now sets how sharp the veins are.
     map_range = nw.new_node(
-        Nodes.MapRange, input_kwargs={"Value": darkness, 3: 0.2000, 4: 0.3000}
+        Nodes.MapRange, input_kwargs={"Value": darkness, 3: 0.4500, 4: 0.7500}
     )
 
     power = nw.new_node(
@@ -77,7 +79,8 @@ def shader_marble_regular(nw: NodeWrangler):
     )
 
     principled_bsdf = nw.new_node(
-        Nodes.PrincipledBSDF, input_kwargs={"Base Color": power}
+        Nodes.PrincipledBSDF,
+        input_kwargs={"Base Color": power, "Roughness": 0.2800},
     )
 
     disp_noise = nw.new_node(
