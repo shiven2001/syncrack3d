@@ -47,6 +47,19 @@ def src(sock):
     return sock.links[0].from_socket if sock.is_linked else None
 
 
+def src_or_const(sock):
+    """The linked socket, or a node holding the unlinked input's constant (e.g. a fixed stucco roughness)."""
+    if sock.is_linked:
+        return src(sock)
+    if sock.type == "RGBA":
+        node = nt.nodes.new("ShaderNodeRGB")
+        node.outputs[0].default_value = sock.default_value
+    else:
+        node = nt.nodes.new("ShaderNodeValue")
+        node.outputs[0].default_value = sock.default_value
+    return node.outputs[0]
+
+
 aovs = {n.aov_name: src(n.inputs["Value"]) for n in nt.nodes
         if n.bl_idname == "ShaderNodeOutputAOV" and n.aov_name.startswith("Defect")
         and n.aov_name not in ("DefectInstance", "DefectInstanceSquared")}
@@ -67,8 +80,8 @@ def math(op, a, b):
 
 # height in mm along the outward normal, + 50 so the emission stays positive
 height_mm = math("ADD", math("MULTIPLY", math("SUBTRACT", h_link, mid), scale * 1000.0), 50.0)
-passes = {"height_mm": height_mm, "roughness": src(bsdf.inputs["Roughness"])}
-color_src = src(bsdf.inputs["Base Color"])
+passes = {"height_mm": height_mm, "roughness": src_or_const(bsdf.inputs["Roughness"])}
+color_src = src_or_const(bsdf.inputs["Base Color"])
 passes["color"] = color_src
 for name, sock in aovs.items():
     if sock is not None:
