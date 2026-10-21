@@ -8,3 +8,6 @@ outputs/
 # Real BD3 photos and masks. Their licence is separate from this code.
 eval/bd3/images/
 eval/bd3/gt/
+
+# Nested manuscript repository. Its history is not part of this repo.
+paper-syncrack3d/
