@@ -1,0 +1,8 @@
+# Scoring environment (separate from the Blender generator environment).
+# Versions used for every result in README.md.
+torch==2.7.0
+segmentation-models-pytorch==0.5.0
+opencv-python==4.11.0.86
+numpy
+scikit-image==0.26.0
+scipy

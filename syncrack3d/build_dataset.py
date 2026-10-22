@@ -50,6 +50,7 @@ from syncrack3d.lighting import (  # noqa: E402
     sample_lighting_plan,
 )
 from syncrack3d.junctions import snap_to_junctions  # noqa: E402
+from syncrack3d.recipes import RECIPES, recipe_argv  # noqa: E402
 from syncrack3d.structures import (  # noqa: E402
     PROFILES as STRUCTURE_PROFILES,
     KINDS as STRUCTURE_KINDS,
@@ -382,6 +383,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_label_mode": args.crack_label_mode,
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
+            "recipe": args.recipe,
             "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
             "crack_weathering_fraction": args.crack_weathering_fraction,
@@ -539,9 +541,10 @@ def main():
                         help="log and continue when one seed fails")
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
-    args = parser.parse_args(
-        sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else None
-    )
+    parser.add_argument("--recipe", choices=sorted(RECIPES),
+                        help="start from a release recipe (syncrack3d/recipes.py); explicit flags override it")
+    argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
+    args = parser.parse_args(recipe_argv(argv))
     if args.structure_kinds and args.structures == "off":
         parser.error("--structure-kinds requires --structures enabled")
     if not 0 <= args.structure_clean_fraction <= 1:

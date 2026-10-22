@@ -16,6 +16,7 @@ its interval resamples source images only.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,7 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from infer import TEST_SCALE, load_model, predict
 from metrics import TOLERANCE_PX, centreline_counts, centreline_scores, cldice_counts
 
-DATA = Path(__file__).resolve().parents[3] / "BuildCrack"
+# Dataset root with images/ and labels/ (448 px PNG tiles): --data or $SYNCRACK3D_BUILDCRACK.
+DATA = Path(os.environ["SYNCRACK3D_BUILDCRACK"]) if os.environ.get("SYNCRACK3D_BUILDCRACK") else None
 KEYS = ("centreline_f1", "centreline_precision", "centreline_recall", "cldice", "crack_iou")
 N_BOOT = 1000
 ALARM_FRACTION = 0.001
@@ -86,6 +88,8 @@ def main():
     ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
     ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
     args = ap.parse_args()
+    if args.data is None:
+        ap.error("pass --data path/to/BuildCrack or set SYNCRACK3D_BUILDCRACK")
     import torch
 
     names = [name for name, _ in args.model]

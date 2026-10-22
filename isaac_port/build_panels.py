@@ -1,6 +1,6 @@
 """Build rig panel assets (USD + ground truth) from SynDefect3D view patches.
 
-    OMNI_KIT_ACCEPT_EULA=YES ~/defect_detection/env_isaac/bin/python \
+    OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim/python \
         scripts/build_panels.py --spec scripts/panels_v1.json --out assets/panels_v2
 
 Only crack and paint-peel panels are built (rig/panels.py SCOPE_CLASSES); a
@@ -25,7 +25,6 @@ plane, outward normal +Z, u -> +X, v -> +Y, metres. Per panel:
 import argparse
 import json
 import shutil
-import sys
 from pathlib import Path
 
 # Inlined from active_sensing_rig/rig/panels.py so the port has no rig dependency.

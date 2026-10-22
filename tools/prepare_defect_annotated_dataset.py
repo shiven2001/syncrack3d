@@ -1742,8 +1742,6 @@ def write_class_names_legend(output_dir: Path, profile: str = "release") -> Path
     return legend_path
 
 
-DEFAULT_INPUT_FOLDER = Path("/mnt/nvme_storage/dataset/all_frames")
-DEFAULT_OUTPUT_FOLDER = Path("/mnt/nvme_storage/dataset/defect_segmentation_dataset")
 
 
 def main():
@@ -1754,22 +1752,18 @@ def main():
         "-i",
         "--input-folder",
         type=Path,
-        default=DEFAULT_INPUT_FOLDER,
+        required=True,
         help=(
             "Root directory: single scene, or parent of many scenes "
-            "(e.g. all_frames with bathroom01/rig0_rs0/Image/...). "
-            f"Default: {DEFAULT_INPUT_FOLDER}"
+            "(e.g. build_dataset's <output>/frames)."
         ),
     )
     parser.add_argument(
         "-o",
         "--output-folder",
         type=Path,
-        default=DEFAULT_OUTPUT_FOLDER,
-        help=(
-            "Output directory for images/, masks/, splits/. "
-            f"Default: {DEFAULT_OUTPUT_FOLDER}"
-        ),
+        required=True,
+        help="Output directory for images/, masks/, splits/.",
     )
     parser.add_argument(
         "--thin-box-coverage",
@@ -2208,9 +2202,6 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 # Usage:
-#   # Defaults: -i /mnt/nvme_storage/dataset/all_frames, -o /mnt/nvme_storage/dataset/defect_segmentation_dataset
-#   python prepare_defect_annotated_dataset.py
-#
 #   python prepare_defect_annotated_dataset.py -i /path/to/all_frames -o /path/to/out
 #
 # Output: <output-folder>/images/*.png, masks/*.png, splits/train.txt, val.txt, test.txt, class_names.txt

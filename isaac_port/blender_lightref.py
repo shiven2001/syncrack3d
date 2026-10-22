@@ -9,7 +9,6 @@ all other lights off and a black world, so both renderers see the same light.
     python blender_lightref.py scene.blend out_dir
 """
 import json
-import math
 import sys
 from pathlib import Path
 

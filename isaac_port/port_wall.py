@@ -128,8 +128,10 @@ def main():
     ap.add_argument("--material-category", default="paint_neutral")
     ap.add_argument("--res", default="2048")
     ap.add_argument("--extra", nargs=argparse.REMAINDER, default=[], help="more build_dataset options (last)")
-    ap.add_argument("--blender-py", default="/home/shiven/anaconda3/envs/infinigen_v2/bin/python")
-    ap.add_argument("--isaac-py", default="/home/shiven/defect_detection/env_isaac/bin/python")
+    ap.add_argument("--blender-py", default=os.environ.get("SYNCRACK3D_BLENDER_PY", sys.executable),
+                    help="Python with bpy 4.2 (default: $SYNCRACK3D_BLENDER_PY, else this interpreter)")
+    ap.add_argument("--isaac-py", default=os.environ.get("SYNCRACK3D_ISAAC_PY"),
+                    help="Isaac Sim 5 Python (or $SYNCRACK3D_ISAAC_PY); needed unless --blender-only")
     ap.add_argument("--blender-only", action="store_true")
     ap.add_argument("--isaac-only", action="store_true")
     a = ap.parse_args()
@@ -140,6 +142,8 @@ def main():
             ap.error("--seed is required to build the scene")
         blender_stages(a, root)
     if not a.blender_only:
+        if not a.isaac_py:
+            ap.error("--isaac-py (or $SYNCRACK3D_ISAAC_PY) is required for the Isaac stages; use --blender-only to stop before them")
         isaac_stages(a, root)
         check_stages(a, root)
 

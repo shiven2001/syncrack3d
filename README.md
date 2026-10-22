@@ -451,11 +451,43 @@ isaac_port/      wall -> displaced, labelled USD panels in Isaac Sim, checked ag
 
 ## Setup
 
-Python 3.11 with Blender-as-a-module:
+Two Python environments: one renders, one scores.
 
 ```bash
+# generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
+python -m pytest syncrack3d/tests          # 53 tests, a few seconds
+
+# scoring (any Python with CUDA PyTorch)
+pip install -r eval/requirements.txt
 ```
+
+Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
+and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
+when a run exits; it is harmless. Run commands from this folder.
+
+## Reproduce the release data
+
+`--recipe` sets every flag to the one a release batch was rendered with;
+flags given explicitly override it (`syncrack3d/recipes.py`). Pick the
+material with `--material-category`, or leave it to `--wall-materials
+diverse`.
+
+| recipe | walls |
+|---|---|
+| `legacy` | indoor walls, legacy cracks; some walls plain by material (the v1.0.0–v1.3.0 base walls) |
+| `major` | indoor walls, broad open and branched cracks |
+| `network` | indoor paint and stucco walls with crack networks and indoor structures (v1.7.0 on) |
+| `facade` | outdoor facades, junction cracks, rain-wash staining (v1.8.0) |
+
+```bash
+python syncrack3d/build_dataset.py --recipe facade --seeds 176022-176023 \
+  --material-category brick --output out/facade --resume
+```
+
+A seed with the same recipe and material rebuilds the same wall, cameras and
+cracks as the release. The training set also kept a selected subset of views
+per batch: `releases/*.json` lists them with their seeds.
 
 ## Generate, export, check
 
@@ -482,10 +514,11 @@ python tools/check_instance_contract.py --pack out/pack
 python eval/bd3/predict.py --model path/to/checkpoint_dir
 python eval/bd3/score.py --pred path/to/checkpoint_dir/pred_v2/s0
 #    CUBIT-InSeg at 1/3 scale (1500x1000). Crack photos and spalling false alarms.
-python eval/cubit/score.py --model path/to/checkpoint_dir --out path/to/cubit_out
+#    Data: --data, or $SYNCRACK3D_CUBIT / $SYNCRACK3D_BUILDCRACK. Neither dataset is included.
+python eval/cubit/score.py --model path/to/checkpoint_dir --data path/to/CUBIT-InSeg --out path/to/cubit_out
 python eval/cubit/compare.py --a path/to/cubit_a --b path/to/cubit_b --out compare.json
 #    BuildCrack tiles, grouped by source photo. Pass one --model per checkpoint.
-python eval/buildcrack/score.py --model v1.2.0=path/to/checkpoint_dir --out path/to/buildcrack_out
+python eval/buildcrack/score.py --model v1.8.0=path/to/checkpoint_dir --data path/to/BuildCrack --out path/to/buildcrack_out
 ```
 
 Defaults already match that crack recipe: width scale 1.3, and 70% of cracks
@@ -626,7 +659,7 @@ coverage) and the patches become displaced USD meshes with semantic labels.
 
 ```bash
 python isaac_port/port_wall.py --seed 112000 --material-category paint_neutral --out out/port --blender-only
-python isaac_port/port_wall.py --out out/port --isaac-only
+python isaac_port/port_wall.py --out out/port --isaac-only --isaac-py path/to/isaac-sim/python   # or $SYNCRACK3D_ISAAC_PY
 ```
 
 ## Maintainers

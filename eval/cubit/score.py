@@ -17,6 +17,7 @@ of spalling photos with predicted crack area above 0.1% outside the ignore regio
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,14 +28,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from infer import TEST_SCALE, load_model, predict
 from metrics import TOLERANCE_PX, centreline_counts, centreline_scores, cldice_counts
 
-CUBIT = Path("/mnt/nvme_storage/CUBIT-InSeg")
+# Dataset root (train/val/test, each with images/ and labels/): --data or $SYNCRACK3D_CUBIT.
+CUBIT = Path(os.environ["SYNCRACK3D_CUBIT"]) if os.environ.get("SYNCRACK3D_CUBIT") else None
 SCALE = 1 / 3
 ALARM_FRACTION = 0.001
 
 
 def pairs(root):
-    ims = {p.stem: (s, p) for s in ("train", "val", "test") for p in (root / s / "images").iterdir()}
-    lbs = {p.stem: (s, p) for s in ("train", "val", "test") for p in (root / s / "labels").iterdir()}
+    ims = {p.stem: (s, p) for s in ("train", "val", "test") for p in (root / s / "images").glob("*")}
+    lbs = {p.stem: (s, p) for s in ("train", "val", "test") for p in (root / s / "labels").glob("*")}
     return [(k, ims[k][0], ims[k][1], lbs[k][1]) for k in sorted(set(ims) & set(lbs))]
 
 
@@ -79,12 +81,16 @@ def main():
     ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
     ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
     args = ap.parse_args()
+    if args.data is None:
+        ap.error("pass --data path/to/CUBIT-InSeg or set SYNCRACK3D_CUBIT")
     import torch
 
     seeds = sorted(args.model.glob("runs/s*/last.pt"))
     if not seeds:
         raise SystemExit(f"no runs/s*/last.pt under {args.model}")
     data = pairs(args.data)
+    if not data:
+        raise SystemExit(f"no image/label pairs under {args.data}/{{train,val,test}}/{{images,labels}}")
     args.out.mkdir(parents=True, exist_ok=True)
     rows, alarm = {}, {}
     for ck in seeds:

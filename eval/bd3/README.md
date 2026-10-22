@@ -9,6 +9,8 @@ Frozen subset of BD3 v2 (`outputs/domain_transfer/bd3_full_real_cv_v2`). Peeling
 
 842 photos, 512×512. Labels are 0 background, 1 crack, 255 ignore. These photos were inspected while the generator was designed, so this is a development set, not an untouched holdout. Near-duplicate groups are in `manifest.json` (`group`). Do not split a group across train and test.
 
+The photos and masks are not in this repository: BD3 has its own licence. Place them as `manifest.json` lists them (`images/<folder>/<id>.jpg`, `gt/<id>.png`, both git-ignored); each entry carries `image_sha256` and `gt_sha256` to check the copy.
+
 Score a directory of `<id>.png` class maps (crack = 1; class 2 is not counted as crack):
 
 ```bash

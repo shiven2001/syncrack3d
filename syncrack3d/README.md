@@ -132,7 +132,7 @@ with false positives, and grout or mortar read as cracks.
 - **Infinigen change:** `plaster_paint_params` gained `hue_min`, `hue_max` and
   `sat_min`. Their defaults reproduce the old behaviour.
 - **QA.** Run the CWG4 recipe plus `--wall-materials diverse --awb-strength 0.3 0.7`,
-  output in `/mnt/nvme_storage/syndefect3d_cwg5_material_qa_v1`, with overviews
+  with overviews
   `cwg5_material_overview.jpg`, `cwg5_clean_overview.jpg` and
   `cwg5_colour_check.jpg`.
   - 12 walls built, all 7 categories, 30 defect frames and 30 negatives.
