@@ -728,6 +728,41 @@ python isaac_port/port_wall.py --seed 112000 --material-category paint_neutral -
 python isaac_port/port_wall.py --out out/port --isaac-only --isaac-py path/to/isaac-sim/python   # or $SYNCRACK3D_ISAAC_PY
 ```
 
+### Whole rooms for embodied inspection
+
+Close-ups are posed at the cracks, so a policy trained on them never has to
+search. For embodied work, export the whole room instead, with no cameras:
+
+```bash
+python syncrack3d/build_dataset.py --recipe legacy --max-props 3 --structures auto --structure-views 0 \
+  --seeds 190531 --output out/rooms --no-render --save-blend
+python isaac_port/export_room.py out/rooms/seed_190531 out/isaac/seed_190531            # Blender: bakes
+OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim-5/python isaac_port/compose_room.py out/isaac/seed_190531 --preview
+```
+
+Open `scene.usda` in Isaac Sim 5. It is in metres with Z up and the same frame
+as the Blender scene: test wall front at y = 0 facing -Y, floor at z = 0.
+
+- **Test wall:** baked over its full face at about 0.6 mm per texel (capped at
+  8192 px). Its height is the material's own displacement vector projected on
+  the wall normal, so tile relief and cracks are both kept. The mesh holds the
+  relief to 2.5 mm. Finer relief and the host bump are in the normal map.
+- **Labels:** wall faces are split into `crack` and `wall` prims. Furniture,
+  fixtures, floor and ceiling carry their own semantic class labels.
+- **Ground truth:** `gt.npz` holds 1 mm crack coverage for reward and
+  evaluation. It is never a policy input. The `crack` prim covers any 2.5 mm
+  cell a crack touches, so its rendered masks are slightly wider than the
+  crack itself.
+- **Room:** procedural props are baked to textures. A back wall closes the
+  shell, and the room is lit by its own lamps (`--open-room` keeps the open
+  side and adds a dome light). `scene_meta.json` gives the room bounds, the
+  defects in world coordinates and a spawn pose clear of furniture.
+- **Rendering:** previews are path traced. Real-time RTX needs a few frames to
+  settle after a new camera; its first frame shows blotchy dark patches on the
+  wall.
+
+Only the test wall is cracked. The other surfaces are plain.
+
 ## Maintainers
 
 This folder is a snapshot of the repository generator, then edited here.
