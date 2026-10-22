@@ -384,6 +384,63 @@ Against v1.5.0, textures plus organic networks keep BD3 and CUBIT level and
 raise BuildCrack's 5-seed vote from 0.626 to 0.649. The marble false-alarm
 drop (49% to 28%) is the texture change from the v1.6.0 check.
 
+## v1.8.0 facade junction cracks and rain-wash staining
+
+The 38 walls v1.3.0 added (seeds 176000–176037, 169 views) are re-rendered as
+outdoor facades with facade structures (windows, ledges, vents, hatches,
+downpipes). Half of their cracks are moved to junctions with
+`--crack-junction-fraction .5`: diagonal from opening corners, and along the
+undersides and tops of sills and ledges. `--crack-weathering-fraction .6`
+adds rain-wash dirt or efflorescence below 60% of cracks. Ordinary cracks
+keep the default vertical orientation. The re-renders replace the indoor
+versions, so the 2,243 view stems and everything else are as in v1.7.0.
+50 cracks sit at junctions. Recipe and view list:
+`releases/v1.8.0_replaced_views.json`. Checkpoint:
+`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
+
+Why: BuildCrack's misses concentrate on cracks at beam, ledge and opening
+edges and on weathered facades, and SynCrack3D's cracks were never horizontal
+(see `--crack-orientation`).
+
+### Study
+
+Four arms re-render the same 38 walls, five seeds each, protocol v2.
+
+| arm | BD3 F1 | CUBIT CR1 F1 | BuildCrack F1 | BuildCrack vote F1 | BD3 plain alarms | CUBIT spalling false crack |
+|---|---:|---:|---:|---:|---:|---:|
+| v1.7.0 (indoor walls) | 0.909 | 0.875 | 0.696 | 0.710 | 1.6% | 80% |
+| facade context only | 0.904 | 0.875 | 0.672 | 0.687 | 1.7% | 80% |
+| + random orientation | 0.902 | 0.877 | 0.638 | 0.640 | 1.4% | 78% |
+| + random orientation + junctions + staining | 0.912 | 0.878 | 0.704 | 0.727 | 2.1% | 82% |
+| **junctions + staining, vertical cracks (v1.8.0)** | **0.910** | **0.878** | **0.709** | **0.723** | 2.0% | 80% |
+
+Paired 5-seed-vote BuildCrack differences: facade context −0.023 [−0.037,
+−0.010] against v1.7.0; random orientation a further −0.047 [−0.061, −0.036];
+junctions and staining +0.087 [+0.064, +0.111] over random orientation.
+Turned randomly with nothing around them, horizontal and diagonal cracks
+teach the model that any line at those angles is a crack, and training already
+rotates images by 90°. Horizontal cracks help where real ones sit: along
+ledges, sills and opening corners. Without random orientation the result is
+the same within noise (vote −0.004 [−0.013, +0.004]) with fewer false alarms.
+
+### v1.8.0 against v1.7.0
+
+| | v1.7.0 | v1.8.0 | difference [95%] |
+|---|---:|---:|---|
+| BD3 minor-crack F1 | 0.909 | 0.910 | +0.000 [−0.008, +0.008] |
+| BD3 minor-crack IoU | 0.597 | 0.602 | +0.005 [−0.005, +0.015] |
+| BD3 plain-wall false alarms | 1.6% | 2.0% | +0.4 [−0.7, +1.6] points |
+| CUBIT CR1 F1 | 0.875 | 0.878 | +0.002 [−0.002, +0.006] |
+| CUBIT CR1 recall | 0.889 | 0.896 | +0.007 [+0.000, +0.013] |
+| CUBIT all-labelled F1 | 0.718 | 0.724 | +0.006 [+0.002, +0.011] |
+| BuildCrack F1, mean of seeds | 0.696 | 0.709 | +0.013 [−0.013, +0.042] |
+| BuildCrack F1, 5-seed vote | 0.710 | 0.723 | +0.012 [+0.004, +0.023] |
+| BuildCrack non-drone tiles F1 | 0.701 | 0.716 | |
+
+A small, consistent gain on the two building benchmarks and level on BD3,
+with no significant rise in false alarms. All three benchmarks guided the
+choice, so these are development scores.
+
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
 cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect

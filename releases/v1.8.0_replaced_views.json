@@ -1,0 +1,856 @@
+{
+ "release": "v1.8.0",
+ "base": "the 2,243 v1.7.0 training views; the 169 views v1.3.0 added (releases/v1.3.0_added_views.json) are replaced by re-renders of the same 38 walls, so the stem list is unchanged",
+ "replaced_views": 169,
+ "recipe": "build_dataset.py --environment outdoor --structures facade --structure-views 0 --substrate paint --max-props 1 --resolution 640 --samples 64 --wall-normal-mode explicit --dicing-rate .75 --exposure-ev-range .4 1.3 --closeup-fill .6 1.5 --closeup-aim-jitter .3 --preserve-closeup-scale --closeups-per-defect 2 --crack-fit-path --crack-label-mode support --crack-path-mode angular --crack-branch-mode local_curved --wall-materials diverse --awb-strength 0 .5 --crack-layered-fraction .7 --clean-wall-scale 0 --min-defects 2 --max-defects 3 --crack-width-scale 1.3 --crack-depth-scale .5 --defect-size-range .20 .45 --crack-profile legacy --crack-junction-fraction .5 --crack-weathering-fraction .6 --material-category <material>",
+ "walls": "seeds 176000-176037 (v1.3.0's added walls), same material per seed",
+ "junction_cracks": 50,
+ "checkpoint": "outputs/domain_transfer/syncrack3d_facade2_bd3_v1",
+ "views": [
+  {
+   "stem": "seed_176000_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176000_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176000_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176000_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176001_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176001_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176002_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176002_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176002_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176002_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176002_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176003_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176003_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176003_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176004_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176005_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176005_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176006_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176006_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176007_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176007_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176007_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176007_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176008_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176008_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176009_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176009_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176009_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176009_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176010_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176010_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176010_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176010_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176011_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176011_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176012_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176012_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176012_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176012_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176012_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176012_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176013_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176013_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176013_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176014_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176015_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176015_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176016_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176016_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176016_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176016_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176017_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176017_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176017_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176017_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176017_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176017_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176018_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176018_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176018_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176018_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176019_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176019_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176019_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176019_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176019_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176019_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176020_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176020_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176020_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176020_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176021_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176021_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176021_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176021_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176022_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176022_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176022_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176022_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176023_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176023_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176023_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176023_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176023_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176024_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176024_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176024_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176024_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176024_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176024_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176025_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176025_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176025_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176025_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176026_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176026_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176027_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176027_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176027_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176027_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176028_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176028_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176028_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176028_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176028_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176029_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176030_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176030_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176030_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176030_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176030_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176031_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176031_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176031_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176031_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176031_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176031_rig7_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176032_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176032_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176032_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176032_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176032_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176033_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176033_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176033_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176034_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176034_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176034_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176034_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176034_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176035_rig2_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176035_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176035_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176035_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  },
+  {
+   "stem": "seed_176036_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176036_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176036_rig4_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176036_rig5_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176037_rig0_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176037_rig1_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176037_rig3_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": true
+  },
+  {
+   "stem": "seed_176037_rig6_resample0_frame0001_camera_0",
+   "material": "pack",
+   "cracked": false
+  }
+ ]
+}
