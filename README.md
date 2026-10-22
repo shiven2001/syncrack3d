@@ -763,6 +763,40 @@ as the Blender scene: test wall front at y = 0 facing -Y, floor at z = 0.
 
 Only the test wall is cracked. The other surfaces are plain.
 
+#### Detector false alarms at room scale
+
+`render_room_views.py` renders embodied-style views of a composed room: 60
+poses per room, both path traced and real-time. 70% of poses look at the test
+wall from 0.4–2.5 m at up to 35° off its normal; the rest look anywhere.
+`--hard-light` dims the room's area lights and adds two small bright lamps.
+`--shadow-only` writes cast-shadow masks for the same poses (lamp-only renders
+with and without furniture and fixtures).
+
+`room_false_alarms.py` passes each render through the training camera model
+and runs a detector (protocol v2: 1.5× upscale, 5 px tolerance, majority of
+seeds). It assigns each false-alarm blob a cause: cast shadow, object edge,
+shading edge, paint/material, or relief/other.
+
+Results for the v1.8.0 checkpoint on 3 rooms × 60 poses (2026-10-22), path
+traced:
+
+| lighting | views with a false alarm | crack-free views with one | blobs per view | visible cracks found |
+|---|---|---|---|---|
+| room lamps (soft) | 42% | 36% | 1.42 | 31% (14% under 150 px, 4/4 over 600 px) |
+| hard lamps | 37% | 29% | 1.04 | 30% |
+
+- **Object edges cause most alarms.** Under soft light they are 84% of
+  false-alarm pixels: thin dark lines such as wall cables, panel-seam
+  sealant, pipe edges, and the line where a box meets the floor. Tile grout
+  and marble veins make up most of the rest.
+- **Long cast-shadow edges do not trigger the detector.** Under hard light it
+  fires on 0.1% of shadow-boundary pixels more than 5 px from any object
+  outline (290k pixels). It fires on 1.3% of those near outlines: the shadow
+  line beside a pipe, contact shadows under props, wall–ceiling junctions.
+  These are 10 of 188 false-alarm blobs.
+- **Real-time renders** find more cracks (51% under soft light) at a similar
+  false-alarm rate.
+
 ## Maintainers
 
 This folder is a snapshot of the repository generator, then edited here.
