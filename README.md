@@ -489,6 +489,14 @@ A seed with the same recipe and material rebuilds the same wall, cameras and
 cracks as the release. The training set also kept a selected subset of views
 per batch: `releases/*.json` lists them with their seeds.
 
+Renders are deterministic: the same command gives identical images. One
+exception was fixed after v1.8.0. Outdoor walls drew the size of the
+surrounding facade (and so the corner, eave height and their shadows) from
+Python's per-process string hash, so it changed from run to run. Test-wall
+cameras, cracks and labels were never affected. The v1.8.0 facade walls and
+earlier outdoor renders were made before the fix, so their wide context views
+show a different surrounding facade when regenerated.
+
 ## Generate, export, check
 
 ```bash

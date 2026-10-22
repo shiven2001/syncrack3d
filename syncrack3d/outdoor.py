@@ -203,6 +203,20 @@ def _facade_slab(name, x0, x1, z0, z1, mat, col, frame=None):
     return obj
 
 
+def facade_extent(plan: OutdoorPlan) -> tuple[float, float]:
+    """How far the facade continues sideways (4-9 m) and above the test wall (1-4 m).
+
+    Seeded with an MD5 hash of the plan. Until v1.8.0 this used Python's hash(),
+    which is randomised per process for strings (PYTHONHASHSEED), so the
+    surrounding facade, the corner and the eave height - and their shadows in
+    wide views - changed from run to run. Test-wall labels were unaffected.
+    """
+    from cwg_infinigen.core.util.math import int_hash
+
+    r = random.Random(int_hash((repr(float(plan.ground_tone)), str(plan.sky))))
+    return r.uniform(4.0, 9.0), r.uniform(1.0, 4.0)
+
+
 def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
     """Ground, the rest of the facade, optional corner, eave and downpipe. Wall front y = 0, normal -Y.
 
@@ -213,8 +227,7 @@ def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
     col = _collection(SHELL_COLLECTION)
     w, h, t = spec.width_m, spec.height_m, 0.12
     built = [_slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), _ground_material(plan), col)]
-    r = random.Random(hash((plan.ground_tone, plan.sky)) & 0xFFFFFFFF)
-    side, top = r.uniform(4.0, 9.0), r.uniform(1.0, 4.0)
+    side, top = facade_extent(plan)
     facade = wall.data.materials[0] if wall is not None else \
         _principled_material("CWG_Outdoor_Facade", (0.45, 0.43, 0.40, 1.0), 0.85)[0]
     left_x = -w * 0.5 - (0.0 if plan.corner == "left" else side)
