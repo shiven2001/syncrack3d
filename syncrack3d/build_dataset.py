@@ -59,7 +59,7 @@ from syncrack3d.structures import (  # noqa: E402
     structure_camera_targets,
     structure_clean_wall,
 )
-from syncrack3d.occlusion import sample_props  # noqa: E402
+from syncrack3d.occlusion import sample_props, settle_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
     apply_weathering,
@@ -223,7 +223,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     )
     placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
                                axis_snap=args.crack_axis_snap)
-    props = sample_props(rng, spec, placements, count_range=(0, args.max_props))
+    props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                         floor_depth_m=shell_plan.depth_m, measured=args.prop_placement == "measured")
     lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
     if args.light_profile != "default" and not args.relight_per_view:
         # Independent stream: walls, defects and cameras stay as in the default run.
@@ -312,6 +313,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         ))
     if outdoor_plan is not None:
         remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
+    elif args.prop_placement == "measured":
+        # fixtures and cameras are placed after the props: clear props of both
+        props = settle_props(props, floor_depth_m=shell_plan.depth_m)
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
     # Partial white balance keeps a coloured wall coloured (opt-in; default full).
@@ -384,6 +388,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
             "recipe": args.recipe,
+            "prop_placement": args.prop_placement,
             "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
             "crack_weathering_fraction": args.crack_weathering_fraction,
@@ -489,6 +494,9 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
+    parser.add_argument("--prop-placement", choices=("measured", "hint"), default="measured",
+                        help="measured: place props by their real bounds, clear of wall, floor, fixtures and "
+                             "cameras; hint: the v1.0-v1.8 placement, which let props clip into the wall")
     parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
                         help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
     parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,

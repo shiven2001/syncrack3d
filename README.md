@@ -497,6 +497,31 @@ cameras, cracks and labels were never affected. The v1.8.0 facade walls and
 earlier outdoor renders were made before the fix, so their wide context views
 show a different surrounding facade when regenerated.
 
+Props were also placed after v1.8.0 by their real bounds, not by a catalogue
+footprint (`--prop-placement measured`, the default). The old placement let
+furniture clip into the scene: in 40 indoor test walls with `--max-props 3`,
+35 of 58 props overlapped something. Rugs went up to 2.5 m through the test
+wall and shelves 23 cm. Props also crossed the side returns, overlapped each
+other and fixtures, and food boxes sank up to 13 cm into the floor. Five
+props, mostly shelves, held a camera inside them, so those views showed the
+inside of a shelf.
+
+Props now:
+
+- rest on the floor, with the sampled standoff as the true gap to the wall;
+- stay between the side returns and on the floor;
+- step out from the wall past other props and fixtures (furniture may stand
+  on a rug).
+
+Room-sized rugs are shrunk to fit the floor. A prop that cannot fit, or that
+would contain a camera, is dropped. On the same 40 walls 52 props remain and
+none clip. Nothing else changes: walls, cracks, cameras, lights and labels are
+identical, and the RNG stream is untouched.
+
+Every recipe with props (`legacy`, `major`, `network`) therefore renders the
+v1.0-v1.8 walls with props moved. To rebuild those release images pixel for
+pixel, add `--prop-placement hint`.
+
 ## Generate, export, check
 
 ```bash
