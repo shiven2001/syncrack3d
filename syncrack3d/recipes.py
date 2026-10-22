@@ -16,7 +16,7 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
 
 The labels and views of the released training set also passed a selection
 step per batch; releases/*.json list the views each release kept.
-The releases were rendered before props were placed by their real bounds;
+v1.0–v1.8 were rendered before v1.9.0 placed props by their real bounds;
 add --prop-placement hint to rebuild their images exactly.
 """
 

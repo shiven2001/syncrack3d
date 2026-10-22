@@ -439,7 +439,40 @@ the same within noise (vote −0.004 [−0.013, +0.004]) with fewer false alarms
 
 A small, consistent gain on the two building benchmarks and level on BD3,
 with no significant rise in false alarms. All three benchmarks guided the
-choice, so these are development scores.
+choice, so these are development scores. v1.8.0 remains the scored
+checkpoint. v1.9.0 changes where props sit and was not retrained.
+
+## v1.9.0 props placed by their real bounds
+
+Props used to be dropped in from a catalogue footprint and then turned to a
+random angle. Some objects also have their origin off-centre or at
+mid-height, so the footprint was not the object that got rendered. On 40
+indoor walls with up to 3 props each, 35 of 58 props overlapped something:
+rugs went up to 2.5 m through the test wall and shelves 23 cm; props crossed
+the side walls; props overlapped other props and wall fixtures; six food
+boxes sat up to 13 cm below the floor; five props, mostly shelves, contained
+a camera, so those views rendered the inside of a shelf.
+
+Each prop is now measured after it is spawned and turned (`occlusion.py`,
+`--prop-placement measured`, the default). It rests on the floor, with the
+sampled distance from the wall as the real gap. It stays between the side
+walls. It moves further out until it clears other props and fixtures;
+furniture may still stand on a rug. Infinigen rugs are room-sized (3–7 m),
+so they are shrunk to fit the floor. A prop that cannot fit, or that would
+contain a camera, is dropped.
+
+On the same 40 walls, 52 of 58 props remain and none clip. The only overlaps
+left are props standing on rugs. Walls, cracks, cameras, lights and labels
+are identical to before; only prop positions changed, and no new random
+draws were added. The label check on re-rendered cracked walls is 14 frames,
+14 boxes, 0 issues. 62 tests pass, including 8 in `test_props.py`.
+
+The legacy, major and network recipes place one prop per wall, so rebuilding
+a v1.0–v1.8 wall moves any prop that is in view. Add `--prop-placement hint`
+to rebuild those images exactly as released; that reproduced all 40 walls.
+No model was retrained, so there is no new checkpoint and no measured change
+in benchmark scores. The scored checkpoint stays
+`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
@@ -456,7 +489,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 53 tests, a few seconds
+python -m pytest syncrack3d/tests          # 62 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -497,7 +530,7 @@ cameras, cracks and labels were never affected. The v1.8.0 facade walls and
 earlier outdoor renders were made before the fix, so their wide context views
 show a different surrounding facade when regenerated.
 
-Props were also placed after v1.8.0 by their real bounds, not by a catalogue
+From v1.9.0, props are placed by their real bounds, not by a catalogue
 footprint (`--prop-placement measured`, the default). The old placement let
 furniture clip into the scene: in 40 indoor test walls with `--max-props 3`,
 35 of 58 props overlapped something. Rugs went up to 2.5 m through the test
