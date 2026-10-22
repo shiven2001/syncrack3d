@@ -420,9 +420,10 @@ python tools/prepare_defect_annotated_dataset.py -i out/walls/frames -o out/pack
 # 3. check the instance/label contract
 python tools/check_instance_contract.py --pack out/pack
 
-# 4. score a crack model. Checkpoints are runs/s*/last.pt under --model.
-#    BD3: 487 minor_crack + 355 plain (eval/bd3/README.md)
-python eval/bd3/score.py --pred path/to/pred_dir
+# 4. score a crack model (protocol v2, see below). Checkpoints are runs/s*/last.pt under --model.
+#    BD3: 487 minor_crack + 355 plain (eval/bd3/README.md). predict.py writes <model>/pred_v2/s*/.
+python eval/bd3/predict.py --model path/to/checkpoint_dir
+python eval/bd3/score.py --pred path/to/checkpoint_dir/pred_v2/s0
 #    CUBIT-InSeg at 1/3 scale (1500x1000). Crack photos and spalling false alarms.
 python eval/cubit/score.py --model path/to/checkpoint_dir --out path/to/cubit_out
 python eval/cubit/compare.py --a path/to/cubit_a --b path/to/cubit_b --out compare.json
@@ -443,12 +444,56 @@ lists every option.
 | `--crack-layered-fraction` | coating edge on paint, plaster and stucco only. Paint: torn lips and 1.5–4 mm chips. Stucco: a broken finish coat, no lifted film. Brick, stone, concrete and tile are unchanged. Default 0.7 |
 | `--crack-width-scale` | physical width multiplier, also written into the label. Default 1.3 |
 | `--crack-render` | geometry (real displacement), pbr (bump only) or albedo (colour only) |
-| `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks; share turned to a wall axis (±2°). Opt-in ablation, not in v1.3.0 |
+| `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks. `--crack-axis-snap` has no effect: it turns the card, and the field never read the card's spin (see `--crack-orientation`) |
+| `--crack-orientation random` | each crack runs at its card's spin angle. By default (`vertical`, every release to v1.7.0) a crack runs along the wall's vertical with lateral wander: 79% of v1.2.0–v1.3.0 crack segments are near-vertical and 3–4% near-horizontal, against 31–49% near-horizontal in BD3, BuildCrack and CUBIT. Training rotates images by multiples of 90°, which hides most of this |
+| `--crack-junction-fraction` | share of cracks moved to structure edges (needs `--structures`): diagonal from the corners of windows, doors, vents and hatches, along sill and ledge undersides and tops, beside door jambs and along trims. Junction cracks set their own direction; edge cracks get a near-straight path (`syncrack3d/junctions.py`) |
+| `--crack-weathering-fraction` | share of non-network cracks with rain-wash dirt (or efflorescence on mineral hosts, 30%) hanging 3–15 cm below the crack's downward side. Wall colour only: the label is unchanged |
 | `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |
 | `--camera-isp`, `--awb-strength`, `--exposure-ev-range` | phone-camera processing, partial white balance, exposure spread |
 
 Seeds are reproducible per wall: a wall's material, cracks, cameras and lights
 depend only on its seed, not on which seeds ran before it in the same process.
+
+## Evaluation protocol
+
+Protocol v2 is the standard from v1.7.0 on. All three scorers use it by default.
+
+- **Test-time upscaling 1.5x.** Each photo is upscaled 1.5x (bicubic) before
+  inference and the class probabilities are resized back, so labels and
+  predictions stay at the benchmark's resolution (`eval/infer.py`,
+  `TEST_SCALE`). Real hairlines are 1–2 px, thinner than the training renders.
+  The factor was chosen on CUBIT (F1 rose to 1.5x and was flat at 2x) and then
+  checked on BuildCrack (+0.044 F1 on v1.3.0) and BD3 (IoU 0.573 -> 0.579).
+- **Centreline tolerance 5 px** (`eval/metrics.py`, `TOLERANCE_PX`). The
+  tolerance was raised from 3 px after the v1.0.0–v1.5.0 results. Human crack
+  polygons are wide and their centrelines uncertain (median labelled width
+  about 8.6 px on BuildCrack). From 1 to 5 px the absolute F1 changes (by up to
+  0.06 on BuildCrack), but the difference between versions moved by at most
+  0.004 and no ranking changed (`outputs/domain_transfer/syncrack3d_tolerance_check_v1.json`).
+- Result files record `protocol: {tolerance_px, test_scale}`, and
+  `eval/cubit/compare.py` refuses to compare runs scored under different
+  protocols.
+
+The per-version sections above (v1.0.0–v1.7.0) report protocol v1: 3 px,
+no upscaling. To reproduce them, pass `--tolerance 3 --scale 1` to
+`cubit/score.py` and `buildcrack/score.py`, `--tolerance 3` to `bd3/score.py`,
+and `--scale 1` to `bd3/predict.py`. The metric key is now `centreline_f1`
+(it was `centreline_f1_3px`).
+
+Every release re-scored under protocol v2 (mean of five seeds; BuildCrack also
+as the five-seed vote). Files: `outputs/domain_transfer/syncrack3d_eval_v2/`.
+
+| version | BD3 F1 | BD3 IoU | BD3 plain alarms | CUBIT CR1 F1 | CUBIT spalling false crack | BuildCrack F1 | BuildCrack vote F1 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| v1.2.0 | 0.890 | 0.566 | 0.008 | 0.859 | 64% | 0.585 | 0.583 |
+| v1.3.0 | 0.896 | 0.579 | 0.008 | 0.871 | 63% | 0.595 | 0.599 |
+| v1.4.0 | 0.901 | 0.591 | 0.016 | 0.870 | 75% | 0.657 | 0.667 |
+| v1.5.0 | 0.901 | 0.588 | 0.010 | 0.871 | 72% | 0.645 | 0.651 |
+| v1.6.0 | 0.904 | 0.593 | 0.015 | 0.871 | 81% | 0.689 | 0.704 |
+| v1.7.0 | 0.909 | 0.597 | 0.016 | 0.875 | 80% | 0.696 | 0.710 |
+
+Upscaling raises false cracks on CUBIT spalling photos (v1.7.0: 72% under
+protocol v1, 80% under v2); BD3 plain-wall alarms stay below 2%.
 
 ## Major cracks (experimental)
 

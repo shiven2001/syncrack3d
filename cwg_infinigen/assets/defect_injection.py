@@ -386,6 +386,7 @@ def _inject_crack(
     crack_network_grime=(0.15, 0.60),
     crack_network_edge="organic",
     crack_network_extent=1.4,
+    crack_weathering_fraction=0.0,
     crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
     crack_fit_path=False,
@@ -551,6 +552,10 @@ def _inject_crack(
         nt.links.new(
             _mix_rgb(nt, fac, src, hsv.outputs["Color"]), bsdf.inputs["Base Color"]
         )
+    weathering = None
+    if not network and crack_weathering_fraction > 0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked:
+        weathering = _crack_weathering(nt, state, frame, geo, p, seed, float(crack_weathering_fraction),
+                                       bsdf.inputs["Base Color"])
     if crack_label_mode not in ("profile", "support"):
         raise ValueError("crack_label_mode must be profile or support")
     # prof is normalized groove depth, NOT binary surface coverage. Passing it
@@ -610,12 +615,71 @@ def _inject_crack(
         "lip_height_m": round(float(p.get("h_lip", 0.0)), 6),
         "n_forks": len(p.get("fork_specs") or ()),
         "n_kinks": len(p.get("kink_specs") or ()),
+        "weathering": weathering,
         "layered": None if lay is None else {
             "mode": lay.get("mode"),
             "core": lay["core"], "margin_m": round(lay["margin"], 6), "film_m": round(lay["film"], 6),
             "lip_m": round(lay["lip"], 6), "offset_m": round(lay["offset"], 6),
             "painted_host": lay.get("painted_host")},
     }
+
+
+def _crack_weathering(nt, state, frame, geo, p, seed, fraction, base_input):
+    """Rain-wash staining below a crack: dirt, or efflorescence on mineral hosts.
+
+    Water running out of a facade crack leaves streaks on the wall below it. The
+    stain hangs from the side of the main run that faces down (the host's -Z),
+    fades over 3-15 cm and is broken into vertical streaks. It is wall colour
+    only: the crack label and relief are unchanged, so stained wall stays
+    background. Own RNG stream; returns the sampled parameters, or None.
+    """
+    from cwg_infinigen.assets.defect_fields import _nodes
+    from cwg_infinigen.core.util.math import int_hash
+
+    wr = np.random.default_rng(int_hash((int(seed), "crack_weathering_v1")))
+    if wr.random() >= fraction:
+        return None
+    _, t_u, t_v = frame
+    down = (state.host.matrix_world.to_3x3().inverted() @ Vector((0.0, 0.0, -1.0))).normalized()
+    c_u, c_v = float(down.dot(t_u)), float(down.dot(t_v))
+    if abs(c_u) < 0.25:
+        return None  # a near-vertical run has no "below" side to stain
+    length = float(wr.uniform(0.03, 0.15))
+    gen = str(state.host.get("cwg_material_generator") or "")
+    mineral = gen not in ("Plaster", "StuccoPlaster", "")
+    efflorescence = bool(mineral and wr.random() < 0.3)
+    strength = float(wr.uniform(0.15, 0.45))
+    stripe_freq = float(wr.uniform(60.0, 160.0))
+    _, math, mrange, noise = _nodes(nt)
+    side = 1.0 if c_u > 0 else -1.0
+    below = math("MULTIPLY", math("SUBTRACT", geo["u"], geo["path"]), side)
+    drop = math("DIVIDE", below, abs(c_u))  # vertical distance under the crack
+    start = mrange(below, 0.0, 0.003, 0.0, 1.0)
+    fade = mrange(drop, 0.0, length, 1.0, 0.0, "SMOOTHSTEP")
+    half_v = float(p.get("half_v", 0.14))
+    along = mrange(math("ABSOLUTE", geo["v"]), half_v * 0.7, half_v * 0.95, 1.0, 0.0, "SMOOTHSTEP")
+    # streak lines run along `down`: noise of the coordinate across it
+    across = math("ADD", math("MULTIPLY", geo["u"], -c_v), math("MULTIPLY", geo["v"], c_u))
+    vec = nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(math("MULTIPLY", across, stripe_freq), vec.inputs["X"])
+    nt.links.new(math("MULTIPLY", drop, 4.0), vec.inputs["Y"])
+    stripes = mrange(noise(vec.outputs["Vector"], 1.0, 3.0, 0.5), 0.42, 0.62)
+    mask = math("MULTIPLY", math("MULTIPLY", start, fade, clamp=True), math("MULTIPLY", along, stripes, clamp=True),
+                clamp=True)
+    fac = math("MULTIPLY", mask, strength, clamp=True)
+    src = base_input.links[0].from_socket
+    tint = nt.nodes.new("ShaderNodeMixRGB")
+    if efflorescence:
+        tint.blend_type = "MIX"
+        tint.inputs["Color2"].default_value = (0.88, 0.87, 0.82, 1.0)
+    else:
+        tint.blend_type = "MULTIPLY"
+        tint.inputs["Color2"].default_value = (0.45, 0.42, 0.37, 1.0)
+    tint.inputs["Fac"].default_value = 1.0
+    nt.links.new(src, tint.inputs["Color1"])
+    nt.links.new(_mix_rgb(nt, fac, src, tint.outputs["Color"]), base_input)
+    return {"kind": "efflorescence" if efflorescence else "dirt", "length_m": round(length, 4),
+            "strength": round(strength, 3), "down_across": round(c_u, 3)}
 
 
 _INJECTORS = {
@@ -638,6 +702,17 @@ def inject_defect(
         plane["syndefect_injection_error"] = "unsupported_kind"
         return False
     frame_w = _plane_frame(plane)
+    angle = plane.get("cwg_crack_angle_deg")
+    if frame_w is not None and angle is not None:
+        # The frame from the card's faces always runs along the host's vertical
+        # (tangent_v), so a card's spin never reached the field. A card that
+        # carries an explicit in-plane angle (0 = tangent_u, 90 = tangent_v) gets
+        # its run turned to it; 90 reproduces the default frame exactly.
+        origin, t_u, t_v = frame_w
+        a = math.radians(float(angle))
+        run = (t_u * math.cos(a) + t_v * math.sin(a)).normalized()
+        across = (t_u * math.sin(a) - t_v * math.cos(a)).normalized()
+        frame_w = (origin, across, run)
     if frame_w is None:
         logger.warning("defect %s has no usable faces; skipping", plane.name)
         plane["syndefect_injection_error"] = "invalid_plane_frame"
@@ -647,9 +722,12 @@ def inject_defect(
         plane["syndefect_injection_error"] = "host_has_no_usable_material"
         return False
     extent = max(plane.dimensions.x, plane.dimensions.y, plane.dimensions.z)
+    # Per-card overrides of the bound crack settings, e.g. a straight path for a
+    # crack that runs along a ledge (syncrack3d/junctions.py).
+    overrides = json.loads(plane.get("cwg_crack_overrides", "{}"))
     try:
         result = _INJECTORS[kind](
-            state, _local_frame(host, frame_w), seed, float(extent), instance_id
+            state, _local_frame(host, frame_w), seed, float(extent), instance_id, **overrides
         )
         style, metrics = result if isinstance(result, tuple) else (result, {})
     except Exception as exc:

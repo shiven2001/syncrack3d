@@ -9,7 +9,7 @@ without a label file are skipped.
 
 Images are resized to 1/3 (about 1500x1000), where a crack is about 2.5 px,
 close to the training renders. Full-resolution tiled inference is not run.
-Metrics match BD3: centreline P/R/F1 at 3 px, clDice, crack IoU, plus the share
+Metrics match BD3: centreline P/R/F1 (protocol v2: 5 px, 1.5x upscaling), clDice, crack IoU, plus the share
 of spalling photos with predicted crack area above 0.1% outside the ignore region.
 
     python eval/cubit/score.py --model path/to/checkpoint_dir --out path/to/out
@@ -24,8 +24,8 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from infer import load_model, predict
-from metrics import centreline_counts, centreline_scores, cldice_counts
+from infer import TEST_SCALE, load_model, predict
+from metrics import TOLERANCE_PX, centreline_counts, centreline_scores, cldice_counts
 
 CUBIT = Path("/mnt/nvme_storage/CUBIT-InSeg")
 SCALE = 1 / 3
@@ -51,11 +51,11 @@ def rasterise(label, h, w):
     return crack, ignore > 0
 
 
-def counts(pred_crack, gt, ignore):
+def counts(pred_crack, gt, ignore, tol=TOLERANCE_PX):
     keep = ~ignore
     p, g = pred_crack & keep, (gt > 0) & keep
     tp, fp, fn = (p & g).sum(), (p & ~g).sum(), (~p & g).sum()
-    return np.r_[tp, fp, fn, centreline_counts(p, g, 3), cldice_counts(p, g)]
+    return np.r_[tp, fp, fn, centreline_counts(p, g, tol), cldice_counts(p, g)]
 
 
 def metrics(c):
@@ -63,7 +63,7 @@ def metrics(c):
     t = c[7:]
     a, b_ = t[0] / max(1, t[1]), t[2] / max(1, t[3])
     return {
-        "centreline_f1_3px": cl["f1"],
+        "centreline_f1": cl["f1"],
         "centreline_precision": cl["precision"],
         "centreline_recall": cl["recall"],
         "cldice": float(2 * a * b_ / max(1e-9, a + b_)),
@@ -76,6 +76,8 @@ def main():
     ap.add_argument("--data", type=Path, default=CUBIT)
     ap.add_argument("--model", type=Path, required=True, help="directory containing runs/s*/last.pt")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
+    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
     args = ap.parse_args()
     import torch
 
@@ -94,8 +96,8 @@ def main():
             im = cv2.resize(img, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
             h, w = im.shape[:2]
             gt, ign = rasterise(lbp, h, w)
-            pred = predict(model, im) == 1
-            rows[seed][k] = counts(pred, gt, ign)
+            pred = predict(model, im, args.scale) == 1
+            rows[seed][k] = counts(pred, gt, ign, args.tolerance)
             alarm[seed][k] = float((pred & ~ign).mean())
         del model
         torch.cuda.empty_cache()
@@ -105,6 +107,7 @@ def main():
         args.out / "counts.npz",
         ids=np.array(ids),
         seeds=np.array([c.parent.name for c in seeds]),
+        tolerance_px=np.array(args.tolerance), test_scale=np.array(args.scale),
         **{f"third_{c.parent.name}": np.stack([rows[c.parent.name][k] for k in ids]) for c in seeds},
     )
     split_of = {k: s for k, s, *_ in data}
@@ -122,6 +125,7 @@ def main():
     res = {
         "model": str(args.model),
         "scale": "1/3",
+        "protocol": {"tolerance_px": args.tolerance, "test_scale": args.scale},
         "seeds": [c.parent.name for c in seeds],
         "pairs": len(ids),
         "pairs_by_split_folder": {s: sum(split_of[k] == s for k in ids) for s in ("train", "val", "test")},

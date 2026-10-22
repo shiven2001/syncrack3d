@@ -49,6 +49,7 @@ from syncrack3d.lighting import (  # noqa: E402
     apply_lighting,
     sample_lighting_plan,
 )
+from syncrack3d.junctions import snap_to_junctions  # noqa: E402
 from syncrack3d.structures import (  # noqa: E402
     PROFILES as STRUCTURE_PROFILES,
     KINDS as STRUCTURE_KINDS,
@@ -237,6 +238,15 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         apply_sky(outdoor_plan)
         weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
 
+    # Structures are planned before injection (own RNG stream, so nothing else
+    # moves) so junction cracks can be snapped to their edges.
+    structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment, args.structure_kinds)
+    if args.crack_orientation == "random":
+        # The spin already drawn for each card becomes its crack direction; no new draws.
+        for p in placements:
+            bpy.data.objects[p.object_name]["cwg_crack_angle_deg"] = float(p.spin_deg % 180.0)
+    placements, junctions = snap_to_junctions(placements, structure_plans, spec, seed, args.crack_junction_fraction)
+
     manifest_path = scene_dir / "defect_instances.json"
     import gin
     import cwg_infinigen.assets.defect_injection  # noqa: F401
@@ -252,6 +262,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         gin.bind_parameter("_inject_crack.crack_network_grime", tuple(args.crack_network_grime))
         gin.bind_parameter("_inject_crack.crack_network_edge", args.crack_network_edge)
         gin.bind_parameter("_inject_crack.crack_network_extent", args.crack_network_extent)
+        gin.bind_parameter("_inject_crack.crack_weathering_fraction", args.crack_weathering_fraction)
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
         gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
@@ -272,7 +283,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # displacement, or the clean negatives stay bump-only.
     enable_true_displacement(wall, args.dicing_rate)
 
-    structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment, args.structure_kinds)
     structures = build_structures(structure_plans)
 
     poses = sample_camera_poses(
@@ -324,6 +334,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "defects_injected": injected,
         "props": [p.to_dict() for p in props],
         "structures": structures,
+        "junctions": junctions,
         "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
                                "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
@@ -371,6 +382,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_label_mode": args.crack_label_mode,
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
+            "crack_orientation": args.crack_orientation,
+            "crack_junction_fraction": args.crack_junction_fraction,
+            "crack_weathering_fraction": args.crack_weathering_fraction,
             "crack_axis_snap": args.crack_axis_snap,
             "paint_profile": args.paint_profile,
             "wall_normal_mode": args.wall_normal_mode,
@@ -491,6 +505,13 @@ def main():
                         help="network channel staining, as a share of crack grime strength (0..1)")
     parser.add_argument("--crack-network-edge", choices=("square", "organic"), default="organic",
                         help="network patch outline: organic (v1.7.0) or square, which reproduces v1.4.0-v1.5.0")
+    parser.add_argument("--crack-orientation", choices=("vertical", "random"), default="vertical",
+                        help="vertical: every crack runs along the wall's vertical with lateral wander (all releases "
+                             "to v1.7.0); random: each crack runs at its card's spin angle")
+    parser.add_argument("--crack-junction-fraction", type=float, default=0.0,
+                        help="share of cracks moved to structure edges: opening corners, sill/ledge undersides, jambs, trims (needs --structures)")
+    parser.add_argument("--crack-weathering-fraction", type=float, default=0.0,
+                        help="share of non-network cracks with rain-wash dirt or efflorescence streaks below them (wall colour only)")
     parser.add_argument("--crack-network-extent", type=float, default=1.4,
                         help="network field size relative to its card (.5-2); 1.4 keeps organic crack length near a square patch. Cards and cameras are unchanged. Use 1 with --crack-network-edge square to reproduce v1.4.0-v1.5.0")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,
@@ -545,6 +566,8 @@ def main():
         parser.error("crack network spacing must be positive and ordered")
     if not 0 <= args.crack_network_grime[0] <= args.crack_network_grime[1] <= 1:
         parser.error("crack network grime must be ordered within 0..1")
+    if not 0 <= args.crack_junction_fraction <= 1 or not 0 <= args.crack_weathering_fraction <= 1:
+        parser.error("crack junction and weathering fractions must be 0..1")
     if not .5 <= args.crack_network_extent <= 2:
         parser.error("crack network extent must be .5..2")
     if not .25 <= args.crack_width_scale <= 4 or not 0 <= args.crack_jitter_scale <= 2:

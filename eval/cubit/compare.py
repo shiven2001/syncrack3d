@@ -19,7 +19,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from score import metrics
 
-METRICS = ("centreline_f1_3px", "centreline_precision", "centreline_recall", "cldice", "crack_iou")
+METRICS = ("centreline_f1", "centreline_precision", "centreline_recall", "cldice", "crack_iou")
+
+
+def protocol(z):
+    """(tolerance_px, test_scale); count files written before protocol v2 are (3, 1)."""
+    return (int(z["tolerance_px"]), float(z["test_scale"])) if "tolerance_px" in z else (3, 1.0)
 
 
 def load(path):
@@ -28,7 +33,7 @@ def load(path):
     missing = [s for s in seeds if f"third_{s}" not in z]
     if missing:
         raise SystemExit(f"{path} has no 1/3-scale counts for {missing}")
-    return list(z["ids"]), [z[f"third_{s}"] for s in seeds]
+    return list(z["ids"]), [z[f"third_{s}"] for s in seeds], protocol(z)
 
 
 def mean_metrics(per_seed, idx):
@@ -43,8 +48,10 @@ def main():
     ap.add_argument("--n", type=int, default=1000)
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
-    ids, a_counts = load(args.a)
-    ids_b, b_counts = load(args.b)
+    ids, a_counts, pa = load(args.a)
+    ids_b, b_counts, pb = load(args.b)
+    if pa != pb:
+        raise SystemExit(f"protocols differ: {args.a} {pa} vs {args.b} {pb}; rescore with the same --tolerance/--scale")
     if ids != ids_b:
         raise SystemExit("the two runs do not list the same photos")
     subsets = {
@@ -52,7 +59,8 @@ def main():
         "all_labelled": np.arange(len(ids)),
     }
     rng = np.random.default_rng(0)
-    res = {"a": str(args.a), "b": str(args.b), "scale": "1/3", "bootstrap": args.n, "results": {}}
+    res = {"a": str(args.a), "b": str(args.b), "scale": "1/3", "bootstrap": args.n,
+           "protocol": {"tolerance_px": pa[0], "test_scale": pa[1]}, "results": {}}
     for sub, idx in subsets.items():
         ma, mb = mean_metrics(a_counts, idx), mean_metrics(b_counts, idx)
         boot = []

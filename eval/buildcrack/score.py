@@ -1,7 +1,7 @@
 """Score SynCrack3D crack checkpoints on BuildCrack tiles.
 
 358 paired 448 px tiles. Labels are 0/255. Crack is prediction class 1.
-Centreline F1 is pooled at 3 px. Empty tiles stay in the pool, and a plain
+Centreline F1 is pooled (protocol v2: 5 px tolerance, 1.5x test-time upscaling). Empty tiles stay in the pool, and a plain
 tile is an alarm when predicted crack pixels exceed 0.1%.
 
 Tiles cut from one photo are one bootstrap unit: a numeric prefix, or a DJI
@@ -23,11 +23,11 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from infer import load_model, predict
-from metrics import centreline_counts, centreline_scores, cldice_counts
+from infer import TEST_SCALE, load_model, predict
+from metrics import TOLERANCE_PX, centreline_counts, centreline_scores, cldice_counts
 
 DATA = Path(__file__).resolve().parents[3] / "BuildCrack"
-KEYS = ("centreline_f1_3px", "centreline_precision", "centreline_recall", "cldice", "crack_iou")
+KEYS = ("centreline_f1", "centreline_precision", "centreline_recall", "cldice", "crack_iou")
 N_BOOT = 1000
 ALARM_FRACTION = 0.001
 
@@ -38,12 +38,12 @@ def source_of(stem: str) -> str:
     return stem.split("_")[0]
 
 
-def one(pred, gt):
+def one(pred, gt, tol=TOLERANCE_PX):
     p, g = pred.astype(bool), gt.astype(bool)
     tp = int((p & g).sum())
     fp = int((p & ~g).sum())
     fn = int((~p & g).sum())
-    return np.r_[tp, fp, fn, centreline_counts(p, g, 3), cldice_counts(p, g)].astype(np.int64)
+    return np.r_[tp, fp, fn, centreline_counts(p, g, tol), cldice_counts(p, g)].astype(np.int64)
 
 
 def metrics(total):
@@ -52,7 +52,7 @@ def metrics(total):
     tp_ = t[0] / max(1, t[1])
     ts_ = t[2] / max(1, t[3])
     return {
-        "centreline_f1_3px": float(cl["f1"]),
+        "centreline_f1": float(cl["f1"]),
         "centreline_precision": float(cl["precision"]),
         "centreline_recall": float(cl["recall"]),
         "cldice": float(2 * tp_ * ts_ / max(1e-9, tp_ + ts_)),
@@ -83,6 +83,8 @@ def main():
                     help="name=directory, directory contains runs/s*/last.pt; repeat for comparisons")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--bootstrap", type=int, default=N_BOOT)
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
+    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
     args = ap.parse_args()
     import torch
 
@@ -112,6 +114,7 @@ def main():
         "empty_tiles": int(np.array(empty).sum()),
         "source_images": len(group_ids),
         "bootstrap": args.bootstrap,
+        "protocol": {"tolerance_px": args.tolerance, "test_scale": args.scale},
         "grouping": "numeric prefix, or DJI id; tile offsets are not separate photos",
         "models": {},
         "differences": {},
@@ -127,24 +130,24 @@ def main():
             model = load_model(ck)
             rows, seed_alarms = [], []
             for i, (img, gt) in enumerate(zip(images, gts)):
-                pred = predict(model, img) == 1
+                pred = predict(model, img, args.scale) == 1
                 votes[i] += pred.astype(np.uint8)
-                rows.append(one(pred, gt))
+                rows.append(one(pred, gt, args.tolerance))
                 if empty[i]:
                     seed_alarms.append(float(pred.mean() > ALARM_FRACTION))
             per_seed.append(np.stack(rows))
             alarms.append(seed_alarms)
             del model
             torch.cuda.empty_cache()
-            print(name, ck.parent.name, "f1", round(metrics(per_seed[-1].sum(0))["centreline_f1_3px"], 3), flush=True)
+            print(name, ck.parent.name, "f1", round(metrics(per_seed[-1].sum(0))["centreline_f1"], 3), flush=True)
         stacked = np.stack(per_seed)
         counts[name] = stacked
         saved[name] = stacked
         majority = len(seeds) // 2 + 1
-        ens = np.stack([one(votes[i] >= majority, gts[i]) for i in range(len(stems))])
+        ens = np.stack([one(votes[i] >= majority, gts[i], args.tolerance) for i in range(len(stems))])
         ensemble_counts[name] = ens
         seed_scores = [metrics(stacked[s].sum(0)) for s in range(stacked.shape[0])]
-        f1s = [s["centreline_f1_3px"] for s in seed_scores]
+        f1s = [s["centreline_f1"] for s in seed_scores]
         report["models"][name] = {
             "checkpoint": str(folder),
             "seeds": len(seeds),
@@ -154,7 +157,7 @@ def main():
             "ensemble": metrics(ens.sum(0)),
             "empty_tile_alarm_rate": float(np.mean(alarms)) if any(empty) else 0.0,
         }
-        print(name, "vote f1", round(report["models"][name]["ensemble"]["centreline_f1_3px"], 3), flush=True)
+        print(name, "vote f1", round(report["models"][name]["ensemble"]["centreline_f1"], 3), flush=True)
 
     n_seeds = {report["models"][name]["seeds"] for name in names}
     if len(n_seeds) != 1:

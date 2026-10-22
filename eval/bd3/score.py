@@ -1,12 +1,13 @@
 """Score crack predictions on the frozen BD3 crack-only set in this folder.
 
-487 minor_crack photos: pooled centreline F1 at 3 px, clDice and crack IoU.
+487 minor_crack photos: pooled centreline F1 (protocol v2: 5 px), clDice and crack IoU.
 355 plain photos: false-alarm rate. A plain photo is an alarm when predicted
 crack pixels exceed 0.1% of the image. Peeling photos are not in this set.
 
 Predictions are uint8 class maps named <id>.png. Crack is class 1. Class 2
 is not crack.
 
+    python eval/bd3/predict.py --model path/to/checkpoint_dir    (writes <model>/pred_v2/s*/, 1.5x upscaling)
     python eval/bd3/score.py --pred path/to/pred_dir
 """
 
@@ -19,7 +20,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from metrics import centreline_counts, centreline_scores, cldice_counts
+from metrics import TOLERANCE_PX, centreline_counts, centreline_scores, cldice_counts
 
 HERE = Path(__file__).resolve().parent
 ALARM_FRACTION = 0.001
@@ -33,13 +34,13 @@ def manifest():
     return photos
 
 
-def counts(pred, gt):
+def counts(pred, gt, tol=TOLERANCE_PX):
     p, g = pred == 1, gt == 1
     valid = gt != 255
     tp = int((p & g & valid).sum())
     fp = int((p & ~g & valid).sum())
     fn = int((~p & g & valid).sum())
-    return np.r_[tp, fp, fn, centreline_counts(p, g, 3), cldice_counts(p, g)]
+    return np.r_[tp, fp, fn, centreline_counts(p, g, tol), cldice_counts(p, g)]
 
 
 def metrics(total):
@@ -48,7 +49,7 @@ def metrics(total):
     tp_ = t[0] / max(1, t[1])
     ts_ = t[2] / max(1, t[3])
     return {
-        "centreline_f1_3px": cl["f1"],
+        "centreline_f1": cl["f1"],
         "centreline_precision": cl["precision"],
         "centreline_recall": cl["recall"],
         "cldice": float(2 * tp_ * ts_ / max(1e-9, tp_ + ts_)),
@@ -56,7 +57,7 @@ def metrics(total):
     }
 
 
-def score(pred_dir):
+def score(pred_dir, tol=TOLERANCE_PX):
     pred_dir = Path(pred_dir)
     photos = manifest()
     total = np.zeros(11, np.int64)
@@ -71,7 +72,7 @@ def score(pred_dir):
         if pred.shape != gt.shape:
             raise ValueError(f"{photo['id']}: pred {pred.shape} != gt {gt.shape}")
         if photo["folder"] == "minor_crack":
-            total += counts(pred, gt)
+            total += counts(pred, gt, tol)
         else:
             plain += 1
             alarms += float((pred == 1).mean() > ALARM_FRACTION)
@@ -80,6 +81,9 @@ def score(pred_dir):
     out["minor_crack_photos"] = 487
     out["plain_photos"] = plain
     out["groups"] = len({p["group"] for p in photos})
+    made = pred_dir / "protocol.json"
+    out["protocol"] = {"tolerance_px": tol,
+                       "test_scale": json.loads(made.read_text())["test_scale"] if made.exists() else None}
     return out
 
 
@@ -87,8 +91,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pred", required=True, help="directory of <id>.png class maps; crack is 1")
     ap.add_argument("--out", help="optional JSON path")
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
     args = ap.parse_args()
-    out = score(args.pred)
+    out = score(args.pred, args.tolerance)
     text = json.dumps(out, indent=2)
     print(text)
     if args.out:
