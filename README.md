@@ -474,6 +474,27 @@ No model was retrained, so there is no new checkpoint and no measured change
 in benchmark scores. The scored checkpoint stays
 `outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
 
+## v1.10.0 whole rooms for embodied inspection
+
+Close-up training cameras are aimed at the cracks, so a policy trained on
+them never has to search. This version exports a composed room to Isaac Sim 5
+(`isaac_port/export_room.py`, `isaac_port/compose_room.py`) and measures the
+v1.8.0 detector on mobile views of that room (`render_room_views.py`,
+`room_false_alarms.py`). The bake and the 3-room results are in the Isaac Sim
+section below.
+
+On 3 rooms × 60 path-traced poses, 42% of views have a false alarm under the
+room lamps and 37% under hard lamps. Object edges are 84% of those
+false-alarm pixels. Long cast-shadow edges rarely fire. Visible cracks found:
+31% overall, and all 4 cracks larger than 600 px. These are development
+measurements of the v1.8.0 checkpoint, not a new trained model.
+
+`eval/synth/build.py` builds a held-out synthetic set from seeds 800000
+upward, one subset per release recipe plus crack-free negatives.
+`eval/synth/score.py` scores a checkpoint on it. No scores from that set are
+reported here. The scored crack checkpoint stays
+`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
+
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
 cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
