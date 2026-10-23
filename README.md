@@ -555,6 +555,63 @@ and `off` disables per-wall styles. `scene.json` records each wall's
 The unified recipe has not been trained on yet. Adopting it needs the usual
 paired comparison against v1.9.0 on BD3, CUBIT and BuildCrack.
 
+### Clean-wall policy study (2026-10-23)
+
+Which walls should stay crack-free? The same 200 unified-recipe walls (seeds
+820000–820199) were rendered twice, cracked and crack-free. Each arm took
+one render per wall, so the arms differ only in which walls are plain:
+
+- **A, material-aware:** the shared table. 77 plain walls.
+- **B, all cracked:** no plain walls.
+- **C, uniform:** the same 77 plain walls in number, chosen by the same
+  per-wall draw regardless of material.
+
+Each arm trained from scratch on its own walls: 5 seeds × 4000 steps.
+Scoring used protocol v2, with paired 95% intervals against A (photos or
+source images and seeds resampled). Files:
+`outputs/domain_transfer/syncrack3d_cleanpolicy_eval_v1/`. Study script:
+`domain_transfer/syncrack3d_cleanpolicy_study.py`.
+
+| real benchmark | A material-aware | B − A all cracked | C − A uniform |
+|---|---:|---|---|
+| BD3 crack IoU | 0.561 | +0.041 [+0.022, +0.058] | −0.028 [−0.047, −0.011] |
+| BD3 centreline F1 | 0.874 | +0.027 [+0.013, +0.040] | −0.019 [−0.036, −0.003] |
+| BD3 recall / precision | 0.803 / 0.960 | +0.071 / −0.029 | −0.030 / −0.001 (n.s.) |
+| BD3 plain-wall alarms | 1.6% | +2.4 pp [+0.7, +4.3] | +0.6 pp (n.s.) |
+| CUBIT crack-photo F1 | 0.872 | −0.011 [−0.022, −0.001] | +0.004 (n.s.) |
+| CUBIT precision | 0.869 | −0.048 [−0.065, −0.036] | −0.002 (n.s.) |
+| CUBIT spalling photos with false crack | 68% | 90% | 71% |
+| BuildCrack vote F1 | 0.687 | +0.006 (n.s.) | −0.044 [−0.063, −0.028] |
+| BuildCrack vote precision | 0.856 | −0.033 [−0.053, −0.014] | +0.016 [+0.001, +0.031] |
+| BuildCrack empty-tile alarms | 27% | 33% | 33% |
+
+**Material-aware (A) is the best balance.** The two alternatives fail in
+different ways:
+
+- **All cracked (B)** finds more cracks on BD3: recall +0.071, F1 +0.027.
+  But it raises false alarms on every benchmark, so it is a recall–precision
+  trade, not a gain:
+  - BD3 plain walls 1.6% → 3.9%;
+  - CUBIT spalling photos with a false crack 68% → 90%;
+  - CUBIT and BuildCrack precision −0.03 to −0.05.
+
+  B also had more cracked views (997 vs 627) and fewer views overall (1,210
+  vs 1,529), because crack-free walls export more views. Its gain is partly
+  more positives.
+- **Uniform (C)** loses to A on BD3 (F1 −0.019) and BuildCrack (vote F1
+  −0.044), and ties on CUBIT, although only 20 of 200 walls differ from A.
+  Uniform plain walls fall on paint and stucco as often as on patterned
+  masonry. That removes crack views on paint, where most real cracks are,
+  without adding negatives where false alarms happen (grout, joints).
+
+The synthetic eval set agrees. Fixture-negative alarms were A 7.7%, B 13.4%
+and C 10.5%; on stone block, A 15% and B 54%.
+
+Caveats: one training size (200 walls, each arm from scratch) and five
+seeds. BuildCrack per-seed spread is large (C 0.15), so the vote intervals
+are the firmer evidence. v1.9.0, trained on more data (2,243 views), still
+scores higher on BuildCrack (vote F1 0.723).
+
 Known rare case, also present in v1.8.0: a facade close-up can sit just
 behind the context downpipe and render almost black (2 of 445 v1.8.0 facade
 views).
