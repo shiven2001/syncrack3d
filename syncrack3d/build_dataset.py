@@ -50,7 +50,7 @@ from syncrack3d.lighting import (  # noqa: E402
     sample_lighting_plan,
 )
 from syncrack3d.junctions import snap_to_junctions  # noqa: E402
-from syncrack3d.recipes import RECIPES, recipe_argv  # noqa: E402
+from syncrack3d.recipes import RECIPES, parse_style_mix, recipe_argv, wall_style  # noqa: E402
 from syncrack3d.structures import (  # noqa: E402
     PROFILES as STRUCTURE_PROFILES,
     KINDS as STRUCTURE_KINDS,
@@ -177,7 +177,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # rather than two - and injection reads the host shader, so a simpler one
     # silently takes different branches.
     material_record, clean_wall = None, False
-    if args.wall_materials in ("infinigen", "diverse"):
+    if args.wall_materials in ("infinigen", "diverse", "unified"):
         # Both material paths draw through numpy's global RNG, and its state here
         # depended on which seeds ran earlier in the same process (seed 106003
         # alone vs after 106002 gave a different Plaster colour, relief and
@@ -192,12 +192,13 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         np.random.seed(int_hash((seed, "cwg_wall_material")) % (2**32))
     if args.wall_materials == "infinigen":
         generator_name, surface_finish = apply_infinigen_wall_material(wall, rng)
-    elif args.wall_materials == "diverse":
+    elif args.wall_materials in ("diverse", "unified"):
         # CWGv5: wide substrate/colour palette; non-paint walls mostly defect-free
         generator_name, surface_finish, material_record = apply_diverse_wall_material(
-            wall, seed, args.material_category
+            wall, seed, args.material_category, palette=args.wall_materials
         )
-        clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale)
+        clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale,
+                                   palette=args.wall_materials)
     else:
         generator_name, surface_finish = "controlled", spec.material.finish
     clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
@@ -388,6 +389,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
             "recipe": args.recipe,
+            "crack_style": getattr(args, "crack_style", None),
             "prop_placement": args.prop_placement,
             "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
@@ -452,12 +454,14 @@ def main():
     parser.add_argument(
         "--wall-materials",
         default="infinigen",
-        choices=("infinigen", "controlled", "diverse"),
+        choices=("infinigen", "controlled", "diverse", "unified"),
         help=(
             "Which shader the wall carries. 'infinigen' uses the same "
             "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
             "so a controlled-wall dataset is comparable against the apartment "
-            "one; 'controlled' keeps the base generator's deterministic stand-in."
+            "one; 'controlled' keeps the base generator's deterministic stand-in; "
+            "'diverse' is the v1.x palette; 'unified' (v2) draws the 15 crack-able "
+            "categories uniformly with one clean-wall table, no wood or irregular stone."
         ),
     )
     parser.add_argument("--material-category", default=None, choices=sorted(MATERIAL_CATEGORIES),
@@ -549,6 +553,10 @@ def main():
                         help="log and continue when one seed fails")
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
+    parser.add_argument("--crack-style-mix", default=None,
+                        help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10,facade=.10 "
+                             "(recipes.STYLES); a wall's style overrides the flags that define it; "
+                             "'off' disables it, e.g. to override the unified recipe")
     parser.add_argument("--recipe", choices=sorted(RECIPES),
                         help="start from a release recipe (syncrack3d/recipes.py); explicit flags override it")
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
@@ -559,6 +567,11 @@ def main():
         parser.error("structure clean fraction must be 0..1")
     if args.structure_views < 0:
         parser.error("structure views must be nonnegative")
+    if args.crack_style_mix not in (None, "off"):
+        try:
+            parse_style_mix(args.crack_style_mix)
+        except ValueError as exc:
+            parser.error(str(exc))
     if not 0 <= args.crack_layered_fraction <= 1:
         parser.error("--crack-layered-fraction must be 0-1")
     if args.relight_per_view and args.light_profile == "default":
@@ -603,7 +616,8 @@ def main():
             skipped += 1
             continue
         try:
-            record = build_one(seed, args, out_root)
+            wall_args = wall_style(seed, args)[1] if args.crack_style_mix not in (None, "off") else args
+            record = build_one(seed, wall_args, out_root)
         except Exception:
             failed += 1
             logger.error("seed %d failed:\n%s", seed, traceback.format_exc())

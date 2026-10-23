@@ -13,6 +13,14 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            organic outline, indoor structures beside the cracks (v1.7.0 on)
   facade   outdoor facades with facade structures, junction cracks and rain-wash
            staining (v1.8.0)
+  unified  v2: one recipe for everything. Each wall draws a crack style
+           (legacy/major/network/facade, STYLES) that sets only what defines that
+           kind of crack; materials (--wall-materials unified: 15 crack-able
+           categories drawn uniformly, no wood or irregular stone), the clean-wall
+           table, capture and rendering are shared. Not a release recipe yet.
+
+The four release recipes rebuild the v1.x training walls; use unified for new
+data.
 
 The labels and views of the released training set also passed a selection
 step per batch; releases/*.json list the views each release kept.
@@ -38,6 +46,65 @@ RECIPES = {
     "facade": (LEGACY + " --clean-wall-scale 0 --environment outdoor --structures facade --structure-views 0 "
                "--crack-junction-fraction .5 --crack-weathering-fraction .6"),
 }
+
+# v2: one recipe for everything. Each wall draws a crack style; the style sets
+# only what defines that kind of crack (and its setting), everything else -
+# capture, rendering, materials, clean-wall policy - is shared.
+STYLES = {
+    "legacy": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
+                   crack_width_scale=1.3, crack_depth_scale=.5, environment="indoor", structures="off"),
+    "major": dict(crack_profile="major", min_defects=1, max_defects=2, defect_size_range=(.30, .45),
+                  crack_width_scale=1.0, crack_depth_scale=1.0, environment="indoor", structures="off"),
+    # Crazing is only visible on paint and stucco, so these walls draw one of those.
+    "network": dict(crack_profile="network", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
+                    crack_width_scale=2.0, crack_depth_scale=2.0, crack_network_grime=(.8, 1.0),
+                    crack_network_edge="organic", crack_network_extent=1.4, environment="indoor",
+                    structures="auto", structure_views=0),
+    "facade": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
+                   crack_width_scale=1.3, crack_depth_scale=.5, environment="outdoor", structures="facade",
+                   structure_views=0, crack_junction_fraction=.5, crack_weathering_fraction=.6),
+}
+# Close to the v1.9 training mix by view (legacy ~75%, major ~10%, network ~7%,
+# facade ~8%); major walls carry fewer cracks and so fewer views per wall.
+UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
+RECIPES["unified"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
+                      + " --clean-wall-scale 1 --crack-style-mix " + UNIFIED_MIX)
+
+
+def parse_style_mix(text):
+    """'legacy=.65,major=.15,...' -> {style: probability}, normalised."""
+    mix = {}
+    for part in text.split(","):
+        name, _, value = part.partition("=")
+        if name.strip() not in STYLES or not value:
+            raise ValueError(f"crack style mix needs style=weight pairs from {sorted(STYLES)}: {text}")
+        mix[name.strip()] = float(value)
+    total = sum(mix.values())
+    if total <= 0 or any(v < 0 for v in mix.values()):
+        raise ValueError(f"crack style weights must be non-negative and not all zero: {text}")
+    return {k: v / total for k, v in mix.items()}
+
+
+def wall_style(seed, args):
+    """(style name, a copy of args with that style applied) for one wall.
+
+    The draw uses its own MD5-seeded stream, so it is the same in every process
+    and leaves every other random stream alone. A network wall without a forced
+    material draws a paint or stucco category from the same stream.
+    """
+    import hashlib
+    import random
+    from argparse import Namespace
+
+    from syncrack3d.material_diversity import PAINTED_CATEGORIES
+
+    rng = random.Random(int(hashlib.md5(f"{int(seed)}:crack_style".encode()).hexdigest()[:16], 16))
+    mix = parse_style_mix(args.crack_style_mix)
+    style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
+    wall = Namespace(**{**vars(args), **STYLES[style], "crack_style": style})
+    if style == "network" and not args.material_category:
+        wall.material_category = rng.choice(PAINTED_CATEGORIES)
+    return style, wall
 
 
 def recipe_argv(argv):

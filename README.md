@@ -520,6 +520,45 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
+## Generate new data: the unified recipe (v2)
+
+For new data use one recipe for everything:
+
+```bash
+python syncrack3d/build_dataset.py --recipe unified --seeds 0-99 --output out/walls --resume
+```
+
+Each wall draws a crack style:
+
+| style | probability | walls |
+|---|---|---|
+| legacy | 0.65 | indoor, legacy cracks |
+| major | 0.15 | indoor, broad open and branched cracks |
+| network | 0.10 | indoor paint or stucco, crack networks beside indoor fixtures |
+| facade | 0.10 | outdoor, facade fixtures, junction cracks, rain-wash staining |
+
+The style sets only what defines that kind of crack. Everything else is shared.
+
+- **Materials:** `--wall-materials unified` draws 15 categories uniformly.
+  The v1.x training data was built in near-equal forced batches per category,
+  so this matches what the model was trained on, not the old palette weights.
+  Wood and irregular stone are left out.
+- **Clean walls:** one table for every wall. Paint and stucco 0.15, concrete
+  0.35, brick, tile, marble, cobble, rubble, sandstone, stone block and large
+  tile 0.60. About 40% of walls end up plain.
+- **Shared settings:** capture, lighting, rendering and labels.
+
+`--crack-style-mix` changes the mix (for example `network=1` for one style),
+and `off` disables per-wall styles. `scene.json` records each wall's
+`crack_style`.
+
+The unified recipe has not been trained on yet. Adopting it needs the usual
+paired comparison against v1.9.0 on BD3, CUBIT and BuildCrack.
+
+Known rare case, also present in v1.8.0: a facade close-up can sit just
+behind the context downpipe and render almost black (2 of 445 v1.8.0 facade
+views).
+
 ## Reproduce the release data
 
 `--recipe` sets every flag to the one a release batch was rendered with;

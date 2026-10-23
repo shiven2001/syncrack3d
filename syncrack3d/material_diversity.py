@@ -15,6 +15,14 @@ and large tile are plain at the default scale and cracked only in
 
 Every choice uses its own seed-derived RNG, so enabling this does not change
 any other mode, and a scene's material is reproducible from its seed.
+
+`--wall-materials unified` (v2, the `unified` recipe) is the palette the
+released training data was actually built from: those batches forced one
+category at a time in near-equal shares, so the weights above never shaped
+them. It draws the 15 crack-able categories uniformly, leaves out wood and
+irregular stone entirely, and uses one clean-wall table for every wall, in
+which stone block and large tile join the other patterned masonry at 0.60.
+`diverse` is kept unchanged so the v1.x releases rebuild exactly.
 """
 
 from __future__ import annotations
@@ -69,6 +77,13 @@ CLEAN_FRACTION = {
 # Kept as plain walls even under --clean-wall-scale 0.
 NEVER_CRACKED = ("wood", "irregular_stone")
 
+# v2 (`unified`): drawn uniformly, no wood or irregular stone; one clean table.
+UNIFIED_CATEGORIES = tuple(c for c in CATEGORIES if c not in NEVER_CRACKED)
+UNIFIED_CLEAN_FRACTION = {**{c: CLEAN_FRACTION[c] for c in UNIFIED_CATEGORIES},
+                          "stone_block": 0.6, "large_tile": 0.6}
+PAINTED_CATEGORIES = ("paint_neutral", "paint_colour", "paint_colour_mid",
+                      "stucco_neutral", "stucco_colour", "stucco_colour_mid")
+
 # Plaster paint parameters (gin: plaster_paint_params). Neutral = Infinigen's
 # defaults; colour = any hue, up to medium saturation, light to mid-dark value.
 PAINT_PARAMS = {
@@ -93,23 +108,26 @@ def _rng(seed: int, salt: int) -> random.Random:
     return random.Random((int(seed) * 1_000_003) ^ salt)
 
 
-def sample_category(seed: int, forced: str | None = None) -> str:
+def sample_category(seed: int, forced: str | None = None, palette: str = "diverse") -> str:
     if forced:
         if forced not in CATEGORIES:
             raise ValueError(f"unknown material category {forced}; choose from {sorted(CATEGORIES)}")
         return forced
+    if palette == "unified":
+        return _rng(seed, 0x554E4946).choice(UNIFIED_CATEGORIES)
     names = list(CATEGORIES)
     return _rng(seed, 0x4D41545F).choices(names, weights=[CATEGORIES[n][0] for n in names], k=1)[0]
 
 
-def is_clean_wall(seed: int, category: str, scale: float = 1.0) -> bool:
+def is_clean_wall(seed: int, category: str, scale: float = 1.0, palette: str = "diverse") -> bool:
+    table = UNIFIED_CLEAN_FRACTION if palette == "unified" and category in UNIFIED_CLEAN_FRACTION else CLEAN_FRACTION
     if category in NEVER_CRACKED:
         return True  # plain negatives only, at any scale
     if scale == 0:
         return False  # explicit "no clean walls": lets defects go on any texture
-    if CLEAN_FRACTION[category] >= 1.0:
+    if table[category] >= 1.0:
         return True  # a fraction of 1 keeps every wall of that category plain
-    p = min(1.0, CLEAN_FRACTION[category] * scale)
+    p = min(1.0, table[category] * scale)
     return _rng(seed, 0x434C4E5F).random() < p
 
 
@@ -174,7 +192,8 @@ def _orient_pattern_to_wall(material) -> int:
     return count
 
 
-def apply_diverse_wall_material(wall, seed: int, forced: str | None = None) -> tuple[str, str, dict]:
+def apply_diverse_wall_material(wall, seed: int, forced: str | None = None,
+                                palette: str = "diverse") -> tuple[str, str, dict]:
     """Shade `wall` with a sampled material. Returns (generator, finish, record)."""
     import importlib
 
@@ -183,7 +202,7 @@ def apply_diverse_wall_material(wall, seed: int, forced: str | None = None) -> t
     from cwg_infinigen.core import surface
     from cwg_infinigen.core.constraints.example_solver.room.decorate import _surface_finish
 
-    category = sample_category(seed, forced)
+    category = sample_category(seed, forced, palette)
     _, _, choices = CATEGORIES[category]
     mod, cls, _w = _rng(seed, 0x47454E5F).choices(choices, weights=[c[2] for c in choices], k=1)[0]
     generator = getattr(importlib.import_module(f"cwg_infinigen.assets.materials.{mod}"), cls)()
