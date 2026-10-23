@@ -198,7 +198,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             wall, seed, args.material_category, palette=args.wall_materials
         )
         clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale,
-                                   palette=args.wall_materials)
+                                   palette=args.wall_materials, uniform=args.clean_wall_uniform)
     else:
         generator_name, surface_finish = "controlled", spec.material.finish
     clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
@@ -553,6 +553,9 @@ def main():
                         help="log and continue when one seed fails")
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
+    parser.add_argument("--clean-wall-uniform", type=float, default=None,
+                        help="one clean-wall probability for every material instead of the per-category "
+                             "table (same per-wall draw); 1 renders every wall crack-free")
     parser.add_argument("--crack-style-mix", default=None,
                         help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10,facade=.10 "
                              "(recipes.STYLES); a wall's style overrides the flags that define it; "
@@ -567,6 +570,8 @@ def main():
         parser.error("structure clean fraction must be 0..1")
     if args.structure_views < 0:
         parser.error("structure views must be nonnegative")
+    if args.clean_wall_uniform is not None and not 0 <= args.clean_wall_uniform <= 1:
+        parser.error("--clean-wall-uniform must be 0..1")
     if args.crack_style_mix not in (None, "off"):
         try:
             parse_style_mix(args.crack_style_mix)

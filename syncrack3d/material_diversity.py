@@ -119,10 +119,19 @@ def sample_category(seed: int, forced: str | None = None, palette: str = "divers
     return _rng(seed, 0x4D41545F).choices(names, weights=[CATEGORIES[n][0] for n in names], k=1)[0]
 
 
-def is_clean_wall(seed: int, category: str, scale: float = 1.0, palette: str = "diverse") -> bool:
+def is_clean_wall(seed: int, category: str, scale: float = 1.0, palette: str = "diverse",
+                  uniform: float | None = None) -> bool:
+    """Whether this wall gets no cracks.
+
+    `uniform` replaces the per-category table with one probability for every
+    category (the clean-policy study). It compares against the same per-wall
+    draw, so walls cracked under both policies are identical scenes.
+    """
     table = UNIFIED_CLEAN_FRACTION if palette == "unified" and category in UNIFIED_CLEAN_FRACTION else CLEAN_FRACTION
     if category in NEVER_CRACKED:
         return True  # plain negatives only, at any scale
+    if uniform is not None:
+        return _rng(seed, 0x434C4E5F).random() < uniform
     if scale == 0:
         return False  # explicit "no clean walls": lets defects go on any texture
     if table[category] >= 1.0:
