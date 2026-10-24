@@ -16,8 +16,11 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
   unified  v2: one recipe for everything. Each wall draws a crack style
            (legacy/major/network/facade, STYLES) that sets only what defines that
            kind of crack; materials (--wall-materials unified: 15 crack-able
-           categories drawn uniformly, no wood or irregular stone), the clean-wall
-           table, capture and rendering are shared. Not a release recipe yet.
+           categories drawn uniformly, no wood or irregular stone), capture and
+           rendering are shared. Every wall is cracked (--clean-wall-scale 0),
+           chosen after the 2026-10-23 clean-wall study: more BD3 recall at the
+           cost of more false alarms than the material-aware table. Crack-free
+           views still come from context views and plain close-ups.
 
 The four release recipes rebuild the v1.x training walls; use unified for new
 data.
@@ -68,7 +71,7 @@ STYLES = {
 # facade ~8%); major walls carry fewer cracks and so fewer views per wall.
 UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
 RECIPES["unified"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
-                      + " --clean-wall-scale 1 --crack-style-mix " + UNIFIED_MIX)
+                      + " --clean-wall-scale 0 --crack-style-mix " + UNIFIED_MIX)
 
 
 def parse_style_mix(text):

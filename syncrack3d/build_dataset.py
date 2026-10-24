@@ -19,6 +19,7 @@ import logging
 import random
 import shutil
 import sys
+import time
 import traceback
 from dataclasses import replace
 from pathlib import Path
@@ -70,6 +71,7 @@ from syncrack3d.outdoor import (  # noqa: E402
     sample_outdoor_plan,
 )
 from syncrack3d.room_shell import (  # noqa: E402
+    apply_matched_finish,
     build_room_shell,
     sample_shell_plan,
 )
@@ -142,6 +144,8 @@ def clear_scene():
 
 
 def build_one(seed: int, args, out_root: Path) -> dict:
+    t_start, t_render = time.perf_counter(), None
+    shell_finish = {"finish": "plain"} if args.shell_finish == "plain" else None
     scene_dir = out_root / f"seed_{seed:05d}"
     frames_dir = out_root / "frames" / f"seed_{seed:05d}"
     scene_dir.mkdir(parents=True, exist_ok=True)
@@ -210,7 +214,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         # door frames are not photographed against the sky outside the slab.
         shell_plan = replace(shell_plan, has_ceiling=True, returns=("left", "right"))
     if outdoor_plan is None:
-        build_room_shell(spec, shell_plan)
+        shell = build_room_shell(spec, shell_plan)
+        if args.shell_finish == "matched":
+            shell_finish = apply_matched_finish(shell, wall, seed)
     else:
         build_outdoor(spec, outdoor_plan, wall)
     configure_capture_scene(spec, build.root)
@@ -344,6 +350,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
                                "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
+        "shell_finish": shell_finish,
         "environment": environment,
         "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
         "weathering": weathering,
@@ -433,6 +440,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
                 apply_lighting(view_plan, spec.height_m, capture_collection)
                 record["view_lighting"].append(view_plan.to_dict())
 
+        t_render = time.perf_counter()
         record["frames"] = render_cameras(
             [p.object_name for p in poses], frames_dir, aov_names=aov_names,
             exposure_evs=exposure_evs, awb_strengths=awb_strengths, before_each=relight,
@@ -442,6 +450,10 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
             record["camera_isp"] = process_frames(frames_dir, record["frames"], seed)
 
+    t_end = time.perf_counter()
+    record["timing_s"] = {"build": round((t_render or t_end) - t_start, 2),
+                          "render": round(t_end - t_render, 2) if t_render else None,
+                          "views": len(record.get("frames", []))}
     (scene_dir / "scene.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
 
@@ -553,6 +565,9 @@ def main():
                         help="log and continue when one seed fails")
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
+    parser.add_argument("--shell-finish", choices=("plain", "matched"), default="plain",
+                        help="indoor context: plain flat colours, or side walls in the test wall's finish "
+                             "(70%%, else a different paint) and an Infinigen floor material")
     parser.add_argument("--clean-wall-uniform", type=float, default=None,
                         help="one clean-wall probability for every material instead of the per-category "
                              "table (same per-wall draw); 1 renders every wall crack-free")

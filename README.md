@@ -543,9 +543,11 @@ The style sets only what defines that kind of crack. Everything else is shared.
   The v1.x training data was built in near-equal forced batches per category,
   so this matches what the model was trained on, not the old palette weights.
   Wood and irregular stone are left out.
-- **Clean walls:** one table for every wall. Paint and stucco 0.15, concrete
-  0.35, brick, tile, marble, cobble, rubble, sandstone, stone block and large
-  tile 0.60. About 40% of walls end up plain.
+- **Clean walls:** none. Every wall is cracked (`--clean-wall-scale 0`),
+  chosen after the clean-wall study below. The material-aware table
+  (`--clean-wall-scale 1` with `--wall-materials unified`: paint and stucco
+  0.15, concrete 0.35, patterned masonry, tile and stone 0.60) stays
+  available.
 - **Shared settings:** capture, lighting, rendering and labels.
 
 `--crack-style-mix` changes the mix (for example `network=1` for one style),
