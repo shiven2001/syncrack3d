@@ -46,7 +46,8 @@ root = Path(args.export_dir)
 out = Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
 meta = json.loads((root / "scene_meta.json").read_text())
-(x0, x1), (y0, y1), (z0, z1) = meta["room"]["x_range"], meta["room"]["y_range"], meta["room"]["z_range"]
+box = meta.get("region") or meta["room"]  # region: agent bounds, indoor or outdoor
+(x0, x1), (y0, y1), (z0, z1) = box["x_range"], box["y_range"], box["z_range"]
 
 omni.usd.get_context().open_stage(str(root / "scene.usda"))
 for _ in range(30):

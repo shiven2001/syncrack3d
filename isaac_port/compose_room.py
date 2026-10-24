@@ -53,7 +53,12 @@ wdir = root / "wall"
 info = json.loads((wdir / "wall.json").read_text())
 record = json.loads((root / "scene.json").read_text())
 W, H, ppm = info["width_m"], info["height_m"], info["px_per_m"]
-depth = record["room_shell"]["depth_m"]
+outdoor = record.get("environment") == "outdoor"
+# Indoors the agent stays in the room; outdoors on the ground in front of the facade,
+# within reach of the test wall (the surrounding facade continues further).
+depth = 8.0 if outdoor else record["room_shell"]["depth_m"]
+region = (dict(x_range=[-W / 2 - 1.5, W / 2 + 1.5], y_range=[-depth, 0.0], z_range=[0.0, H + 1.0]) if outdoor
+          else dict(x_range=[-W / 2, W / 2], y_range=[-depth, 0.0], z_range=[0.0, H]))
 tex = root / "textures"
 tex.mkdir(exist_ok=True)
 
@@ -168,7 +173,7 @@ room.GetReferences().AddReference("./room.usdc", "/Room")
 twall = stage.DefinePrim("/World/TestWall")
 twall.GetReferences().AddReference("./wall.usd", "/Wall")
 
-if not args.open_room:
+if not args.open_room and not outdoor:
     # Close the shell behind the spawn point so no view looks into the void.
     shell = record["room_shell"]
     color = shell["return_color"][:3]
@@ -195,12 +200,16 @@ bx.AddTranslateOp().Set(Gf.Vec3d(0.0, 0.102, H / 2))
 bx.AddScaleOp().Set(Gf.Vec3f(W + 0.4, 0.2, H + 0.4))
 backing.CreateDisplayColorAttr([Gf.Vec3f(0.2, 0.2, 0.2)])
 add_labels(backing.GetPrim(), labels=["wall"], instance_name="class")
-if args.open_room:
+if args.open_room or outdoor:
     # Daylight through the open side, as in the Blender scene's sky. A closed
-    # room is lit by its own lamps only.
+    # room is lit by its own lamps only. Outdoors the sun comes through the
+    # export as a distant light; this dome stands in for the sky.
+    plan = record.get("outdoor") or {}
     dome = UsdLux.DomeLight.Define(stage, "/World/Dome")
-    dome.CreateIntensityAttr(300.0)
-    dome.CreateColorAttr(Gf.Vec3f(1.0, 0.98, 0.95))
+    dome.CreateIntensityAttr(300.0 * float(plan.get("world_strength", 1.0)))
+    grey = plan.get("overcast_grey") if plan.get("sky") == "overcast" else None
+    dome.CreateColorAttr(Gf.Vec3f(grey, grey, 1.03 * grey) if grey else Gf.Vec3f(0.85, 0.92, 1.0) if outdoor
+                         else Gf.Vec3f(1.0, 0.98, 0.95))
 
 # Semantic classes. Crack is the only target; the rest are named so a policy
 # or evaluator can tell distractors apart.
@@ -211,6 +220,9 @@ for prim in stage.Traverse():
         continue
     name = prim.GetName()
     cls = ("crack" if name == "crack" else "wall" if name == "wall" or "Return" in name
+           or name.startswith(("CWG_Outdoor_Facade", "CWG_Outdoor_Corner"))
+           else "ground" if name == "CWG_Outdoor_Ground"
+           else "fixture" if name.startswith(("CWG_Outdoor_Eave", "CWG_Outdoor_Downpipe"))
            else "floor" if "Floor" in name else "ceiling" if "Ceiling" in name
            else "fixture" if name.startswith("CWG_Structure") else "furniture" if name.startswith("CWG_Prop")
            else None)
@@ -224,8 +236,11 @@ g = max(1, int(round(args.gt_mm / 1000 * ppm)))
 gt = cv2.resize(crack, (cols // g, rows // g), interpolation=cv2.INTER_AREA)
 np.savez_compressed(root / "gt.npz", crack_coverage=gt.astype(np.float16),
                     px_per_m=np.float32(ppm * gt.shape[1] / cols), width_m=np.float32(W), height_m=np.float32(H))
+# Only cracks injection kept: a placement can be dropped (e.g. failed support check).
+instances = json.loads((root / "defect_instances.json").read_text()).get("instances", [])
+retained = {i["object"] for i in instances if i.get("retained")}
 defects = [dict(kind=p.get("kind", "crack"), center_world=[p["u_m"], 0.0, p["v_m"]], size_m=p["size_m"])
-           for p in record["defects_placed"]]
+           for p in record["defects_placed"] if p["object_name"] in retained]
 
 
 def free_spawn(radius=0.35, eye_z=1.5):
@@ -238,6 +253,8 @@ def free_spawn(radius=0.35, eye_z=1.5):
             lo, hi = r.GetMin(), r.GetMax()
             if hi[2] - lo[2] > 0.05:  # rugs do not block
                 boxes.append((lo, hi))
+    if outdoor:
+        return [0.0, -4.0, 1.6]
     for y in np.arange(-depth + 0.4, -0.8, 0.2):
         for x in sorted(np.arange(-W / 2 + 0.4, W / 2 - 0.39, 0.2), key=abs):
             if not any(lo[0] - radius < x < hi[0] + radius and lo[1] - radius < y < hi[1] + radius
@@ -247,16 +264,36 @@ def free_spawn(radius=0.35, eye_z=1.5):
 
 
 spawn = free_spawn()
+
+
+def obstacles():
+    """World boxes of furniture and fixtures that stand out from the wall: a camera must stay outside."""
+    cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
+    out = []
+    for path, cls in labels.items():
+        if cls in ("furniture", "fixture"):
+            r = cache.ComputeWorldBound(stage.GetPrimAtPath(path)).ComputeAlignedRange()
+            lo, hi = [round(float(v), 4) for v in r.GetMin()], [round(float(v), 4) for v in r.GetMax()]
+            if hi[2] - lo[2] > 0.05 and lo[1] < -0.03:  # rugs and flush plates do not block
+                out.append(dict(cls=cls, prim=path, lo=lo, hi=hi))
+    return out
+
+
 meta = dict(
     source=str(root), seed=record["seed"], units="metres, Z up",
     test_wall=dict(front_plane="y = 0", outward_normal=[0, -1, 0], x_range=[-W / 2, W / 2], z_range=[0, H],
                    uv="u = (x + W/2) / W, v = z / H", mesh_mm=args.mesh_mm, texture_mm=round(1000 / ppm, 3),
-                   triangles=tri_counts, material=record["wall_material"]),
-    room=dict(x_range=[-W / 2, W / 2], y_range=[-depth, 0.0], z_range=[0.0, H],
-              closed=not args.open_room, ceiling=record["room_shell"]["has_ceiling"]),
+                   triangles=tri_counts, material=record["wall_material"],
+                   relief_mm=[round(float(np.percentile(h_mm, q)), 2) for q in (1, 50, 99)]),
+    kind="outdoor" if outdoor else "indoor",
+    region=region,
+    room=None if outdoor else dict(x_range=[-W / 2, W / 2], y_range=[-depth, 0.0], z_range=[0.0, H],
+                                   closed=not args.open_room, ceiling=record["room_shell"]["has_ceiling"]),
+    outdoor=record.get("outdoor"),
     defects=defects, crack_fraction_of_wall=round(float((crack >= 0.5).mean()), 6),
     props=record["props"], structures=[dict(kind=s["kind"], u_m=s["u_m"], v_m=s["v_m"]) for s in record["structures"]],
     spawn=dict(position=spawn, look_at=[0.0, 0.0, H * 0.45]),
+    obstacles=obstacles(),
     gt=dict(file="gt.npz", frame="row 0 = top (z = H), column 0 = x = -W/2", use="reward/evaluation only"),
     labels=labels)
 (root / "scene_meta.json").write_text(json.dumps(meta, indent=1))
