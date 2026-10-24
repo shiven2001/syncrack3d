@@ -614,6 +614,51 @@ seeds. BuildCrack per-seed spread is large (C 0.15), so the vote intervals
 are the firmer evidence. v1.9.0, trained on more data (2,243 views), still
 scores higher on BuildCrack (vote F1 0.723).
 
+### Matched indoor finishes study (2026-10-24)
+
+`--shell-finish matched` changes the indoor context. Side walls carry the test
+wall's own finish in 70% of rooms (a crack-free copy, bump only), otherwise a
+different paint; the floor gets an Infinigen floor material. Outdoor facades
+already continue the test wall's base material and are unchanged.
+
+The study rendered the same 200 all-cracked unified walls as the clean-wall
+study's control (`cleannone`). Cracks, cameras, lights and props were
+verified identical wall by wall, so only the context differs:
+
+- 100 indoor walls had side walls: 69 matched, 31 painted;
+- 78 indoor walls had only a floor;
+- 22 were outdoor and unchanged.
+
+Training used 5 seeds × 4000 steps from scratch. Files:
+`outputs/domain_transfer/syncrack3d_shellmatch_eval_v1/`.
+
+| | plain shell | matched − plain [95%] |
+|---|---:|---|
+| BD3 centreline F1 | 0.901 | −0.012 [−0.027, −0.002] |
+| BD3 crack IoU | 0.602 | −0.014 (n.s.) |
+| BD3 plain-wall alarms | 3.9% | −0.1 pp (n.s.) |
+| CUBIT crack-photo F1 | 0.861 | −0.004 (n.s.) |
+| CUBIT spalling photos with false crack | 90% | 89% |
+| BuildCrack vote F1 | 0.694 | +0.033 [+0.023, +0.044] |
+| BuildCrack vote recall | | +0.049 [+0.034, +0.064] |
+| BuildCrack empty-tile alarms | 33% | 27% |
+| synthetic eval set F1, all cracked subsets | 0.933 | +0.003 |
+| render time, 30 paired walls | 567 s | 566 s (×0.999) |
+
+**What changed:**
+
+- **BuildCrack improves.** Its tiles show real building context. With 200
+  walls the matched arm reaches v1.9.0's vote F1 (0.727 vs 0.723), which was
+  trained on 2,243 views.
+- **BD3 F1 dips slightly.** The interval only just excludes zero, and IoU and
+  plain-wall alarms are unchanged.
+- **CUBIT ties.**
+- **Render time is unchanged.** Side walls use bump relief only, and
+  everything averages 19 s per wall (2.8 s per view at 640 px, 64 samples).
+
+The effect is diluted: 78 of the 178 indoor walls had no side walls, so only
+their floor changed.
+
 Known rare case, also present in v1.8.0: a facade close-up can sit just
 behind the context downpipe and render almost black (2 of 445 v1.8.0 facade
 views).
