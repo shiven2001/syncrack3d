@@ -51,3 +51,4 @@ def test_bad_mix_is_rejected():
         with pytest.raises(ValueError):
             parse_style_mix(text)
     assert "--crack-style-mix" in RECIPES["unified"] and "--wall-materials unified" in RECIPES["unified"]
+    assert "--clean-wall-scale 0" in RECIPES["unified"] and "--shell-finish matched" in RECIPES["unified"]

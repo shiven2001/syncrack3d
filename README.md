@@ -548,6 +548,10 @@ The style sets only what defines that kind of crack. Everything else is shared.
   (`--clean-wall-scale 1` with `--wall-materials unified`: paint and stucco
   0.15, concrete 0.35, patterned masonry, tile and stone 0.60) stays
   available.
+- **Indoor context:** `--shell-finish matched`. Side walls carry the test
+  wall's finish in 70% of rooms, otherwise a different paint, and the floor
+  gets an Infinigen floor material. See the matched indoor finishes study
+  below.
 - **Shared settings:** capture, lighting, rendering and labels.
 
 `--crack-style-mix` changes the mix (for example `network=1` for one style),

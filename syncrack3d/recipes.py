@@ -20,7 +20,9 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            rendering are shared. Every wall is cracked (--clean-wall-scale 0),
            chosen after the 2026-10-23 clean-wall study: more BD3 recall at the
            cost of more false alarms than the material-aware table. Crack-free
-           views still come from context views and plain close-ups.
+           views still come from context views and plain close-ups. Indoor side
+           walls carry the test wall's finish and the floor an Infinigen floor
+           material (--shell-finish matched, 2026-10-24 study).
 
 The four release recipes rebuild the v1.x training walls; use unified for new
 data.
@@ -71,7 +73,7 @@ STYLES = {
 # facade ~8%); major walls carry fewer cracks and so fewer views per wall.
 UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
 RECIPES["unified"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
-                      + " --clean-wall-scale 0 --crack-style-mix " + UNIFIED_MIX)
+                      + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
 
 
 def parse_style_mix(text):
