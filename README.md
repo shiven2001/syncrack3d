@@ -510,7 +510,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 62 tests, a few seconds
+python -m pytest syncrack3d/tests          # 68 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -520,9 +520,22 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v2)
+## Generate new data: the unified recipe (v1.16.0)
 
-For new data use one recipe for everything:
+For new data use one recipe for everything. The six commits that built it are
+tagged:
+
+| version | commit | what it adds |
+|---|---|---|
+| v1.11.0 | `76bfbd4` | `--recipe unified`: legacy 65%, major 15%, network 10%, facade 10%; 15 crackable materials drawn uniformly |
+| v1.12.0 | `039d2c8` | `--clean-wall-uniform`, one clean-wall probability for every material |
+| v1.13.0 | `f95dadc` | clean-wall study: material-aware beats all-cracked and uniform |
+| v1.14.0 | `3b2d31e` | every wall cracked; matched indoor finishes, opt-in; per-wall timing |
+| v1.15.0 | `089fbf2` | matched-finish study |
+| v1.16.0 | `9617872` | matched finishes are the unified default |
+
+The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
+rebuild as released.
 
 ```bash
 python syncrack3d/build_dataset.py --recipe unified --seeds 0-99 --output out/walls --resume
