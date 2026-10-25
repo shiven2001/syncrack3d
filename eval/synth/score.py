@@ -10,7 +10,9 @@ training.
 
 Per subset (legacy, major, network, facade, negatives), by wall material, and
 pooled over the cracked subsets:
-  centreline precision / recall / F1 on cracked views (pooled lengths)
+  centreline precision / recall / F1 on cracked views (pooled lengths), and F1 at
+  3 px (f1_3px) as a secondary tolerance
+  clDice on cracked views (pooled skeleton lengths)
   crack IoU on cracked views (pooled pixels)
   false-positive pixels per view farther than 5 px from a labelled crack
   plain-view alarm rate: share of crack-free views whose predicted crack covers
@@ -28,7 +30,7 @@ import numpy as np
 EVAL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EVAL))
 from infer import load_model, predict  # noqa: E402
-from metrics import TOLERANCE_PX, _grow, centreline_counts, centreline_scores  # noqa: E402
+from metrics import TOLERANCE_PX, _grow, centreline_counts, centreline_scores, cldice_counts  # noqa: E402
 
 ALARM_FRACTION = 0.001
 CRACKED = ("legacy", "major", "network", "facade")
@@ -45,12 +47,16 @@ if not checkpoints:
 
 
 def new():
-    return {"cl": np.zeros(4), "iou": np.zeros(3), "fp": [], "alarm": []}
+    return {"cl": np.zeros(4), "cl3": np.zeros(4), "cd": np.zeros(4), "iou": np.zeros(3), "fp": [], "alarm": []}
 
 
 def finish(a):
     s = centreline_scores(a["cl"]) if a["cl"][1] else dict(precision=None, recall=None, f1=None)
+    c = a["cd"]
+    tprec, tsens = (c[0] / c[1] if c[1] else 0.0), (c[2] / c[3] if c[3] else 0.0)
     return dict(precision=s["precision"], recall=s["recall"], f1=s["f1"],
+                f1_3px=centreline_scores(a["cl3"])["f1"] if a["cl3"][1] else None,
+                cldice=(2 * tprec * tsens / (tprec + tsens) if tprec + tsens else 0.0) if c[3] else None,
                 crack_iou=a["iou"][0] / max(1, a["iou"].sum()) if a["iou"].sum() else None,
                 fp_px_per_view=float(np.mean(a["fp"])) if a["fp"] else None,
                 plain_view_alarm=float(np.mean(a["alarm"])) if a["alarm"] else None)
@@ -78,6 +84,8 @@ for ck in checkpoints:
             a["fp"].append(int(far.sum()))
             if crack.any():
                 a["cl"] += centreline_counts(pred, crack, TOLERANCE_PX)
+                a["cl3"] += centreline_counts(pred, crack, 3)
+                a["cd"] += cldice_counts(pred, crack)
                 a["iou"] += [(pred & crack).sum(), (pred & ~crack).sum(), (~pred & crack).sum()]
             else:
                 a["alarm"].append(pred.mean() > ALARM_FRACTION)
