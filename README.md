@@ -621,8 +621,11 @@ QA (12 walls with fixtures, seeds 840000–840011, network and facade styles):
 
 The legacy order still reproduces existing walls exactly: 12 walls of the
 clean-wall study, including fixture and facade walls, came out identical.
-Not adopted yet: it changes every draw, so it needs the paired real-transfer
-comparison against v1.16.0.
+Adopted in the unified recipe from v1.17 (2026-10-25). Every indoor wall now
+gets fixtures and a closed room, whatever its crack style; v1.16 kept fixtures
+to network walls. `--recipe unified_v1.16` rebuilds v1.16.0 walls exactly.
+QA: 10 walls, all indoor walls with 2–4 fixtures in a closed room, every token
+placed, contract clean (57 frames), ~17 s per wall.
 
 ### Clean-wall policy study (2026-10-23)
 

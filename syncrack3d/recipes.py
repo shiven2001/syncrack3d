@@ -13,6 +13,8 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            organic outline, indoor structures beside the cracks (v1.7.0 on)
   facade   outdoor facades with facade structures, junction cracks and rain-wash
            staining (v1.8.0)
+  unified_v1.16  the unified recipe as of v1.16.0 (legacy layout order), to
+           rebuild those walls exactly
   unified  v2: one recipe for everything. Each wall draws a crack style
            (legacy/major/network/facade, STYLES) that sets only what defines that
            kind of crack; materials (--wall-materials unified: 15 crack-able
@@ -22,7 +24,9 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            cost of more false alarms than the material-aware table. Crack-free
            views still come from context views and plain close-ups. Indoor side
            walls carry the test wall's finish and the floor an Infinigen floor
-           material (--shell-finish matched, 2026-10-24 study).
+           material (--shell-finish matched, 2026-10-24 study). From v1.17 it
+           uses --layout-order fixtures-first, and every indoor wall gets
+           fixtures (closed room), whatever its crack style.
 
 The four release recipes rebuild the v1.x training walls; use unified for new
 data.
@@ -72,8 +76,10 @@ STYLES = {
 # Close to the v1.9 training mix by view (legacy ~75%, major ~10%, network ~7%,
 # facade ~8%); major walls carry fewer cracks and so fewer views per wall.
 UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
-RECIPES["unified"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
-                      + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
+RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
+                            + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
+# v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
+RECIPES["unified"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-first"
 
 
 def parse_style_mix(text):
@@ -107,6 +113,11 @@ def wall_style(seed, args):
     mix = parse_style_mix(args.crack_style_mix)
     style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
     wall = Namespace(**{**vars(args), **STYLES[style], "crack_style": style})
+    if getattr(args, "layout_order", "legacy") == "fixtures-first" and wall.environment == "indoor" \
+            and wall.structures == "off":
+        # Real rooms have sockets, switches, trims and doors whatever the crack;
+        # the v1.x styles kept them to network walls only.
+        wall.structures, wall.structure_views = "auto", 0
     if style == "network" and not args.material_category:
         wall.material_category = rng.choice(PAINTED_CATEGORIES)
     return style, wall

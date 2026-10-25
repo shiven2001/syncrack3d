@@ -52,3 +52,14 @@ def test_bad_mix_is_rejected():
             parse_style_mix(text)
     assert "--crack-style-mix" in RECIPES["unified"] and "--wall-materials unified" in RECIPES["unified"]
     assert "--clean-wall-scale 0" in RECIPES["unified"] and "--shell-finish matched" in RECIPES["unified"]
+    assert "--layout-order fixtures-first" in RECIPES["unified"]
+    assert "--layout-order" not in RECIPES["unified_v1.16"]
+
+
+def test_fixtures_first_puts_fixtures_on_every_indoor_wall():
+    ff = Namespace(**{**vars(ARGS), "layout_order": "fixtures-first"})
+    for seed in range(300):
+        name, wall = wall_style(seed, ff)
+        if wall.environment == "indoor":
+            assert wall.structures == "auto" and wall.structure_views == 0
+        assert wall_style(seed, ARGS)[1].structures == STYLES[name]["structures"]  # legacy order unchanged
