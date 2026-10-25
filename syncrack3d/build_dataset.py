@@ -33,7 +33,7 @@ import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 import numpy as np  # noqa: E402
 
-from syncrack3d.cameras import sample_camera_poses  # noqa: E402
+from syncrack3d.cameras import drop_blocked_cameras, sample_camera_poses  # noqa: E402
 from syncrack3d.defects import (  # noqa: E402
     build_defects,
     inject_defects,
@@ -56,10 +56,12 @@ from syncrack3d.structures import (  # noqa: E402
     PROFILES as STRUCTURE_PROFILES,
     KINDS as STRUCTURE_KINDS,
     build_structures,
+    crack_regions,
     sample_structure_plan,
     structure_camera_targets,
     structure_clean_wall,
 )
+from syncrack3d.occlusion import _world_bounds as prop_bounds  # noqa: E402
 from syncrack3d.occlusion import sample_props, settle_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
@@ -222,34 +224,92 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     configure_capture_scene(spec, build.root)
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
+    def light_scene():
+        """Indoor lighting rig, or the outdoor sun and sky (with facade weathering)."""
+        lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
+        if args.light_profile != "default" and not args.relight_per_view:
+            # Independent stream: walls, defects and cameras stay as in the default run.
+            lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
+                                            profile=args.light_profile)
+        apply_lighting(lighting, spec.height_m, capture_collection)
+        weathering = {}
+        if outdoor_plan is not None:
+            # one sun (or overcast sky) per wall, visible sky; the indoor plan above
+            # was still drawn so the shared RNG stream is unchanged
+            lighting = outdoor_lighting(outdoor_plan, spec)
+            apply_lighting(lighting, spec.height_m, capture_collection)
+            apply_sky(outdoor_plan)
+            weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
+        return lighting, weathering
+
+    def pose_cameras(structures):
+        poses = sample_camera_poses(
+            rng,
+            spec,
+            # a clean wall has no defects to frame: close-ups of plain wall instead
+            virtual_targets(seed, spec) if clean_wall and not placements else placements,
+            capture_collection,
+            closeups_per_defect=args.closeups_per_defect,
+            context_view_fraction=args.context_view_fraction,
+            frame_fill_range=tuple(args.closeup_fill),
+            max_yaw_deg=args.closeup_max_yaw,
+            max_pitch_deg=args.closeup_max_pitch,
+            preserve_closeup_scale=args.preserve_closeup_scale,
+            aim_jitter=args.closeup_aim_jitter,
+        )
+        if structures and args.structure_views:
+            structure_rng = random.Random(seed ^ 0x53544341)
+            targets = list(structures)
+            structure_rng.shuffle(targets)
+            poses.extend(sample_camera_poses(
+                structure_rng, spec, structure_camera_targets(targets, args.structure_views),
+                capture_collection, closeups_per_defect=1, frame_fill_range=(.45, .75),
+                index_offset=len(poses), closeup_role="structure", include_context=False,
+                max_yaw_deg=min(args.closeup_max_yaw, 25), max_pitch_deg=min(args.closeup_max_pitch, 20),
+            ))
+        return poses
+
+    fixtures_first = args.layout_order == "fixtures-first"
+    layout_record = {"order": args.layout_order}
     plan = sample_defect_plan(
         rng,
         total_range=(0, 0) if clean_wall else (args.min_defects, args.max_defects),
         substrate_finish=surface_finish,
         size_range_m=tuple(args.defect_size_range),
-    )
-    placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
-                               axis_snap=args.crack_axis_snap)
-    props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
-                         floor_depth_m=shell_plan.depth_m, measured=args.prop_placement == "measured")
-    lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
-    if args.light_profile != "default" and not args.relight_per_view:
-        # Independent stream: walls, defects and cameras stay as in the default run.
-        lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
-                                        profile=args.light_profile)
-    apply_lighting(lighting, spec.height_m, capture_collection)
-    weathering = {}
-    if outdoor_plan is not None:
-        # one sun (or overcast sky) per wall, visible sky; the indoor plan above
-        # was still drawn so the shared RNG stream is unchanged
-        lighting = outdoor_lighting(outdoor_plan, spec)
-        apply_lighting(lighting, spec.height_m, capture_collection)
-        apply_sky(outdoor_plan)
-        weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
-
-    # Structures are planned before injection (own RNG stream, so nothing else
-    # moves) so junction cracks can be snapped to their edges.
-    structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment, args.structure_kinds)
+    ) if not fixtures_first else None
+    if fixtures_first:
+        # 3. Fixtures first, on their own stream and blind to cracks, built now.
+        structure_plans = sample_structure_plan(seed, spec, (), args.structures, environment, args.structure_kinds)
+        structures = build_structures(structure_plans)
+        keepout, near = crack_regions(structure_plans)
+        # 4. Crack tokens around the fixtures: none under a large assembly, some
+        # beside a service run; then a share snapped to fixture corners and edges.
+        plan = sample_defect_plan(
+            rng,
+            total_range=(0, 0) if clean_wall else (args.min_defects, args.max_defects),
+            substrate_finish=surface_finish,
+            size_range_m=tuple(args.defect_size_range),
+        )
+        if args.crack_profile == "network":
+            # Network patches reach crack_network_extent x the token size; spaced only
+            # 0.30 m apart they overlapped and blended instance ids where they met.
+            plan = replace(plan, min_separation_m=max(plan.min_separation_m,
+                                                      args.crack_network_extent * plan.size_range_m[1]))
+        placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
+                                   axis_snap=args.crack_axis_snap, keepout=keepout, near=near,
+                                   near_fraction=args.crack_near_service_fraction)
+        layout_record.update(keepout_regions=len(keepout), service_runs=len(near),
+                             tokens_requested=sum(plan.counts.values()), tokens_placed=len(placements))
+    else:
+        placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
+                                   axis_snap=args.crack_axis_snap)
+        props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                             floor_depth_m=shell_plan.depth_m, measured=args.prop_placement == "measured")
+        lighting, weathering = light_scene()
+        # Structures are planned before injection (own RNG stream, so nothing else
+        # moves) so junction cracks can be snapped to their edges.
+        structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment,
+                                                args.structure_kinds)
     if args.crack_orientation == "random":
         # The spin already drawn for each card becomes its crack direction; no new draws.
         for p in placements:
@@ -292,37 +352,28 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # displacement, or the clean negatives stay bump-only.
     enable_true_displacement(wall, args.dicing_rate)
 
-    structures = build_structures(structure_plans)
-
-    poses = sample_camera_poses(
-        rng,
-        spec,
-        # a clean wall has no defects to frame: close-ups of plain wall instead
-        virtual_targets(seed, spec) if clean_wall and not placements else placements,
-        capture_collection,
-        closeups_per_defect=args.closeups_per_defect,
-        context_view_fraction=args.context_view_fraction,
-        frame_fill_range=tuple(args.closeup_fill),
-        max_yaw_deg=args.closeup_max_yaw,
-        max_pitch_deg=args.closeup_max_pitch,
-        preserve_closeup_scale=args.preserve_closeup_scale,
-        aim_jitter=args.closeup_aim_jitter,
-    )
-    if structures and args.structure_views:
-        structure_rng = random.Random(seed ^ 0x53544341)
-        targets = list(structures)
-        structure_rng.shuffle(targets)
-        poses.extend(sample_camera_poses(
-            structure_rng, spec, structure_camera_targets(targets, args.structure_views),
-            capture_collection, closeups_per_defect=1, frame_fill_range=(.45, .75),
-            index_offset=len(poses), closeup_role="structure", include_context=False,
-            max_yaw_deg=min(args.closeup_max_yaw, 25), max_pitch_deg=min(args.closeup_max_pitch, 20),
-        ))
-    if outdoor_plan is not None:
-        remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
-    elif args.prop_placement == "measured":
-        # fixtures and cameras are placed after the props: clear props of both
-        props = settle_props(props, floor_depth_m=shell_plan.depth_m)
+    if fixtures_first:
+        # 6. Lighting and cameras; a camera jammed against an object is dropped.
+        lighting, weathering = light_scene()
+        poses, blocked = drop_blocked_cameras(pose_cameras(structures), wall)
+        layout_record["cameras_dropped"] = blocked
+        # 7. Props last, around the cameras and the fixture meshes. None outdoors.
+        props = []
+        if outdoor_plan is None:
+            obstacles = [(np.array(bpy.data.objects[p.object_name].matrix_world.translation) - 0.2,
+                          np.array(bpy.data.objects[p.object_name].matrix_world.translation) + 0.2) for p in poses]
+            obstacles += [b for o in bpy.data.objects if o.get("cwg_role") == "structure" and o.type in ("MESH", "CURVE")
+                          and (b := prop_bounds(o)) is not None]
+            props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                                 floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
+    else:
+        structures = build_structures(structure_plans)
+        poses = pose_cameras(structures)
+        if outdoor_plan is not None:
+            remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
+        elif args.prop_placement == "measured":
+            # fixtures and cameras are placed after the props: clear props of both
+            props = settle_props(props, floor_depth_m=shell_plan.depth_m)
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
     # Partial white balance keeps a coloured wall coloured (opt-in; default full).
@@ -351,6 +402,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
                                "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
         "shell_finish": shell_finish,
+        "layout": layout_record,
         "environment": environment,
         "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
         "weathering": weathering,
@@ -396,6 +448,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "crack_branch_mode": args.crack_branch_mode,
             "crack_path_mode": args.crack_path_mode,
             "recipe": args.recipe,
+            "layout_order": args.layout_order,
             "crack_style": getattr(args, "crack_style", None),
             "prop_placement": args.prop_placement,
             "crack_orientation": args.crack_orientation,
@@ -565,6 +618,13 @@ def main():
                         help="log and continue when one seed fails")
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
+    parser.add_argument("--layout-order", choices=("legacy", "fixtures-first"), default="legacy",
+                        help="legacy: crack tokens, props, lights, fixture plan, injection, fixture meshes, "
+                             "cameras (v1.x). fixtures-first: fixtures (planned and built), cracks around "
+                             "them, injection, lights, cameras (blocked views dropped), props around cameras "
+                             "and fixtures")
+    parser.add_argument("--crack-near-service-fraction", type=float, default=0.3,
+                        help="fixtures-first: share of crack tokens tried beside a cable/pipe/trunking run")
     parser.add_argument("--shell-finish", choices=("plain", "matched"), default="plain",
                         help="indoor context: plain flat colours, or side walls in the test wall's finish "
                              "(70%%, else a different paint) and an Infinigen floor material")

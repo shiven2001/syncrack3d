@@ -155,7 +155,7 @@ def _collection(name: str):
     return col
 
 
-def _place_measured(obj, rug, u, standoff, half_w, floor_depth_m, side_gap_m, placed) -> bool:
+def _place_measured(obj, rug, u, standoff, half_w, floor_depth_m, side_gap_m, placed, obstacles=()) -> bool:
     """Move a spawned prop by its measured bounds; False (and deleted) if it does not fit."""
     # The catalogue footprint is only a hint. Real assets are bigger, turn about
     # off-centre origins, and some have their origin at mid-height, so
@@ -185,8 +185,11 @@ def _place_measured(obj, rug, u, standoff, half_w, floor_depth_m, side_gap_m, pl
     lo, hi = lo + shift, hi + shift
     # Furniture may stand on a rug; any other overlap is interpenetration,
     # so step out from the wall past the props in the way.
-    for _ in range(len(placed) + 1):
+    # Obstacles (cameras, fixture parts) are 3-D boxes: a low table may stand
+    # under a camera, but not around it.
+    for _ in range(len(placed) + len(obstacles) + 1):
         hits = [b for b, other_rug in placed if other_rug == rug and _overlap_xy((lo, hi), b, side_gap_m)]
+        hits += [b for b in obstacles if _overlap((lo, hi), b, side_gap_m)]
         if not hits:
             break
         step = np.array([0.0, min(b[0][1] for b in hits) - side_gap_m - hi[1], 0.0])
@@ -211,12 +214,15 @@ def sample_props(
     floor_depth_m: float | None = None,
     side_gap_m: float = 0.02,
     measured: bool = True,
+    obstacles=(),
 ) -> list[PropPlacement]:
     """Place a few props in front of the wall.
 
     Each prop rests on the floor, `standoff` clear of the wall, inside the
     wall's width and `floor_depth_m`, and apart from the other props. A prop that
-    cannot fit is dropped. `measured=False` keeps the v1.0-v1.8 placement by
+    cannot fit is dropped. `obstacles` are world boxes (lo, hi) placed before the
+    props (cameras, fixture parts under --layout-order fixtures-first): a prop
+    steps out from the wall past them, like past another prop, or is dropped. `measured=False` keeps the v1.0-v1.8 placement by
     the catalogue footprint, which let props clip; it exists to rebuild those
     releases exactly.
 
@@ -278,7 +284,7 @@ def sample_props(
         bpy.context.view_layer.update()
 
         if measured and not _place_measured(obj, class_name in FLOOR_COVERINGS, u, standoff, half_w,
-                                            floor_depth_m, side_gap_m, placed):
+                                            floor_depth_m, side_gap_m, placed, obstacles):
             continue
 
         results.append(

@@ -376,3 +376,26 @@ def structure_camera_targets(records, limit=2):
     return [SimpleNamespace(index=r['index'], u_m=r['u_m'], v_m=r['v_m'],
                             size_m=max(.4, min(1.4, r['width_m'], r['height_m']) * 1.3),
                             object_name=r['object_name']) for r in records[:limit]]
+
+
+SERVICE_KINDS = ("wall_cable", "conduit", "trunking", "plumbing", "cable", "downpipe")
+
+
+def crack_regions(plans):
+    """(keep-out, near) wall rectangles (u, v, w, h) for fixtures-first crack placement.
+
+    Keep-out: every large assembly, grown to its built extent (a window's sill
+    and lintel, a door's frame), so no crack sits under it. Near: thin service
+    runs, beside which some cracks are placed so the service partly covers them.
+    """
+    keepout, near = [], []
+    for p in plans:
+        if p.kind == "window":
+            keepout.append((p.u_m, p.v_m + 0.02, p.width_m + 0.20, p.height_m + 0.32))
+        elif p.kind == "door":
+            keepout.append((p.u_m, p.v_m, p.width_m + 0.06, p.height_m + 0.06))
+        elif p.kind in LARGE_KINDS:
+            keepout.append((p.u_m, p.v_m, p.width_m + 0.04, p.height_m + 0.04))
+        elif p.kind in SERVICE_KINDS:
+            near.append((p.u_m, p.v_m, p.width_m, p.height_m))
+    return keepout, near

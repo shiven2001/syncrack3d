@@ -574,6 +574,56 @@ and `off` disables per-wall styles. `scene.json` records each wall's
 The unified recipe has not been trained on yet. Adopting it needs the usual
 paired comparison against v1.9.0 on BD3, CUBIT and BuildCrack.
 
+### Layout order: fixtures first (opt-in, 2026-10-25)
+
+`--layout-order fixtures-first` builds a wall in this order:
+
+1. wall and material
+2. room shell or outdoor facade
+3. fixtures, planned and built
+4. crack tokens, then junction snapping
+5. crack injection
+6. lighting and cameras
+7. props
+
+The default, `legacy`, keeps the v1.x order:
+
+1. crack tokens
+2. props
+3. lighting
+4. fixture plan, conditioned on the cracks
+5. junction snapping
+6. injection
+7. fixture meshes
+8. cameras
+
+The legacy order existed so that adding fixtures in v1.5 moved no crack or
+camera, but it is backwards physically: cracks start at openings, not the
+other way round. Checks in the new order:
+
+| step | check |
+|---|---|
+| fixtures | planned on their own stream, blind to cracks; footprints reserved between fixtures as before |
+| crack tokens | no centre under a large assembly (windows with sill and lintel, doors, boxes, vents, sockets, switches, lights), grown by 0.3 × the largest token size + 3 cm; 30% of tokens are tried 3–15 cm beside a cable, pipe or trunking run (`--crack-near-service-fraction`), so services partly cover some cracks; network tokens are spaced by their full patch size (extent × size), because overlapping patches blended instance ids |
+| junctions | as before: a share of tokens moves to fixture corners and edges |
+| cameras | a ray along each view axis, ignoring the wall and crack cards: a camera with another object within 0.35 m and before half the way to the wall is dropped |
+| props | placed around the cameras (0.2 m boxes) and the fixture meshes, stepping out from the wall past them or dropped; none outdoors |
+
+QA (12 walls with fixtures, seeds 840000–840011, network and facade styles):
+
+- every requested crack was placed, and none has its centre under a large
+  fixture;
+- junction cracks still occur on facades;
+- the label contract was clean (79 frames, 0 issues);
+- two cameras were dropped, both real faults: a facade close-up 5 cm behind
+  the downpipe (the near-black views of v1.8.0), and an indoor context camera
+  inside a side wall.
+
+The legacy order still reproduces existing walls exactly: 12 walls of the
+clean-wall study, including fixture and facade walls, came out identical.
+Not adopted yet: it changes every draw, so it needs the paired real-transfer
+comparison against v1.16.0.
+
 ### Clean-wall policy study (2026-10-23)
 
 Which walls should stay crack-free? The same 200 unified-recipe walls (seeds

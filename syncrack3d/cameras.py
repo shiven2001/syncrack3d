@@ -233,3 +233,41 @@ def sample_camera_poses(
     if poses:
         bpy.context.scene.camera = bpy.data.objects[poses[0].object_name]
     return poses
+
+
+def drop_blocked_cameras(poses, wall, near_m: float = 0.35):
+    """Drop views whose lens is jammed against something (--layout-order fixtures-first).
+
+    A ray along each camera's view axis is cast into the scene, ignoring the
+    test wall and the crack cards in front of it. If it hits another object
+    closer than `near_m` and before half the way to the wall, the camera sits
+    behind or inside that object (a downpipe 5 cm from the lens rendered almost
+    black) and the view is removed. Partial occlusion further out is kept: it is
+    what real inspection photos look like. Returns (kept poses, dropped records).
+    """
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    kept, dropped = [], []
+    for pose in poses:
+        cam = bpy.data.objects[pose.object_name]
+        origin = cam.matrix_world.translation.copy()
+        direction = (cam.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))).normalized()
+        t_wall = -origin.y / direction.y if direction.y > 1e-6 else float("inf")
+        reach = min(near_m, 0.5 * t_wall)
+        start = origin
+        blocker = None
+        for _ in range(8):  # step past ignored hits (cards are 2 mm in front of the wall)
+            hit, loc, _n, _i, obj, _m = bpy.context.scene.ray_cast(depsgraph, start, direction,
+                                                                     distance=reach - (start - origin).length)
+            if not hit:
+                break
+            if obj is not None and (obj == wall or obj.name.startswith("CWG_Defect_")):
+                start = loc + direction * 1e-4
+                continue
+            blocker = obj
+            break
+        if blocker is None:
+            kept.append(pose)
+        else:
+            dropped.append({"camera": pose.object_name, "role": pose.role, "blocked_by": blocker.name})
+            bpy.data.objects.remove(cam, do_unlink=True)
+    return kept, dropped

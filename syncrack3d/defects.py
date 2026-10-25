@@ -110,8 +110,17 @@ def _factory(defect_class: str, factory_seed: int):
     return getattr(importlib.import_module(module_name), class_name)(factory_seed)
 
 
-def _sample_positions(rng, plan, width_m, height_m, count):
+def _sample_positions(rng, plan, width_m, height_m, count, keepout=(), near=(), near_fraction=0.0):
     """Rejection-sample non-overlapping card centres on the wall face.
+
+    `keepout` and `near` are wall rectangles (u, v, w, h) from the fixtures
+    planned first (--layout-order fixtures-first). A centre may not fall within
+    a keep-out rectangle grown by 0.3 of the largest token size plus 3 cm, so a
+    crack is never mostly under a window frame, door leaf or socket plate. With
+    probability `near_fraction` a token is instead tried beside a `near`
+    rectangle (a cable, pipe or trunking run), 3-15 cm from its side, so thin
+    services partly cover some cracks. With neither, the draws are exactly the
+    original ones.
 
     Separation is enforced because two cards that overlap inject two fields into
     the same patch of material, and the instance AOV then cannot say which pixel
@@ -122,11 +131,30 @@ def _sample_positions(rng, plan, width_m, height_m, count):
     half_v_lo = _EDGE_MARGIN_M
     half_v_hi = max(height_m - _EDGE_MARGIN_M, half_v_lo + 0.05)
 
+    grow = 0.3 * plan.size_range_m[1] + 0.03
+
+    def blocked(u, v):
+        return any(abs(u - ku) < kw * 0.5 + grow and abs(v - kv) < kh * 0.5 + grow
+                   for ku, kv, kw, kh in keepout)
+
     placed: list[tuple[float, float]] = []
     for _ in range(count):
+        beside = bool(near) and near_fraction > 0 and rng.random() < near_fraction
         for _attempt in range(80):
-            u = rng.uniform(-half_u, half_u)
-            v = rng.uniform(half_v_lo, half_v_hi)
+            if beside:
+                nu, nv, nw, nh = rng.choice(near)
+                off = rng.choice((-1, 1)) * rng.uniform(0.03, 0.15)
+                if nh >= nw:  # vertical run: beside it, somewhere along it
+                    u, v = nu + off + math.copysign(nw * 0.5, off), rng.uniform(nv - nh * 0.5, nv + nh * 0.5)
+                else:
+                    u, v = rng.uniform(nu - nw * 0.5, nu + nw * 0.5), nv + off + math.copysign(nh * 0.5, off)
+                if not (-half_u <= u <= half_u and half_v_lo <= v <= half_v_hi):
+                    continue
+            else:
+                u = rng.uniform(-half_u, half_u)
+                v = rng.uniform(half_v_lo, half_v_hi)
+            if keepout and blocked(u, v):
+                continue
             if all(
                 math.hypot(u - pu, v - pv) >= plan.min_separation_m
                 for pu, pv in placed
@@ -148,6 +176,9 @@ def build_defects(
     plan: DefectPlan | None = None,
     legacy_names: bool = False,
     axis_snap: float = 0.0,
+    keepout=(),
+    near=(),
+    near_fraction: float = 0.0,
 ) -> list[DefectPlacement]:
     """Spawn and position defect cards on the wall's front face.
 
@@ -162,7 +193,8 @@ def build_defects(
     ]
     rng.shuffle(requested)
     positions = _sample_positions(
-        rng, plan, spec.width_m, spec.height_m, len(requested)
+        rng, plan, spec.width_m, spec.height_m, len(requested),
+        keepout=keepout, near=near, near_fraction=near_fraction,
     )
 
     placements: list[DefectPlacement] = []
