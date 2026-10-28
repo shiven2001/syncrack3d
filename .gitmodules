@@ -1,0 +1,4 @@
+[submodule "paper-syncrack3d"]
+	path = paper-syncrack3d
+	url = https://github.com/shiven2001/paper-syncrack3d.git
+	branch = main
