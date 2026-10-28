@@ -11,6 +11,7 @@ from cwg_infinigen.assets.objects.wall_decorations.primitives import (
     assign,
     box,
     plastic_material,
+    chrome_screw,
     rounded_box,
     shade_smooth,
     solid_material,
@@ -35,7 +36,7 @@ class WallPlugFactory(AssetFactory):
                 self.n_gangs * self.gang_w + (self.n_gangs - 1) * self.gap + 0.012
             )
             self.thickness = uniform(0.008, 0.012)
-            self.has_switch = uniform() < 0.85
+            self.has_switch = True
             tone = uniform(0.86, 0.97)
             self.plate_color = (tone, tone * uniform(0.98, 1.0), tone * uniform(0.94, 1.0))
             self.slot_color = (0.04, 0.04, 0.04)
@@ -132,24 +133,27 @@ class WallPlugFactory(AssetFactory):
 
         screw_mat = solid_material(
             f"WallPlugScrew_{self.factory_seed}",
-            (0.55, 0.55, 0.57),
-            roughness=0.42,
+            (0.82, 0.84, 0.86),
+            roughness=0.12,
             metallic=1.0,
         )
+        slot_dark = solid_material(
+            f"WallPlugScrewSlot_{self.factory_seed}",
+            (0.04, 0.04, 0.045),
+            roughness=0.55,
+        )
         for sign in (-1, 1):
-            screw = rounded_box(
-                (0.0012, 0.006, 0.006),
-                location=(
-                    self.thickness - 0.0004,
+            head, slot = chrome_screw(
+                (
+                    self.thickness + 0.0007,
                     0.0,
                     sign * (self.plate_h / 2 - 0.008),
                 ),
-                radius=0.0009,
-                segments=3,
-                name="wallplug_screw",
+                name=f"wallplug_screw_{sign}",
             )
-            assign(screw, screw_mat)
-            parts.append(screw)
+            assign(head, screw_mat)
+            assign(slot, slot_dark)
+            parts.extend((head, slot))
 
         obj = join_objects(parts)
         obj.name = f"WallPlugFactory({self.factory_seed}).socket"

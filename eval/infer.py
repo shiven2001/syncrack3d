@@ -1,9 +1,9 @@
 """Load a SynCrack3D crack checkpoint and run it on one RGB image.
 
-predict() upscales the image by TEST_SCALE (1.5, protocol v2) before inference and
+predict() upscales the image by TEST_SCALE (1.5) before inference and
 resizes the class probabilities back, so the class map matches the input size.
 Real hairlines are 1-2 px, thinner than in the training renders; 1.5x was chosen on
-CUBIT and then checked on BuildCrack and BD3. scale=1 is the protocol v1 behaviour.
+CUBIT and then checked on BuildCrack and BD3. scale=1 disables it.
 
 The network is 3-class: U-Net + ResNet-34 by default, or the architecture named
 in an arch.json beside the checkpoint (ARCHS). Class 1 is crack. Class 2 is not

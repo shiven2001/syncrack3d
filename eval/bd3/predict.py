@@ -1,4 +1,4 @@
-"""Write BD3 class-map predictions for every checkpoint seed (protocol v2: 1.5x upscaling).
+"""Write BD3 class-map predictions for every checkpoint seed (1.5x upscaling).
 
     python eval/bd3/predict.py --model path/to/checkpoint_dir [--scale 1.5] [--out-name pred_v2]
 
@@ -24,7 +24,7 @@ HERE = Path(__file__).resolve().parent
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", type=Path, required=True, help="directory containing runs/s*/last.pt")
-    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
+    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (1: none)")
     ap.add_argument("--out-name", default="pred_v2")
     args = ap.parse_args()
     import torch

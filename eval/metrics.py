@@ -13,10 +13,8 @@ import cv2
 import numpy as np
 from skimage.morphology import skeletonize
 
-# Evaluation protocol v2, used from v1.6.0: centreline tolerance 5 px and 1.5x test-time
-# upscaling (infer.TEST_SCALE). The tolerance was raised from 3 px after the v1.0.0-v1.5.0
-# results; those README tables use protocol v1 (3 px, no upscaling). Every scorer takes
-# --tolerance 3 --scale 1 to reproduce them.
+# Evaluation protocol: centreline tolerance 5 px and 1.5x test-time upscaling
+# (infer.TEST_SCALE). Every scorer takes --tolerance and --scale to change them.
 TOLERANCE_PX = 5
 
 

@@ -37,6 +37,21 @@ def shade_smooth(obj):
     return obj
 
 
+def chrome_screw(location, name="screw"):
+    """A raised slotted screw head on a plate that faces +X. Returns (head, slot)."""
+    head = cylinder(
+        0.0027, 0.0018, location=location, rotation=(0.0, math.pi / 2, 0.0), name=name
+    )
+    shade_smooth(head)
+    x, y, z = location
+    slot = box(
+        (0.00045, 0.0005, 0.0038),
+        location=(x + 0.00075, y, z),
+        name=name + "_slot",
+    )
+    return head, slot
+
+
 def solid_material(name, color, roughness=0.35, metallic=0.0):
     """Predictable Principled material; ``color`` is RGB or RGBA in 0–1."""
     if len(color) == 3:

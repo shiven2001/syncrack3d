@@ -114,7 +114,7 @@ def _sample_positions(rng, plan, width_m, height_m, count, keepout=(), near=(), 
     """Rejection-sample non-overlapping card centres on the wall face.
 
     `keepout` and `near` are wall rectangles (u, v, w, h) from the fixtures
-    planned first (--layout-order fixtures-first). A centre may not fall within
+    planned first. A centre may not fall within
     a keep-out rectangle grown by 0.3 of the largest token size plus 3 cm, so a
     crack is never mostly under a window frame, door leaf or socket plate. With
     probability `near_fraction` a token is instead tried beside a `near`
@@ -174,8 +174,6 @@ def build_defects(
     wall: bpy.types.Object,
     rng: random.Random,
     plan: DefectPlan | None = None,
-    legacy_names: bool = False,
-    axis_snap: float = 0.0,
     keepout=(),
     near=(),
     near_fraction: float = 0.0,
@@ -208,22 +206,11 @@ def build_defects(
         card.scale = (size / longest,) * 3
 
         spin = rng.uniform(0.0, 2.0 * math.pi)
-        # axis_snap of the cards run along a wall axis, like cracks at panel
-        # joints and floor lines. Own RNG, so the scene stream is unchanged.
-        snap = random.Random(factory_seed ^ 0x534E4150)
-        if snap.random() < axis_snap:
-            spin = snap.choice((0.0, 0.5, 1.0, 1.5)) * math.pi + math.radians(snap.gauss(0.0, 2.0))
         card.rotation_euler = (spin, 0.0, _CARD_YAW)
         card.location = (u, -_STANDOFF_M, v)
         # Injection seeds each defect from int_hash(card.name), so the name must
-        # differ between scenes: with the index and class alone, every scene's
-        # defect k of a class had the same shape - 6 per class across all v1
-        # seeds. The per-scene factory seed makes the name, and the shape, unique.
-        card.name = (
-            f"CWG_Defect_{index:02d}_{defect_class}"
-            if legacy_names  # v1 naming, kept only to reproduce it
-            else f"CWG_Defect_{index:02d}_{defect_class}_{factory_seed}"
-        )
+        # differ between scenes; the per-scene factory seed makes it unique.
+        card.name = f"CWG_Defect_{index:02d}_{defect_class}_{factory_seed}"
         card["syndefect_surface"] = "wall"
         card["cwg_defect_class"] = defect_class
         bpy.context.view_layer.update()

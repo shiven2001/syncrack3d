@@ -3,7 +3,7 @@
     python eval/synth/score.py --set OUT --model MODEL_DIR [--save SUMMARY.json]
 
 MODEL_DIR holds runs/s*/last.pt; every seed is scored and results are reported
-as mean ± sd over seeds. Protocol v2, as for BD3, CUBIT and BuildCrack: 1.5x
+as mean ± sd over seeds. Same protocol as BD3, CUBIT and BuildCrack: 1.5x
 test-time upscale (eval/infer.py) and 5 px centreline tolerance
 (eval/metrics.py). Ignore masks are excluded except on crack pixels, as in
 training.

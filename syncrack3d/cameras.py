@@ -99,9 +99,6 @@ def sample_camera_poses(
     distance_clamp_m: tuple[float, float] = (0.22, 3.2),
     preserve_closeup_scale: bool = False,
     aim_jitter: float = 0.0,
-    index_offset: int = 0,
-    closeup_role: str = "closeup",
-    include_context: bool = True,
 ) -> list[CameraPose]:
     """One or more close-ups per crack, plus a share of pulled-back views."""
     poses: list[CameraPose] = []
@@ -110,7 +107,7 @@ def sample_camera_poses(
         raise ValueError("frame_fill_range must satisfy 0 < min <= max <= 2")
     if not 0 <= aim_jitter <= 0.5:
         raise ValueError("aim_jitter must be in [0, 0.5] frame widths")
-    index = index_offset
+    index = 0
 
     for placement in placements:
         for _ in range(closeups_per_defect):
@@ -152,30 +149,19 @@ def sample_camera_poses(
                     math.sin(pitch),
                 )
             ) * distance
-            if closeup_role == "structure":
-                # Boundary trim is near floor/ceiling: keep the camera inside
-                # the usable wall height rather than below the floor or roof.
-                offset.x = max(-spec.width_m*.5+.08, min(spec.width_m*.5-.08, target.x+offset.x)) - target.x
-                yaw = math.atan2(offset.x, -offset.y)
-                offset.z = max(.08, min(spec.height_m - .08, target.z + offset.z)) - target.z
-                distance = offset.length
-                pitch = math.atan2(offset.z, math.hypot(offset.x, offset.y))
             location = target + offset
             roll = rng.uniform(-7.0, 7.0)
-            name = f"CWG_Cam_{index:03d}_{closeup_role}"
+            name = f"CWG_Cam_{index:03d}_closeup"
             cam = _pose_camera(name, tuple(location), tuple(target), roll, collection)
             cam.data.lens = focal_mm
-            cam["cwg_role"] = closeup_role
-            if closeup_role == "closeup":
-                cam["cwg_target_index"] = placement.index
-                cam["syndefect_target"] = placement.object_name
-            else:
-                cam["cwg_structure_target"] = placement.object_name
+            cam["cwg_role"] = "closeup"
+            cam["cwg_target_index"] = placement.index
+            cam["syndefect_target"] = placement.object_name
             poses.append(
                 CameraPose(
                     index=index,
-                    role=closeup_role,
-                    target_index=placement.index if closeup_role == "closeup" else None,
+                    role="closeup",
+                    target_index=placement.index,
                     focal_mm=round(focal_mm, 4),
                     lens_equiv_mm=equiv,
                     distance_m=round(float(distance), 4),
@@ -191,7 +177,7 @@ def sample_camera_poses(
             index += 1
 
     n_context = max(1, int(round(len(poses) * context_view_fraction))) if poses else 2
-    for _ in range(n_context if include_context else 0):
+    for _ in range(n_context):
         focal_mm, equiv = _sample_focal(rng)
         distance = rng.uniform(1.2, 3.4)
         yaw = math.radians(rng.uniform(-max_yaw_deg, max_yaw_deg))
@@ -236,7 +222,7 @@ def sample_camera_poses(
 
 
 def drop_blocked_cameras(poses, wall, near_m: float = 0.35):
-    """Drop views whose lens is jammed against something (--layout-order fixtures-first).
+    """Drop views whose lens is jammed against something (a fixture or the room shell).
 
     A ray along each camera's view axis is cast into the scene, ignoring the
     test wall and the crack cards in front of it. If it hits another object

@@ -6,6 +6,7 @@ from cwg_infinigen.assets.objects.wall_decorations.primitives import (
     assign,
     box,
     plastic_material,
+    chrome_screw,
     rounded_box,
     shade_smooth,
     solid_material,
@@ -60,9 +61,14 @@ class WallSwitchFactory(AssetFactory):
         )
         screw_mat = solid_material(
             f"WallSwitchScrew_{self.factory_seed}",
-            (0.55, 0.55, 0.57),
-            roughness=0.42,
+            (0.82, 0.84, 0.86),
+            roughness=0.12,
             metallic=1.0,
+        )
+        slot_dark = solid_material(
+            f"WallSwitchScrewSlot_{self.factory_seed}",
+            (0.04, 0.04, 0.045),
+            roughness=0.55,
         )
         # Faceplate: generously rounded corners, as moulded plates have.
         plate = rounded_box(
@@ -104,20 +110,17 @@ class WallSwitchFactory(AssetFactory):
             shade_smooth(rocker)
             parts.append(rocker)
         for sign in (-1, 1):
-            # Countersunk fixing screws, sunk just below the plate face.
-            screw = rounded_box(
-                (0.0012, 0.0055, 0.0055),
-                location=(
-                    self.thickness - 0.0004,
+            head, slot = chrome_screw(
+                (
+                    self.thickness + 0.0007,
                     sign * (self.plate_w / 2 - 0.007),
                     0.0,
                 ),
-                radius=0.0008,
-                segments=3,
-                name="wallswitch_screw",
+                name=f"wallswitch_screw_{sign}",
             )
-            assign(screw, screw_mat)
-            parts.append(screw)
+            assign(head, screw_mat)
+            assign(slot, slot_dark)
+            parts.extend((head, slot))
         obj = join_objects(parts)
         obj.name = f"WallSwitchFactory({self.factory_seed}).switch"
         return obj

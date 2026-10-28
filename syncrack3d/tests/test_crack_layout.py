@@ -1,4 +1,4 @@
-"""--layout-order fixtures-first: cracks are placed around fixtures planned first."""
+"""Crack tokens are placed around fixtures planned first."""
 import math
 import random
 
@@ -14,7 +14,7 @@ W, H = 4.0, 2.6
 
 
 def _original(rng, plan, width_m, height_m, count):
-    """The v1.x sampler, verbatim, to pin the no-fixture behaviour."""
+    """The sampler without fixtures, written out, to pin its draws."""
     half_u = max(width_m * 0.5 - 0.22, 0.05)
     lo, hi = 0.22, max(height_m - 0.22, 0.22 + 0.05)
     placed = []
@@ -29,7 +29,7 @@ def _original(rng, plan, width_m, height_m, count):
     return placed
 
 
-def test_without_fixtures_the_draws_are_the_original_ones():
+def test_without_fixtures_the_draws_are_plain_rejection_sampling():
     for seed in range(50):
         a = _sample_positions(random.Random(seed), PLAN, W, H, 3)
         b = _original(random.Random(seed), PLAN, W, H, 3)

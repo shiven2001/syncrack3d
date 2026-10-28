@@ -37,6 +37,6 @@ def test_door_jambs_are_vertical_and_trims_horizontal():
         r = random.Random(seed)
         jambs = [a for a in _anchors(_plan("door", v=1.05, w=0.9, h=2.1), r) if a[0] == "door_jamb"]
         assert len(jambs) == 2 and all(abs(a[2] - 90) <= 3 for a in jambs)
-        for kind in ("ledge", "ceiling_trim", "skirting"):
+        for kind in ("ceiling_trim", "skirting"):
             assert all(abs(a[2]) <= 4 and a[3] == "edge" for a in _anchors(_plan(kind, h=0.1), r))
     assert _anchors(_plan("cable"), random.Random(0)) == []

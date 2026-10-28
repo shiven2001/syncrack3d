@@ -244,23 +244,18 @@ def sample_crack_morphology(seed: int, half: float = 0.14, profile: str = "legac
     )
 
 
-def adapt_crack_morphology(p, *, width_scale=1.0, jitter_scale=1.0,
-                           depth_scale=1.0, fit_path=False):
-    """Explicit injected-field ablation; no new random draws or default drift.
+def adapt_crack_morphology(p, *, width_scale=1.0, depth_scale=1.0, fit_path=False):
+    """Scale width and depth, and optionally fit the path inside its card; no new random draws.
 
     Width changes physical geometry AND its AOV, not just annotation support.
-    Jitter changes high-frequency roughness while retaining the coarse path,
-    kinks, and connected forks. The legacy card factory is left unchanged.
     """
-    if not 0.25 <= width_scale <= 4.0 or not 0 <= jitter_scale <= 2.0:
-        raise ValueError("width_scale must be .25..4 and jitter_scale 0..2")
+    if not 0.25 <= width_scale <= 4.0:
+        raise ValueError("width_scale must be .25..4")
     if not 0.05 <= depth_scale <= 2:
         raise ValueError("depth_scale must be .05..2")
     adjusted = dict(p)
     for key in ("w_min", "w_max", "w_fork_floor", "w_lip"):
         adjusted[key] *= width_scale
-    for key in ("jag_amp", "micro_amp"):
-        adjusted[key] *= jitter_scale
     adjusted["crack_depth"] *= depth_scale
     if fit_path:
         # Noise lies in [-1, 1] after recentering/scaling. Bound the main
@@ -276,16 +271,16 @@ def adapt_crack_morphology(p, *, width_scale=1.0, jitter_scale=1.0,
     return adjusted
 
 
-def adapt_crack_path(p, seed, mode="original"):
-    """Opt-in dimension-normalized broad bends; no global RNG consumption.
+def adapt_crack_path(p, seed, mode="angular"):
+    """Dimension-normalized path knots; no global RNG consumption.
 
-    The old noise frequency is in metres, so a small card can sample a nearly
-    straight portion. Knots span the actual card, with independently bounded
-    fine roughness. This is a morphology hypothesis, not a fracture simulation.
+    The noise frequency of the sampled morphology is in metres, so a small card
+    can sample a nearly straight portion. Knots span the actual card, with
+    independently bounded fine roughness. "angular" is the crack path; "straight"
+    is a near-straight run for cracks along a ledge or trim (junctions.py).
+    This is a morphology hypothesis, not a fracture simulation.
     """
-    if mode == "original":
-        return p
-    if mode not in ("meander", "angular", "straight"):
+    if mode not in ("angular", "straight"):
         raise ValueError(f"Unknown crack path mode: {mode}")
     rng = np.random.default_rng(int(seed) ^ 0x4D45414E)
     if mode == "straight":
@@ -302,31 +297,21 @@ def adapt_crack_path(p, seed, mode="original"):
                     fork_specs=forks, kink_specs=[], crack_offset=0., wander_amp=0.,
                     jag_amp=float(rng.uniform(.002, .006))*p["half_u"], jag_freq=35/max(2*p["half_v"], .01),
                     micro_amp=.002*p["half_u"])
-    if mode == "angular":
-        # Uneven piecewise-linear turns, not smooth periodic strands. Keep
-        # short secondary branches sparse so they do not duplicate the trunk.
-        count = int(rng.integers(10, 22))
-        vs = np.r_[-p["half_v"], np.sort(rng.uniform(-.94, .94, count-2))*p["half_v"], p["half_v"]]
-        x = float(rng.uniform(-.15, .15)*p["half_u"])
-        knots = []
-        for v in vs:
-            x = float(np.clip(x + rng.normal(0, .12)*p["half_u"], -.45*p["half_u"], .45*p["half_u"]))
-            knots.append([float(v), x])
-        forks = [dict(s, length=min(s["length"], float(rng.uniform(.25, .6))*p["half_v"]))
-                 for s in p["fork_specs"][:int(rng.choice([0, 1, 2], p=[.45, .45, .10]))]]
-        return dict(p, path_mode=mode, path_knots=knots, path_interpolation="LINEAR",
-                    fork_specs=forks, kink_specs=[], crack_offset=0., wander_amp=0.,
-                    jag_amp=.012*p["half_u"], jag_freq=35/max(2*p["half_v"], .01),
-                    micro_amp=.003*p["half_u"])
-    count = int(rng.integers(5, 9))
-    x = float(rng.uniform(-.18, .18) * p["half_u"])
+    # Uneven piecewise-linear turns, not smooth periodic strands. Keep short
+    # secondary branches sparse so they do not duplicate the trunk.
+    count = int(rng.integers(10, 22))
+    vs = np.r_[-p["half_v"], np.sort(rng.uniform(-.94, .94, count-2))*p["half_v"], p["half_v"]]
+    x = float(rng.uniform(-.15, .15)*p["half_u"])
     knots = []
-    for v in np.linspace(-p["half_v"], p["half_v"], count):
-        x = float(np.clip(x + rng.uniform(-.28, .28)*p["half_u"], -.42*p["half_u"], .42*p["half_u"]))
+    for v in vs:
+        x = float(np.clip(x + rng.normal(0, .12)*p["half_u"], -.45*p["half_u"], .45*p["half_u"]))
         knots.append([float(v), x])
-    return dict(p, path_mode=mode, path_knots=knots, kink_specs=[], crack_offset=0.,
-                wander_amp=0., jag_amp=min(p["jag_amp"], .015*p["half_u"]),
-                micro_amp=min(p["micro_amp"], .005*p["half_u"]))
+    forks = [dict(s, length=min(s["length"], float(rng.uniform(.25, .6))*p["half_v"]))
+             for s in p["fork_specs"][:int(rng.choice([0, 1, 2], p=[.45, .45, .10]))]]
+    return dict(p, path_mode=mode, path_knots=knots, path_interpolation="LINEAR",
+                fork_specs=forks, kink_specs=[], crack_offset=0., wander_amp=0.,
+                jag_amp=.012*p["half_u"], jag_freq=35/max(2*p["half_v"], .01),
+                micro_amp=.003*p["half_u"])
 
 
 def crack_layer_mode(generator, surface_finish=None) -> str:
@@ -393,18 +378,15 @@ def sample_crack_layer(seed, mode, fraction):
     )
 
 
-def adapt_crack_branches(p, mode="original"):
-    """Opt-in bounded, curved forks; preserve RNG and the parent crack field.
+def adapt_crack_branches(p):
+    """Bounded, curved forks; preserve RNG and the parent crack field.
 
-    Old forks can start outside a small placement card or run into its border.
-    Keep split points inside the parent span and reserve lateral room for the
-    full curved branch plus its maximum half-width. Requires a fitted parent.
-    The shader uses the same returned parameters for geometry and coverage.
+    Split points stay inside the parent span and each branch is shortened to
+    the room left in the card; the sampled branching angle is kept, and the
+    shader bounds the departure using the space next to its actual parent
+    coordinate. Requires a fitted parent. The shader uses the same returned
+    parameters for geometry and coverage.
     """
-    if mode == "original":
-        return p
-    if mode not in ("bounded_curved", "local_curved"):
-        raise ValueError(f"Unknown crack branch mode: {mode}")
     bound = sum(abs(p[k]) for k in
                 ("wander_amp", "jag_amp", "micro_amp", "crack_offset"))
     bound += sum(max(0, p["half_v"] - k["v"]) * abs(k["slope"])
@@ -419,31 +401,20 @@ def adapt_crack_branches(p, mode="original"):
         split = float(np.clip(spec["split"], -.55 * p["half_v"], .55 * p["half_v"]))
         available = .90 * p["half_v"] - split * spec["direction"]
         length = min(spec["length"], available)
-        curvature = .18
-        slope = float(np.clip(spec["slope"], -margin / (length * (1 + curvature)),
-                              margin / (length * (1 + curvature))))
-        if mode == "local_curved":
-            # Keep the sampled branching angle. The shader bounds the departure
-            # using the available space next to its actual parent coordinate.
-            slope = spec["slope"]
-        forks.append(dict(spec, split=split, length=length, slope=slope,
-                          curvature=curvature))
-    return dict(p, fork_specs=forks, branch_mode=mode)
+        forks.append(dict(spec, split=split, length=length, slope=spec["slope"], curvature=.18))
+    return dict(p, fork_specs=forks, branch_mode="local_curved")
 
 
-def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.15, 0.60), edge="square"):
+def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.15, 0.60)):
     """Seeded crazing cells; metric channel radii before coordinate warping.
 
     grime_range scales the channel staining. It only rescales the existing
-    draw, so every other parameter of a seed is unchanged. edge="organic" adds
-    an irregular patch outline from its own RNG stream (see
-    build_crack_network_field); "square" keeps the historical patch."""
+    draw, so every other parameter of a seed is unchanged. The patch has an
+    irregular outline from its own RNG stream (see build_crack_network_field)."""
     if not (np.isfinite(spacing_range).all() and 0 < spacing_range[0] <= spacing_range[1]):
         raise ValueError("network spacing must be positive and ordered")
     if not 0 <= grime_range[0] <= grime_range[1] <= 1:
         raise ValueError("network grime must be ordered within 0..1")
-    if edge not in ("square", "organic"):
-        raise ValueError("network edge must be square or organic")
     rng = np.random.default_rng(int_hash((int(seed), "crack_network_v1")))
     p = dict(
         style="crazing", half_u=half, half_v=half,
@@ -457,14 +428,13 @@ def sample_crack_network(seed, half, spacing_range=(0.02, 0.06), grime_range=(0.
                      offset=rng.uniform(-100, 100, 3).tolist(),
                      grime_strength=float(rng.uniform(*grime_range))),
     )
-    if edge == "organic":
-        er = np.random.default_rng(int_hash((int(seed), "crack_network_edge_v1")))
-        p["network"]["edge"] = dict(
-            aspect=[float(er.uniform(.85, 1.)), float(er.uniform(.85, 1.))],
-            power=float(er.uniform(2.5, 4.)),
-            inner=float(er.uniform(.72, .85)), outer=.95,
-            lobe_scale=float(er.uniform(1.5, 3.)), lobe_amp=float(er.uniform(.10, .22)),
-            offset=er.uniform(-100, 100, 3).tolist())
+    er = np.random.default_rng(int_hash((int(seed), "crack_network_edge_v1")))
+    p["network"]["edge"] = dict(
+        aspect=[float(er.uniform(.85, 1.)), float(er.uniform(.85, 1.))],
+        power=float(er.uniform(2.5, 4.)),
+        inner=float(er.uniform(.72, .85)), outer=.95,
+        lobe_scale=float(er.uniform(1.5, 3.)), lobe_amp=float(er.uniform(.10, .22)),
+        offset=er.uniform(-100, 100, 3).tolist())
     return p
 
 
@@ -472,9 +442,9 @@ def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
     """Warped 2-D Voronoi edges form closed cells with shared junctions.
 
     Distance, width and depth are physical field units, independent of render
-    resolution. Warp slightly changes local opening width. Border taper bounds
-    the patch, or with an organic edge the line width tapers to zero inside
-    an irregular outline; its AOV follows that exact same field.
+    resolution. Warp slightly changes local opening width. The line width
+    tapers to zero inside an irregular outline; its AOV follows that exact
+    same field.
     """
     node, math, remap, noise = _nodes(nt)
     cfg = p["network"]
@@ -502,30 +472,27 @@ def build_crack_network_field(nt, coord_socket, p, u_idx="X", v_idx="Y"):
     nt.links.new(warped.outputs["Vector"], cells.inputs["Vector"])
     width = remap(noise(xy.outputs["Vector"], 2.3, 2.), .2, .8, p["w_min"], p["w_max"], "SMOOTHSTEP")
     distance = math("MULTIPLY", cells.outputs["Distance"], spacing)
-    edge = cfg.get("edge")
-    if edge:
-        # Irregular outline instead of the square patch: a rounded-square
-        # (superellipse) radius pushed inwards by low-frequency noise
-        # (one-sided, so the patch stays inside the card). Lines narrow to
-        # nothing in a band near it, so cells end in tapering cracks rather
-        # than at a straight border.
-        rad = node("ShaderNodeCombineXYZ")
-        radius = None
-        for axis, source, half, a in zip(("X", "Y"), (u_idx, v_idx), (p["half_u"], p["half_v"]), edge["aspect"]):
-            c = math("DIVIDE", sep.outputs[source], half * a)
-            nt.links.new(c, rad.inputs[axis])
-            term = math("POWER", math("ABSOLUTE", c), edge["power"])
-            radius = term if radius is None else math("ADD", radius, term)
-        radius = math("POWER", radius, 1. / edge["power"])
-        shifted = node("ShaderNodeVectorMath", operation="ADD")
-        nt.links.new(rad.outputs["Vector"], shifted.inputs[0])
-        shifted.inputs[1].default_value = edge["offset"]
-        lobes = math("MULTIPLY", noise(shifted.outputs["Vector"], edge["lobe_scale"], 2.), edge["lobe_amp"])
-        fade = remap(math("ADD", radius, lobes), edge["inner"], edge["outer"], 1., 0., "SMOOTHSTEP")
-        width = math("MAXIMUM", math("MULTIPLY", width, fade), 1e-9)
+    edge = cfg["edge"]
+    # Irregular outline: a rounded-square (superellipse) radius pushed inwards
+    # by low-frequency noise (one-sided, so the patch stays inside the card).
+    # Lines narrow to nothing in a band near it, so cells end in tapering
+    # cracks rather than at a straight border.
+    rad = node("ShaderNodeCombineXYZ")
+    radius = None
+    for axis, source, half, a in zip(("X", "Y"), (u_idx, v_idx), (p["half_u"], p["half_v"]), edge["aspect"]):
+        c = math("DIVIDE", sep.outputs[source], half * a)
+        nt.links.new(c, rad.inputs[axis])
+        term = math("POWER", math("ABSOLUTE", c), edge["power"])
+        radius = term if radius is None else math("ADD", radius, term)
+    radius = math("POWER", radius, 1. / edge["power"])
+    shifted = node("ShaderNodeVectorMath", operation="ADD")
+    nt.links.new(rad.outputs["Vector"], shifted.inputs[0])
+    shifted.inputs[1].default_value = edge["offset"]
+    lobes = math("MULTIPLY", noise(shifted.outputs["Vector"], edge["lobe_scale"], 2.), edge["lobe_amp"])
+    fade = remap(math("ADD", radius, lobes), edge["inner"], edge["outer"], 1., 0., "SMOOTHSTEP")
+    width = math("MAXIMUM", math("MULTIPLY", width, fade), 1e-9)
     prof = math("SUBTRACT", 1., math("DIVIDE", distance, width), clamp=True)
-    if edge:
-        prof = math("MULTIPLY", prof, remap(fade, 0., .1, 0., 1.))
+    prof = math("MULTIPLY", prof, remap(fade, 0., .1, 0., 1.))
     for axis, half in ((u_idx, p["half_u"]), (v_idx, p["half_v"])):
         prof = math("MULTIPLY", prof, remap(math("ABSOLUTE", sep.outputs[axis]), .90 * half, half, 1., 0., "SMOOTHSTEP"))
     return prof

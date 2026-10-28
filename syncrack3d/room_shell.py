@@ -162,8 +162,9 @@ def build_room_shell(spec, plan: ShellPlan) -> list:
 # --shell-finish matched. The plain shell above gives every room grey side walls
 # beside a coloured or tiled test wall, so the one textured surface in frame is
 # always the one with cracks. Here the side walls usually carry the test wall's
-# own finish (a crack-free copy made before injection), otherwise a different
-# paint; the floor gets an Infinigen floor material. The ceiling stays plain.
+# own finish (a crack-free copy made before injection), otherwise both get one
+# other inspection-wall category; the floor gets an Infinigen floor material.
+# The ceiling stays plain.
 SHELL_FINISHES = ("plain", "matched")
 MATCH_PROBABILITY = 0.7
 FLOOR_GENERATORS = (
@@ -195,8 +196,11 @@ def _metric_uv_xy(obj) -> None:
             uv.data[li].uv = (co.x, co.y)
 
 
-def apply_matched_finish(built, wall, seed: int) -> dict:
+def apply_matched_finish(built, wall, seed: int, allowed=None) -> dict:
     """Give the side walls and floor real finishes. Returns the record.
+
+    Side walls that do not copy the test wall share one material from another
+    of the inspection-wall categories (`allowed`, default all of them).
 
     Draws from its own streams and restores numpy's global state and the
     test wall's paint parameters afterwards, so the wall, cracks, cameras and
@@ -210,7 +214,7 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
 
     from cwg_infinigen.core import surface
     from cwg_infinigen.core.util.math import int_hash
-    from syncrack3d.material_diversity import PAINT_PARAMS, _metric_uv, apply_diverse_wall_material
+    from syncrack3d.material_diversity import CATEGORIES, PAINT_PARAMS, _metric_uv, apply_wall_material
 
     r = random.Random(int_hash((seed, "shell_finish")))
     np_state, py_state = np.random.get_state(), random.getstate()
@@ -227,10 +231,13 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
                 material.name = "CWG_Shell_Return_Matched"
                 record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category")}
             else:
-                category = r.choice(("paint_neutral", "paint_colour", "paint_colour_mid"))
-                apply_diverse_wall_material(returns[0], r.randrange(1, 2**31), forced=category)
+                own = wall.get("cwg_material_category")
+                others = [c for c in (allowed or CATEGORIES) if c != own] or list(allowed or CATEGORIES)
+                category = r.choice(others)
+                generator, _finish, _rec = apply_wall_material(returns[0], r.randrange(1, 2**31), forced=category)
                 material = returns[0].data.materials[0]
-                record["returns"] = {"source": "paint", "category": category}
+                material.name = "CWG_Shell_Return_Other"
+                record["returns"] = {"source": "other_category", "category": category, "generator": generator}
             # Side walls are never photographed at crack distance: bump, no subdivision.
             material.displacement_method = "BUMP"
             for obj in returns:

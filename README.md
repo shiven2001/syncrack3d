@@ -2,506 +2,15 @@
 
 Procedural cracks on painted, plastered and masonry walls, rendered in Blender
 Cycles with pixel-exact crack labels, instance masks, boxes and COCO
-annotations. This app generates cracks only. Paint peeling and blistering
-are not part of SynCrack3D.
-
-## v1.0.0 on BD3
-
-Zero-shot scores for the crack model trained on 204 walls (17 materials × 12,
-seeds 120000–120331). U-Net ResNet34, five seeds, final checkpoints. These
-photos were inspected while the generator was designed, so the numbers are a
-development score. Crack IoU counts only pixels predicted as crack. Centreline
-F1 is pooled at a 3-pixel tolerance.
-
-| set | photos | crack IoU | centreline F1 | precision | recall | clDice |
-|---|---:|---:|---:|---:|---:|---:|
-| minor cracks | 487 | 0.551 | 0.864 | 0.958 | 0.788 | 0.839 |
-| major cracks | 358 | 0.339 | 0.765 | 0.969 | 0.633 | 0.741 |
-
-On 355 plain walls the minor-crack model’s false-alarm rate is 0.002. A plain
-photo counts as an alarm when predicted crack pixels exceed 0.1% of the image.
-The BD3 photo files used for these scores are not included in this repository.
-v1.1.0 left this checkpoint in place. v1.2.0 replaces it; see below.
-
-## v1.1.0 major-crack profile
-
-`--crack-profile major` and `mixed` are in this version. The default stays
-`legacy`, so existing seeds keep their morphology. Geometry and labels share
-the same crack field. A 52-wall major batch (13 materials × 4, seeds
-140000–140123, 210 views) was added to the 1,702-view v1.0.0 set and trained
-with the same 4,000-step, five-seed recipe.
-
-BD3, mean of five seeds. Minor cracks did not improve. Major cracks did.
-
-| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
-|---|---:|---|---:|---:|---:|---:|---:|
-| minor | 487 | v1.0.0 | 0.551 | 0.864 | 0.958 | 0.788 | 0.839 |
-| minor | 487 | v1.1.0 mix | 0.547 | 0.864 | 0.960 | 0.786 | 0.838 |
-| major | 358 | v1.0.0 | 0.339 | 0.765 | 0.969 | 0.633 | 0.741 |
-| major | 358 | v1.1.0 mix | 0.449 | 0.842 | 0.968 | 0.745 | 0.817 |
-
-Plain-wall false alarms stayed about 0.001–0.002.
-
-CUBIT-InSeg, zero-shot, 1/3 scale (1500×1000), mean of five seeds. The local
-copy has no labelled test folder, so this is 126 CR1 crack photos and 272
-labelled photos in total (146 of them spalling). Spalling polygons are ignored.
-This is not an official CUBIT test split. The v1.1.0 mix scores slightly below
-v1.0.0 because it predicts more false crack. Recall is about the same.
-
-| metric | CR1 v1.0.0 | CR1 v1.1.0 | difference | all labelled v1.0.0 | all labelled v1.1.0 | difference |
-|---|---:|---:|---|---:|---:|---|
-| centreline F1 at 3 px | 0.818 | 0.807 | −0.011 [−0.017, −0.004] | 0.757 | 0.741 | −0.016 [−0.024, −0.007] |
-| precision | 0.945 | 0.922 | −0.023 [−0.032, −0.015] | 0.797 | 0.766 | −0.031 [−0.045, −0.019] |
-| recall | 0.723 | 0.719 | −0.004 | 0.723 | 0.719 | −0.004 |
-| clDice | 0.771 | 0.758 | −0.012 | 0.711 | 0.695 | −0.017 |
-| crack IoU | 0.434 | 0.418 | −0.016 | 0.381 | 0.361 | −0.020 |
-
-At full resolution the CR1 F1 drop is larger: 0.767 versus 0.790. Only 2 of 5
-mix seeds beat the v1.0.0 mean F1, and the photo-only 95% intervals leave out
-seed variation, so the F1 gap is weak. The precision drop is consistent: all 5
-mix seeds fall below the v1.0.0 mean. Spalling photos with a false crack rise
-from 46% to 50%. The extra major-crack renders make the model fire more on
-dark edges and on rough spalling or concrete. For a crack-only claim, the
-v1.0.0 model was the better zero-shot checkpoint than this mix. The mix helps
-wide cracks, which these CUBIT CR1 photos mostly do not contain.
-
-## v1.2.0 host-gated coating edge
-
-Paint and plaster still get the torn film: lips and 1.5–4 mm chips. Stucco
-gets a thicker broken coat and no lifted lip. Brick, stone, concrete, tile
-and marble stay a groove in the same material. The v1.1.0 training mix was
-retrained after replacing those 577 views at the same seeds. Paint views were
-left as released. Same 1,912 views and 4,000-step, five-seed budget.
-
-BD3, mean of five seeds. Minor cracks improved. Major cracks stayed with the
-v1.1.0 mix.
-
-| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
-|---|---:|---|---:|---:|---:|---:|---:|
-| minor | 487 | v1.0.0 | 0.551 | 0.864 | 0.958 | 0.788 | 0.839 |
-| minor | 487 | v1.1.0 mix | 0.547 | 0.864 | 0.960 | 0.786 | 0.838 |
-| minor | 487 | v1.2.0 | 0.566 | 0.880 | 0.951 | 0.819 | 0.853 |
-| major | 358 | v1.0.0 | 0.339 | 0.765 | 0.969 | 0.633 | 0.741 |
-| major | 358 | v1.1.0 mix | 0.449 | 0.842 | 0.968 | 0.745 | 0.817 |
-| major | 358 | v1.2.0 | 0.443 | 0.839 | 0.962 | 0.745 | 0.814 |
-
-Plain-wall false alarms are 0.002, the same rate as v1.0.0.
-
-CUBIT-InSeg, same 1/3-scale setting as above. Crack F1 is above both earlier
-checkpoints. The gain is recall. Precision is level with v1.1.0 and below
-v1.0.0. Spalling photos with a false crack are 50%, matching v1.1.0 and above
-v1.0.0’s 46%.
-
-| metric | CR1 v1.0.0 | CR1 v1.1.0 | CR1 v1.2.0 | all labelled v1.2.0 |
-|---|---:|---:|---:|---:|
-| centreline F1 at 3 px | 0.818 | 0.807 | 0.829 | 0.756 |
-| precision | 0.945 | 0.922 | 0.918 | 0.758 |
-| recall | 0.723 | 0.719 | 0.756 | 0.756 |
-| clDice | 0.771 | 0.758 | 0.778 | 0.709 |
-| crack IoU | 0.434 | 0.418 | 0.431 | 0.369 |
-
-The CR1 F1 difference versus v1.1.0 is +0.022 [+0.016, +0.028], and versus
-v1.0.0 is +0.011 [+0.003, +0.019]. Four of five seeds beat each earlier mean.
-The precision difference versus v1.0.0 is −0.027 [−0.039, −0.016]. At full
-resolution CR1 F1 is 0.789, matching v1.0.0 (0.790) and above v1.1.0 (0.767).
-v1.2.0 is the recommended zero-shot checkpoint: it keeps the major-crack gain
-and improves minor cracks and CUBIT crack F1. The remaining gap versus v1.0.0
-is CUBIT precision, not missed crack.
-
-## v1.3.0 more views in the v1.2.0 mix, plus stone block and large tile cracks
-
-The 1,912 v1.2.0 views are kept, and 169 views are added (138 with a crack,
-31 without), for 2,081 views. 133 come from 30 walls in the v1.2.0 material
-mix (seeds 176000–176029). 36 come from 8 cracked stone block and large tile
-walls (seeds 176030–176037), the first cracks on those hosts. All use the
-legacy profile and the angular path. Same 4,000-step, five-seed budget. The
-recipe, seeds and the exact view list are in `releases/v1.3.0_added_views.json`.
-
-Wood and irregular stone are now never cracked. Cracks on wood, stone block,
-large tile and irregular stone as the whole 169-view addition cost CUBIT crack
-F1 (−0.013) and BuildCrack F1 (−0.035). The same count of near-straight
-cracks (`--crack-path-mode straight`) also lowered CUBIT F1 (−0.015) and BD3
-recall. Both stay opt-in experiments, not part of v1.3.0.
-
-BD3, mean of five seeds. Intervals resample duplicate groups and seeds.
-
-| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
-|---|---:|---|---:|---:|---:|---:|---:|
-| minor | 487 | v1.2.0 | 0.566 | 0.880 | 0.951 | 0.819 | 0.853 |
-| minor | 487 | v1.3.0 | 0.573 | 0.883 | 0.961 | 0.817 | 0.857 |
-| major | 358 | v1.2.0 | 0.443 | 0.839 | 0.962 | 0.745 | 0.814 |
-| major | 358 | v1.3.0 | 0.438 | 0.832 | 0.970 | 0.729 | 0.807 |
-
-Minor-crack IoU +0.006 [−0.010, +0.025] and precision +0.010 [+0.002, +0.021].
-Plain-wall false alarms are 0.001.
-
-CUBIT-InSeg at 1/3 scale. CR1 F1 +0.007 [+0.002, +0.012] and recall +0.015
-[+0.007, +0.023]; all five seeds beat the v1.2.0 recall mean. Spalling photos
-with a false crack are 49%.
-
-| metric | CR1 v1.2.0 | CR1 v1.3.0 | all labelled v1.2.0 | all labelled v1.3.0 |
-|---|---:|---:|---:|---:|
-| centreline F1 at 3 px | 0.829 | 0.836 | 0.756 | 0.765 |
-| precision | 0.918 | 0.913 | 0.758 | 0.760 |
-| recall | 0.756 | 0.771 | 0.756 | 0.771 |
-| clDice | 0.778 | 0.784 | 0.709 | 0.715 |
-| crack IoU | 0.431 | 0.431 | 0.369 | 0.374 |
-
-BuildCrack (355 positive tiles, source photos resampled): seed-mean F1 0.525
-versus 0.516 for v1.2.0 (+0.009 [−0.053, +0.078]); empty-tile alarms fall
-from 6.7% to 0%.
-
-Held-out synthetic walls (6 unseen walls, seeds 176040–176045): stone block
-crack recall 0.60 versus 0.50 for v1.2.0. Large tile was already 0.97. These
-13 and 14 cracked views are a small test.
-
-Without the stone block and large tile views, the same addition scores a
-little higher on real photos (BD3 minor IoU 0.583, CUBIT CR1 F1 0.843) but
-finds fewer stone block cracks (0.53). v1.3.0 keeps the stone block cracks.
-Superseded by v1.4.0. BD3, CUBIT and BuildCrack have all been used to choose
-between versions, so they are development scores.
-
-## v1.4.0 crack networks (crazing)
-
-The 2,081 v1.3.0 views are kept and 162 are added (131 with a crack, 31
-without), for 2,243 views. They come from 30 paint and stucco walls (seeds
-177000–177025 and 177030–177033) rendered with `--crack-profile network
---crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1`. A
-cracked view is kept only when its labelled lines are at least 3% darker than
-the wall 2–4 px beside them; 13 of 153 were dropped. Same 4,000-step,
-five-seed budget. The recipe, seeds and view list are in
-`releases/v1.4.0_added_views.json`.
-
-Why: on BuildCrack, v1.3.0 found 13% of the crack length on the 49 drone
-tiles. Most of it is dense hairline crazing on painted render, a pattern no
-earlier version rendered.
-
-### Study
-
-Each arm adds 131 cracked and 31 plain views to v1.3.0, from walls rendered
-twice at the same seeds (same lights, cameras and defect positions). Five
-seeds each. The choice rule was fixed before the last arm was scored: the
-largest mean gain over v1.3.0 in BD3 minor IoU, CUBIT CR1 F1 and BuildCrack
-F1; within 0.005, fewer BD3 plain-wall false alarms.
-
-| arm | added cracks | BD3 minor IoU | CUBIT CR1 F1 | BuildCrack F1 | drone-tile F1 | BD3 plain alarms | CUBIT spalling false crack |
-|---|---|---:|---:|---:|---:|---:|---:|
-| v1.3.0 | – | 0.573 | 0.836 | 0.525 | 0.22 | 0.001 | 49% |
-| control | v1.3.0 cracks, paint, stucco and concrete | 0.579 | 0.840 | 0.517 | 0.26 | 0.006 | 53% |
-| faint networks | default staining (.15–.60), every wall | 0.592 | 0.843 | 0.590 | 0.57 | 0.020 | 69% |
-| faint, half dose | faint networks on even seeds, control cracks on odd | 0.593 | 0.864 | 0.634 | 0.49 | 0.017 | 67% |
-| **visible networks (v1.4.0)** | staining .8–1, ≥3% contrast, paint and stucco | **0.607** | 0.861 | 0.612 | **0.59** | 0.016 | 68% |
-| visible, half dose | visible networks on even seeds, control cracks on odd | 0.597 | 0.862 | 0.602 | 0.49 | 0.007 | 58% |
-
-Mean gains are 0.052 (faint, half dose), 0.049 (visible), 0.042 (visible,
-half dose) and 0.030 (faint). The first two are within 0.005, and visible
-networks have fewer plain-wall alarms. The control shows that 162 more
-ordinary crack views change nothing, so the gain comes from the networks.
-
-With default staining the networks are 2–4% darker than the wall at 640 px,
-close to invisible. BuildCrack's drone crazing is about 4–8%.
-`--crack-network-grime .8 1` gives 4–8% on paint and stucco and, against
-faint networks, raises BD3 IoU by +0.015 [+0.007, +0.024] and CUBIT CR1 F1
-by +0.019 [+0.015, +0.024]. On concrete the networks stayed invisible, so
-v1.4.0 has none there.
-
-Every network arm trades precision for recall. Raising the decision
-threshold does not buy it back: at 0.95 the faint-network arm reaches CUBIT
-precision 0.846 against v1.3.0's 0.913. Where false alarms cost more than
-missed cracks, the visible half-dose arm has half the BD3 plain-wall alarms
-of v1.4.0 for a smaller gain, and v1.3.0 has the fewest.
-
-### v1.4.0 against v1.3.0
-
-BD3, mean of five seeds. Intervals resample duplicate groups and seeds.
-
-| set | photos | model | crack IoU | centreline F1 | precision | recall | clDice |
-|---|---:|---|---:|---:|---:|---:|---:|
-| minor | 487 | v1.3.0 | 0.573 | 0.883 | 0.961 | 0.817 | 0.857 |
-| minor | 487 | v1.4.0 | 0.607 | 0.902 | 0.931 | 0.875 | 0.880 |
-| major | 358 | v1.3.0 | 0.438 | 0.832 | 0.970 | 0.729 | 0.807 |
-| major | 358 | v1.4.0 | 0.454 | 0.849 | 0.944 | 0.772 | 0.824 |
-
-Minor IoU +0.034 [+0.024, +0.045], F1 +0.019 [+0.007, +0.031], precision
-−0.030 [−0.044, −0.018]. Plain-wall false alarms rise from 0.001 to 0.016
-(+0.015 [+0.004, +0.027]), about 6 of 355 photos. Some of those alarms
-follow faint lines that may be unlabelled hairlines.
-
-CUBIT-InSeg at 1/3 scale. CR1 F1 +0.025 [+0.011, +0.039]; all five seeds
-beat the v1.3.0 mean. On all labelled photos F1 falls, −0.027 [−0.047,
-−0.007], because spalling photos with a false crack rise from 49% to 68%.
-
-| metric | CR1 v1.3.0 | CR1 v1.4.0 | all labelled v1.3.0 | all labelled v1.4.0 |
-|---|---:|---:|---:|---:|
-| centreline F1 at 3 px | 0.836 | 0.861 | 0.765 | 0.738 |
-| precision | 0.913 | 0.839 | 0.760 | 0.634 |
-| recall | 0.771 | 0.885 | 0.771 | 0.885 |
-| clDice | 0.784 | 0.810 | 0.715 | 0.691 |
-| crack IoU | 0.431 | 0.453 | 0.374 | 0.359 |
-
-BuildCrack (355 positive tiles, source photos resampled): seed-mean F1 0.612
-versus 0.525 (+0.088 [+0.030, +0.149]); 5-seed vote F1 +0.101 [+0.048,
-+0.161]. Precision 0.784 versus 0.850, recall 0.504 versus 0.380. Drone tiles
-F1 0.59 versus 0.22, other tiles 0.62 versus 0.58. Empty-tile alarms stay 0%.
-
-Superseded by v1.5.0. It finds more cracks on all three benchmarks than
-v1.3.0, at the cost of more false cracks on plain and spalled walls. All
-three benchmarks have been used to choose between versions, so these are
-development scores.
-
-## v1.5.0 structures beside the v1.4.0 crack networks
-
-The 2,081 v1.3.0 views stay. The same 162 v1.4.0 network views are
-**replaced**, not added: the 30 paint and stucco walls are re-rendered from
-the same seeds and cameras with `--structures auto` (105 indoor background
-assemblies in total). Training stays at 2,243 views with the same crack
-mix. Structures hide 6% of the crack pixels and fully cover the crack in 4
-views, so the swap has 953 cracked views instead of 957. Exact stems:
-`releases/v1.5.0_added_views.json`. Checkpoint:
-`outputs/domain_transfer/syncrack3d_netstruct_bd3_v1`.
-
-Confound: with structures on indoors the generator also closes the room
-(side walls and a ceiling), which changes the lighting. A second control
-re-renders the same walls in the same closed room with no structures
-(`outputs/domain_transfer/syncrack3d_closedroom_bd3_v1`).
-
-### Study
-
-| | v1.4.0 | Closed room only | Structures swap | Swap − closed room [95%] |
-|---|---:|---:|---:|---|
-| BD3 minor-crack IoU | 0.607 | 0.606 | 0.605 | −0.001 (n.s.) |
-| BD3 plain-wall false alarms | 1.6% | 2.1% | 2.0% | n.s. |
-| CUBIT crack-photo F1 | 0.861 | 0.864 | 0.860 | −0.004 [−0.006, −0.001] |
-| CUBIT spalling photos with false crack | 68% | 67% | 66% | |
-| BuildCrack F1 | 0.612 | 0.628 | 0.613 | −0.015 (n.s.) |
-| BuildCrack precision | 0.784 | 0.784 | 0.812 | +0.028 [−0.007, +0.065] |
-| Crack-free walls with fixtures: views with a false alarm | 43% | 37.5% | 24% | |
-| Crack-free walls with fixtures: false-crack area | 0.29% | 0.22% | 0.10% | |
-
-n.s. = 95% interval includes zero. The last two rows are 56 held-out
-crack-free synthetic views with doors, sockets, switches, vents, cables,
-pipes, gutters, hatches and lights (`syncrack3d_structure_fp_probe_v1.json`);
-none of those walls were used in training.
-
-BD3, CUBIT and BuildCrack F1 stay within noise of v1.4.0. Swapping instead
-of adding avoided diluting the crack networks. Against the closed-room
-control the only significant change is a −0.004 dip in CUBIT F1. On the
-clutter probe, comparing closed room alone to the swap isolates the
-assemblies: false-alarm views fall from 37.5% to 24%, and false-crack area
-falls about 2×. About a third of the gain versus v1.4.0 comes from the
-closed room, which this design keeps because structures always come with
-it. BuildCrack precision edges up (+0.028, borderline).
-
-Caveats: the clutter test is small and synthetic, so it shows the model
-learned to ignore these fixtures on generator walls, not that it will on
-real photos. BD3 plain-wall false alarms and CUBIT spalling false cracks
-are untouched. The real benchmarks barely contain clutter, apart from
-BuildCrack's cable labels, so they cannot reward the structures.
-
-v1.5.0 is the checkpoint for that structures swap: v1.4.0's crack accuracy
-with fewer false alarms around fixtures, cables and frames. BD3, CUBIT and
-BuildCrack remain development scores. v1.6.0 re-shades eight materials on
-this same training list. v1.7.0 is the recommended checkpoint; see below.
-
-## v1.6.0 material shading
-
-Same 2,243 views, same seeds. Eight materials were re-rendered (1,019
-views): brick, cobble, concrete, large tile, marble, rubble, sandstone and
-small tile. The other views are untouched. All 138 re-rendered walls matched
-the originals on cameras, cracks, lights and room, so the shader edits kept
-the random draws aligned. Cracked views per material stay the same except
-cobble (39 to 38) and rubble (41 to 44).
-
-Joints, dirt and grain sit on the existing Cycles displacement. Brick and
-sandstone take a dirt amount from none to a light coat. Cobble drops the
-round dome on each stone and puts soil in the joints. Concrete keeps its
-chunks and adds a fine grain across the face. Large-tile grout is cement,
-plaster or resin, and the glaze can be white, cream, gray or a colour.
-Marble veins stay a little clearer. Rubble joints are soil, and the chip
-waves are shading rather than extra displacement. On small tile the crack
-used to replace the grout recess, so the joint was only a darker line; the
-crack now adds onto a shallow cement joint.
-
-A 5-seed retrain of that set, against v1.5.0:
-
-| | v1.5.0 | New textures | Difference |
-|---|---:|---:|---|
-| BD3 minor-crack IoU | 0.605 | 0.602 | −0.003 (n.s.) |
-| BD3 plain-wall false alarms | 2.0% | 1.5% | n.s. |
-| CUBIT crack-photo F1 | 0.860 | 0.862 | +0.002 (n.s.); recall +0.007 ✓ |
-| CUBIT spalling photos with false crack | 66% | 70% | |
-| BuildCrack F1 (mean of seeds) | 0.613 | 0.630 | +0.018 (n.s.) |
-| BuildCrack F1 (5-seed vote) | 0.626 | 0.647 | +0.022 ✓ |
-| BuildCrack empty-tile false alarms | 0% | 13% | 2 of 15 checks, on 3 empty tiles |
-| Crack-free walls with the new textures: views with a false alarm | 10.1% | 8.3% | |
-| …on marble | 49% | 28% | |
-| …on large tile / concrete | 3% / 8% | 9% / 11% | |
-
-n.s. = 95% interval includes zero; ✓ = significant gain.
-
-BD3 and CUBIT stay level. BuildCrack's 5-seed vote is a small significant
-gain. Marble improves most: the old model false-alarmed on half the new
-marble walls, because the sharper veins look like cracks, and training on
-the new marble halves that. False cracks on CUBIT spalling photos rise from
-66% to 70%, and false alarms on the new large tile and concrete rise
-slightly. The empty-tile 13% is 2 alarms out of 15 checks. The last three
-rows are 150 views of 16 unseen synthetic walls (2 per material) with the
-new textures: a small synthetic check, not real-world evidence. No new
-checkpoint is published for the texture change alone; these scores are that
-5-seed check. v1.7.0 is the recommended checkpoint.
-
-## v1.7.0 organic networks
-
-The v1.6.0 textures stay. The same 162 network views were re-rendered from
-the same seeds and cameras with `--crack-network-edge organic
---crack-network-extent 1.4`, then trained for 5 seeds and compared with the
-new-texture model whose networks are still square. Extent scales only the
-network field. The crack cards and the cameras stay the same. At extent 1
-an organic patch kept 57% of the square patch's crack length; at 1.4 it
-keeps 95%. Checkpoint:
-`outputs/domain_transfer/syncrack3d_netorgx_bd3_v1/`.
-
-| | New textures, square networks | Organic ×1.4 | Difference |
-|---|---:|---:|---|
-| BD3 minor-crack IoU | 0.601 | 0.606 | +0.006 (n.s.) |
-| BD3 plain-wall false alarms | 1.7% | 1.2% | n.s. |
-| CUBIT crack-photo F1 | 0.862 | 0.863 | +0.001 (n.s.) |
-| CUBIT spalling photos with false crack | 70% | 72% | |
-| BuildCrack F1 (mean of seeds) | 0.630 | 0.633 | +0.002 (n.s.) |
-| BuildCrack F1 (5-seed vote) | 0.647 | 0.649 | +0.001 (n.s.) |
-| BuildCrack drone tiles F1 | 0.616 | 0.619 | |
-| BuildCrack seed spread | 0.093 | 0.058 | |
-
-n.s. = 95% interval includes zero.
-
-The earlier organic drop was less crack, not the outline. With the crack
-length matched, the two tie on every benchmark. Most rows lean slightly
-toward organic, and none of the differences are significant. Organic is the
-default for new data: no square edges, and no measurable cost. Square with
-extent 1 remains the way to reproduce v1.4.0–v1.5.0.
-
-Against v1.5.0, textures plus organic networks keep BD3 and CUBIT level and
-raise BuildCrack's 5-seed vote from 0.626 to 0.649. The marble false-alarm
-drop (49% to 28%) is the texture change from the v1.6.0 check.
-
-## v1.8.0 facade junction cracks and rain-wash staining
-
-The 38 walls v1.3.0 added (seeds 176000–176037, 169 views) are re-rendered as
-outdoor facades with facade structures (windows, ledges, vents, hatches,
-downpipes). Half of their cracks are moved to junctions with
-`--crack-junction-fraction .5`: diagonal from opening corners, and along the
-undersides and tops of sills and ledges. `--crack-weathering-fraction .6`
-adds rain-wash dirt or efflorescence below 60% of cracks. Ordinary cracks
-keep the default vertical orientation. The re-renders replace the indoor
-versions, so the 2,243 view stems and everything else are as in v1.7.0.
-50 cracks sit at junctions. Recipe and view list:
-`releases/v1.8.0_replaced_views.json`. Checkpoint:
-`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
-
-Why: BuildCrack's misses concentrate on cracks at beam, ledge and opening
-edges and on weathered facades, and SynCrack3D's cracks were never horizontal
-(see `--crack-orientation`).
-
-### Study
-
-Four arms re-render the same 38 walls, five seeds each, protocol v2.
-
-| arm | BD3 F1 | CUBIT CR1 F1 | BuildCrack F1 | BuildCrack vote F1 | BD3 plain alarms | CUBIT spalling false crack |
-|---|---:|---:|---:|---:|---:|---:|
-| v1.7.0 (indoor walls) | 0.909 | 0.875 | 0.696 | 0.710 | 1.6% | 80% |
-| facade context only | 0.904 | 0.875 | 0.672 | 0.687 | 1.7% | 80% |
-| + random orientation | 0.902 | 0.877 | 0.638 | 0.640 | 1.4% | 78% |
-| + random orientation + junctions + staining | 0.912 | 0.878 | 0.704 | 0.727 | 2.1% | 82% |
-| **junctions + staining, vertical cracks (v1.8.0)** | **0.910** | **0.878** | **0.709** | **0.723** | 2.0% | 80% |
-
-Paired 5-seed-vote BuildCrack differences: facade context −0.023 [−0.037,
-−0.010] against v1.7.0; random orientation a further −0.047 [−0.061, −0.036];
-junctions and staining +0.087 [+0.064, +0.111] over random orientation.
-Turned randomly with nothing around them, horizontal and diagonal cracks
-teach the model that any line at those angles is a crack, and training already
-rotates images by 90°. Horizontal cracks help where real ones sit: along
-ledges, sills and opening corners. Without random orientation the result is
-the same within noise (vote −0.004 [−0.013, +0.004]) with fewer false alarms.
-
-### v1.8.0 against v1.7.0
-
-| | v1.7.0 | v1.8.0 | difference [95%] |
-|---|---:|---:|---|
-| BD3 minor-crack F1 | 0.909 | 0.910 | +0.000 [−0.008, +0.008] |
-| BD3 minor-crack IoU | 0.597 | 0.602 | +0.005 [−0.005, +0.015] |
-| BD3 plain-wall false alarms | 1.6% | 2.0% | +0.4 [−0.7, +1.6] points |
-| CUBIT CR1 F1 | 0.875 | 0.878 | +0.002 [−0.002, +0.006] |
-| CUBIT CR1 recall | 0.889 | 0.896 | +0.007 [+0.000, +0.013] |
-| CUBIT all-labelled F1 | 0.718 | 0.724 | +0.006 [+0.002, +0.011] |
-| BuildCrack F1, mean of seeds | 0.696 | 0.709 | +0.013 [−0.013, +0.042] |
-| BuildCrack F1, 5-seed vote | 0.710 | 0.723 | +0.012 [+0.004, +0.023] |
-| BuildCrack non-drone tiles F1 | 0.701 | 0.716 | |
-
-A small, consistent gain on the two building benchmarks and level on BD3,
-with no significant rise in false alarms. All three benchmarks guided the
-choice, so these are development scores. v1.8.0 remains the scored
-checkpoint. v1.9.0 changes where props sit and was not retrained.
-
-## v1.9.0 props placed by their real bounds
-
-Props used to be dropped in from a catalogue footprint and then turned to a
-random angle. Some objects also have their origin off-centre or at
-mid-height, so the footprint was not the object that got rendered. On 40
-indoor walls with up to 3 props each, 35 of 58 props overlapped something:
-rugs went up to 2.5 m through the test wall and shelves 23 cm; props crossed
-the side walls; props overlapped other props and wall fixtures; six food
-boxes sat up to 13 cm below the floor; five props, mostly shelves, contained
-a camera, so those views rendered the inside of a shelf.
-
-Each prop is now measured after it is spawned and turned (`occlusion.py`,
-`--prop-placement measured`, the default). It rests on the floor, with the
-sampled distance from the wall as the real gap. It stays between the side
-walls. It moves further out until it clears other props and fixtures;
-furniture may still stand on a rug. Infinigen rugs are room-sized (3–7 m),
-so they are shrunk to fit the floor. A prop that cannot fit, or that would
-contain a camera, is dropped.
-
-On the same 40 walls, 52 of 58 props remain and none clip. The only overlaps
-left are props standing on rugs. Walls, cracks, cameras, lights and labels
-are identical to before; only prop positions changed, and no new random
-draws were added. The label check on re-rendered cracked walls is 14 frames,
-14 boxes, 0 issues. 62 tests pass, including 8 in `test_props.py`.
-
-The legacy, major and network recipes place one prop per wall, so rebuilding
-a v1.0–v1.8 wall moves any prop that is in view. Add `--prop-placement hint`
-to rebuild those images exactly as released; that reproduced all 40 walls.
-No model was retrained, so there is no new checkpoint and no measured change
-in benchmark scores. The scored checkpoint stays
-`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
-
-## v1.10.0 whole rooms for embodied inspection
-
-Close-up training cameras are aimed at the cracks, so a policy trained on
-them never has to search. This version exports a composed room to Isaac Sim 5
-(`isaac_port/export_room.py`, `isaac_port/compose_room.py`) and measures the
-v1.8.0 detector on mobile views of that room (`render_room_views.py`,
-`room_false_alarms.py`). The bake and the 3-room results are in the Isaac Sim
-section below.
-
-On 3 rooms × 60 path-traced poses, 42% of views have a false alarm under the
-room lamps and 37% under hard lamps. Object edges are 84% of those
-false-alarm pixels. Long cast-shadow edges rarely fire. Visible cracks found:
-31% overall, and all 4 cracks larger than 600 px. These are development
-measurements of the v1.8.0 checkpoint, not a new trained model.
-
-`eval/synth/build.py` builds a held-out synthetic set from seeds 800000
-upward, one subset per release recipe plus crack-free negatives.
-`eval/synth/score.py` scores a checkpoint on it. No scores from that set are
-reported here. The scored crack checkpoint stays
-`outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
-
-```
-syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
-cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
-                 injection/fields, AOV labels, sensor model, props) - see NOTICE.md
-tools/           export (masks/splits/boxes/COCO) and label-contract check
-isaac_port/      wall -> displaced, labelled USD panels in Isaac Sim, checked against Blender
-```
+annotations. SynCrack3D generates cracks only. Version 1.18.0.
+
+One seed is one wall: a wall material, cracks of one style, an indoor room or
+an outdoor facade around it, wall fixtures, furniture, lighting, and several
+close-up and context photographs with their labels. A wall depends only on its
+seed, not on which seeds ran before it in the same process.
+
+The development history (per-version results and studies) is in
+[docs/HISTORY.md](docs/HISTORY.md).
 
 ## Setup
 
@@ -510,7 +19,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 68 tests, a few seconds
+python -m pytest syncrack3d/tests          # a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -520,287 +29,11 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.16.0)
-
-For new data use one recipe for everything. The six commits that built it are
-tagged:
-
-| version | commit | what it adds |
-|---|---|---|
-| v1.11.0 | `76bfbd4` | `--recipe unified`: legacy 65%, major 15%, network 10%, facade 10%; 15 crackable materials drawn uniformly |
-| v1.12.0 | `039d2c8` | `--clean-wall-uniform`, one clean-wall probability for every material |
-| v1.13.0 | `f95dadc` | clean-wall study: material-aware beats all-cracked and uniform |
-| v1.14.0 | `3b2d31e` | every wall cracked; matched indoor finishes, opt-in; per-wall timing |
-| v1.15.0 | `089fbf2` | matched-finish study |
-| v1.16.0 | `9617872` | matched finishes are the unified default |
-
-The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
-rebuild as released.
-
-```bash
-python syncrack3d/build_dataset.py --recipe unified --seeds 0-99 --output out/walls --resume
-```
-
-Each wall draws a crack style:
-
-| style | probability | walls |
-|---|---|---|
-| legacy | 0.65 | indoor, legacy cracks |
-| major | 0.15 | indoor, broad open and branched cracks |
-| network | 0.10 | indoor paint or stucco, crack networks beside indoor fixtures |
-| facade | 0.10 | outdoor, facade fixtures, junction cracks, rain-wash staining |
-
-The style sets only what defines that kind of crack. Everything else is shared.
-
-- **Materials:** `--wall-materials unified` draws 15 categories uniformly.
-  The v1.x training data was built in near-equal forced batches per category,
-  so this matches what the model was trained on, not the old palette weights.
-  Wood and irregular stone are left out.
-- **Clean walls:** none. Every wall is cracked (`--clean-wall-scale 0`),
-  chosen after the clean-wall study below. The material-aware table
-  (`--clean-wall-scale 1` with `--wall-materials unified`: paint and stucco
-  0.15, concrete 0.35, patterned masonry, tile and stone 0.60) stays
-  available.
-- **Indoor context:** `--shell-finish matched`. Side walls carry the test
-  wall's finish in 70% of rooms, otherwise a different paint, and the floor
-  gets an Infinigen floor material. See the matched indoor finishes study
-  below.
-- **Shared settings:** capture, lighting, rendering and labels.
-
-`--crack-style-mix` changes the mix (for example `network=1` for one style),
-and `off` disables per-wall styles. `scene.json` records each wall's
-`crack_style`.
-
-The unified recipe has not been trained on yet. Adopting it needs the usual
-paired comparison against v1.9.0 on BD3, CUBIT and BuildCrack.
-
-### Layout order: fixtures first (opt-in, 2026-10-25)
-
-`--layout-order fixtures-first` builds a wall in this order:
-
-1. wall and material
-2. room shell or outdoor facade
-3. fixtures, planned and built
-4. crack tokens, then junction snapping
-5. crack injection
-6. lighting and cameras
-7. props
-
-The default, `legacy`, keeps the v1.x order:
-
-1. crack tokens
-2. props
-3. lighting
-4. fixture plan, conditioned on the cracks
-5. junction snapping
-6. injection
-7. fixture meshes
-8. cameras
-
-The legacy order existed so that adding fixtures in v1.5 moved no crack or
-camera, but it is backwards physically: cracks start at openings, not the
-other way round. Checks in the new order:
-
-| step | check |
-|---|---|
-| fixtures | planned on their own stream, blind to cracks; footprints reserved between fixtures as before |
-| crack tokens | no centre under a large assembly (windows with sill and lintel, doors, boxes, vents, sockets, switches, lights), grown by 0.3 × the largest token size + 3 cm; 30% of tokens are tried 3–15 cm beside a cable, pipe or trunking run (`--crack-near-service-fraction`), so services partly cover some cracks; network tokens are spaced by their full patch size (extent × size), because overlapping patches blended instance ids |
-| junctions | as before: a share of tokens moves to fixture corners and edges |
-| cameras | a ray along each view axis, ignoring the wall and crack cards: a camera with another object within 0.35 m and before half the way to the wall is dropped |
-| props | placed around the cameras (0.2 m boxes) and the fixture meshes, stepping out from the wall past them or dropped; none outdoors |
-
-QA (12 walls with fixtures, seeds 840000–840011, network and facade styles):
-
-- every requested crack was placed, and none has its centre under a large
-  fixture;
-- junction cracks still occur on facades;
-- the label contract was clean (79 frames, 0 issues);
-- two cameras were dropped, both real faults: a facade close-up 5 cm behind
-  the downpipe (the near-black views of v1.8.0), and an indoor context camera
-  inside a side wall.
-
-The legacy order still reproduces existing walls exactly: 12 walls of the
-clean-wall study, including fixture and facade walls, came out identical.
-Adopted in the unified recipe from v1.17 (2026-10-25). Every indoor wall now
-gets fixtures and a closed room, whatever its crack style; v1.16 kept fixtures
-to network walls. `--recipe unified_v1.16` rebuilds v1.16.0 walls exactly.
-QA: 10 walls, all indoor walls with 2–4 fixtures in a closed room, every token
-placed, contract clean (57 frames), ~17 s per wall.
-
-### Clean-wall policy study (2026-10-23)
-
-Which walls should stay crack-free? The same 200 unified-recipe walls (seeds
-820000–820199) were rendered twice, cracked and crack-free. Each arm took
-one render per wall, so the arms differ only in which walls are plain:
-
-- **A, material-aware:** the shared table. 77 plain walls.
-- **B, all cracked:** no plain walls.
-- **C, uniform:** the same 77 plain walls in number, chosen by the same
-  per-wall draw regardless of material.
-
-Each arm trained from scratch on its own walls: 5 seeds × 4000 steps.
-Scoring used protocol v2, with paired 95% intervals against A (photos or
-source images and seeds resampled). Files:
-`outputs/domain_transfer/syncrack3d_cleanpolicy_eval_v1/`. Study script:
-`domain_transfer/syncrack3d_cleanpolicy_study.py`.
-
-| real benchmark | A material-aware | B − A all cracked | C − A uniform |
-|---|---:|---|---|
-| BD3 crack IoU | 0.561 | +0.041 [+0.022, +0.058] | −0.028 [−0.047, −0.011] |
-| BD3 centreline F1 | 0.874 | +0.027 [+0.013, +0.040] | −0.019 [−0.036, −0.003] |
-| BD3 recall / precision | 0.803 / 0.960 | +0.071 / −0.029 | −0.030 / −0.001 (n.s.) |
-| BD3 plain-wall alarms | 1.6% | +2.4 pp [+0.7, +4.3] | +0.6 pp (n.s.) |
-| CUBIT crack-photo F1 | 0.872 | −0.011 [−0.022, −0.001] | +0.004 (n.s.) |
-| CUBIT precision | 0.869 | −0.048 [−0.065, −0.036] | −0.002 (n.s.) |
-| CUBIT spalling photos with false crack | 68% | 90% | 71% |
-| BuildCrack vote F1 | 0.687 | +0.006 (n.s.) | −0.044 [−0.063, −0.028] |
-| BuildCrack vote precision | 0.856 | −0.033 [−0.053, −0.014] | +0.016 [+0.001, +0.031] |
-| BuildCrack empty-tile alarms | 27% | 33% | 33% |
-
-**Material-aware (A) is the best balance.** The two alternatives fail in
-different ways:
-
-- **All cracked (B)** finds more cracks on BD3: recall +0.071, F1 +0.027.
-  But it raises false alarms on every benchmark, so it is a recall–precision
-  trade, not a gain:
-  - BD3 plain walls 1.6% → 3.9%;
-  - CUBIT spalling photos with a false crack 68% → 90%;
-  - CUBIT and BuildCrack precision −0.03 to −0.05.
-
-  B also had more cracked views (997 vs 627) and fewer views overall (1,210
-  vs 1,529), because crack-free walls export more views. Its gain is partly
-  more positives.
-- **Uniform (C)** loses to A on BD3 (F1 −0.019) and BuildCrack (vote F1
-  −0.044), and ties on CUBIT, although only 20 of 200 walls differ from A.
-  Uniform plain walls fall on paint and stucco as often as on patterned
-  masonry. That removes crack views on paint, where most real cracks are,
-  without adding negatives where false alarms happen (grout, joints).
-
-The synthetic eval set agrees. Fixture-negative alarms were A 7.7%, B 13.4%
-and C 10.5%; on stone block, A 15% and B 54%.
-
-Caveats: one training size (200 walls, each arm from scratch) and five
-seeds. BuildCrack per-seed spread is large (C 0.15), so the vote intervals
-are the firmer evidence. v1.9.0, trained on more data (2,243 views), still
-scores higher on BuildCrack (vote F1 0.723).
-
-### Matched indoor finishes study (2026-10-24)
-
-`--shell-finish matched` changes the indoor context. Side walls carry the test
-wall's own finish in 70% of rooms (a crack-free copy, bump only), otherwise a
-different paint; the floor gets an Infinigen floor material. Outdoor facades
-already continue the test wall's base material and are unchanged.
-
-The study rendered the same 200 all-cracked unified walls as the clean-wall
-study's control (`cleannone`). Cracks, cameras, lights and props were
-verified identical wall by wall, so only the context differs:
-
-- 100 indoor walls had side walls: 69 matched, 31 painted;
-- 78 indoor walls had only a floor;
-- 22 were outdoor and unchanged.
-
-Training used 5 seeds × 4000 steps from scratch. Files:
-`outputs/domain_transfer/syncrack3d_shellmatch_eval_v1/`.
-
-| | plain shell | matched − plain [95%] |
-|---|---:|---|
-| BD3 centreline F1 | 0.901 | −0.012 [−0.027, −0.002] |
-| BD3 crack IoU | 0.602 | −0.014 (n.s.) |
-| BD3 plain-wall alarms | 3.9% | −0.1 pp (n.s.) |
-| CUBIT crack-photo F1 | 0.861 | −0.004 (n.s.) |
-| CUBIT spalling photos with false crack | 90% | 89% |
-| BuildCrack vote F1 | 0.694 | +0.033 [+0.023, +0.044] |
-| BuildCrack vote recall | | +0.049 [+0.034, +0.064] |
-| BuildCrack empty-tile alarms | 33% | 27% |
-| synthetic eval set F1, all cracked subsets | 0.933 | +0.003 |
-| render time, 30 paired walls | 567 s | 566 s (×0.999) |
-
-**What changed:**
-
-- **BuildCrack improves.** Its tiles show real building context. With 200
-  walls the matched arm reaches v1.9.0's vote F1 (0.727 vs 0.723), which was
-  trained on 2,243 views.
-- **BD3 F1 dips slightly.** The interval only just excludes zero, and IoU and
-  plain-wall alarms are unchanged.
-- **CUBIT ties.**
-- **Render time is unchanged.** Side walls use bump relief only, and
-  everything averages 19 s per wall (2.8 s per view at 640 px, 64 samples).
-
-The effect is diluted: 78 of the 178 indoor walls had no side walls, so only
-their floor changed.
-
-Known rare case, also present in v1.8.0: a facade close-up can sit just
-behind the context downpipe and render almost black (2 of 445 v1.8.0 facade
-views).
-
-## Reproduce the release data
-
-`--recipe` sets every flag to the one a release batch was rendered with;
-flags given explicitly override it (`syncrack3d/recipes.py`). Pick the
-material with `--material-category`, or leave it to `--wall-materials
-diverse`.
-
-| recipe | walls |
-|---|---|
-| `legacy` | indoor walls, legacy cracks; some walls plain by material (the v1.0.0–v1.3.0 base walls) |
-| `major` | indoor walls, broad open and branched cracks |
-| `network` | indoor paint and stucco walls with crack networks and indoor structures (v1.7.0 on) |
-| `facade` | outdoor facades, junction cracks, rain-wash staining (v1.8.0) |
-
-```bash
-python syncrack3d/build_dataset.py --recipe facade --seeds 176022-176023 \
-  --material-category brick --output out/facade --resume
-```
-
-A seed with the same recipe and material rebuilds the same wall, cameras and
-cracks as the release. The training set also kept a selected subset of views
-per batch: `releases/*.json` lists them with their seeds.
-
-Renders are deterministic: the same command gives identical images. One
-exception was fixed after v1.8.0. Outdoor walls drew the size of the
-surrounding facade (and so the corner, eave height and their shadows) from
-Python's per-process string hash, so it changed from run to run. Test-wall
-cameras, cracks and labels were never affected. The v1.8.0 facade walls and
-earlier outdoor renders were made before the fix, so their wide context views
-show a different surrounding facade when regenerated.
-
-From v1.9.0, props are placed by their real bounds, not by a catalogue
-footprint (`--prop-placement measured`, the default). The old placement let
-furniture clip into the scene: in 40 indoor test walls with `--max-props 3`,
-35 of 58 props overlapped something. Rugs went up to 2.5 m through the test
-wall and shelves 23 cm. Props also crossed the side returns, overlapped each
-other and fixtures, and food boxes sank up to 13 cm into the floor. Five
-props, mostly shelves, held a camera inside them, so those views showed the
-inside of a shelf.
-
-Props now:
-
-- rest on the floor, with the sampled standoff as the true gap to the wall;
-- stay between the side returns and on the floor;
-- step out from the wall past other props and fixtures (furniture may stand
-  on a rug).
-
-Room-sized rugs are shrunk to fit the floor. A prop that cannot fit, or that
-would contain a camera, is dropped. On the same 40 walls 52 props remain and
-none clip. Nothing else changes: walls, cracks, cameras, lights and labels are
-identical, and the RNG stream is untouched.
-
-Every recipe with props (`legacy`, `major`, `network`) therefore renders the
-v1.0-v1.8 walls with props moved. To rebuild those release images pixel for
-pixel, add `--prop-placement hint`.
-
 ## Generate, export, check
 
 ```bash
-# 1. render walls (one seed = one wall, several close-up and context views)
-python syncrack3d/build_dataset.py --seeds 107000-107011 --output out/walls \
-  --material-category paint_neutral --awb-strength 0 .5 \
-  --substrate paint --min-defects 2 --max-defects 3 --max-props 1 --resolution 640 --samples 64 \
-  --wall-normal-mode explicit --dicing-rate .75 \
-  --exposure-ev-range .4 1.3 --closeup-fill .6 1.5 --closeup-aim-jitter .3 --preserve-closeup-scale \
-  --closeups-per-defect 2 --crack-fit-path --crack-label-mode support --crack-path-mode angular \
-  --crack-branch-mode local_curved --crack-depth-scale .5 \
-  --defect-size-range .20 .45 --wall-materials diverse --clean-wall-scale 0 --resume
+# 1. render walls (defaults are the SynCrack3D configuration)
+python syncrack3d/build_dataset.py --seeds 0-99 --output out/walls --resume
 
 # 2. export labels (0 background, 60 crack in masks/; scene-level train/val/test splits)
 python tools/prepare_defect_annotated_dataset.py -i out/walls/frames -o out/pack \
@@ -808,123 +41,184 @@ python tools/prepare_defect_annotated_dataset.py -i out/walls/frames -o out/pack
 
 # 3. check the instance/label contract
 python tools/check_instance_contract.py --pack out/pack
-
-# 4. score a crack model (protocol v2, see below). Checkpoints are runs/s*/last.pt under --model.
-#    BD3: 487 minor_crack + 355 plain (eval/bd3/README.md). predict.py writes <model>/pred_v2/s*/.
-python eval/bd3/predict.py --model path/to/checkpoint_dir
-python eval/bd3/score.py --pred path/to/checkpoint_dir/pred_v2/s0
-#    CUBIT-InSeg at 1/3 scale (1500x1000). Crack photos and spalling false alarms.
-#    Data: --data, or $SYNCRACK3D_CUBIT / $SYNCRACK3D_BUILDCRACK. Neither dataset is included.
-python eval/cubit/score.py --model path/to/checkpoint_dir --data path/to/CUBIT-InSeg --out path/to/cubit_out
-python eval/cubit/compare.py --a path/to/cubit_a --b path/to/cubit_b --out compare.json
-#    BuildCrack tiles, grouped by source photo. Pass one --model per checkpoint.
-python eval/buildcrack/score.py --model v1.8.0=path/to/checkpoint_dir --data path/to/BuildCrack --out path/to/buildcrack_out
 ```
 
-Defaults already match that crack recipe: width scale 1.3, and 70% of cracks
-on paint, plaster and stucco use a coating edge. Brick, stone, concrete and
-tile stay a single-material groove. The style
-mix is 14% hairline, 16% hairline with a fork, 28% moderate, 20% branched, 16%
-open (0.8–6 mm mouth) and 6% double run. `python syncrack3d/build_dataset.py --help`
-lists every option.
+At 640 px and 64 samples a wall takes about 21 s on an RTX 4090 and gives
+about 6 views. `python syncrack3d/build_dataset.py --help` lists every option.
+Each wall's `scene.json` records its material, crack style, fixtures, props,
+lights, cameras and timing.
 
-| option | effect |
-|---|---|
-| `--material-category` | paint_neutral / paint_colour / paint_colour_mid / stucco_neutral / stucco_colour / brick / stone_block / irregular_stone / tile / large_tile / concrete / marble / wood (wood and irregular_stone are never cracked) |
-| `--crack-layered-fraction` | coating edge on paint, plaster and stucco only. Paint: torn lips and 1.5–4 mm chips. Stucco: a broken finish coat, no lifted film. Brick, stone, concrete and tile are unchanged. Default 0.7 |
-| `--crack-width-scale` | physical width multiplier, also written into the label. Default 1.3 |
-| `--crack-render` | geometry (real displacement), pbr (bump only) or albedo (colour only) |
-| `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks. `--crack-axis-snap` has no effect: it turns the card, and the field never read the card's spin (see `--crack-orientation`) |
-| `--crack-orientation random` | each crack runs at its card's spin angle. By default (`vertical`, every release to v1.7.0) a crack runs along the wall's vertical with lateral wander: 79% of v1.2.0–v1.3.0 crack segments are near-vertical and 3–4% near-horizontal, against 31–49% near-horizontal in BD3, BuildCrack and CUBIT. Training rotates images by multiples of 90°, which hides most of this |
-| `--crack-junction-fraction` | share of cracks moved to structure edges (needs `--structures`): diagonal from the corners of windows, doors, vents and hatches, along sill and ledge undersides and tops, beside door jambs and along trims. Junction cracks set their own direction; edge cracks get a near-straight path (`syncrack3d/junctions.py`) |
-| `--crack-weathering-fraction` | share of non-network cracks with rain-wash dirt (or efflorescence on mineral hosts, 30%) hanging 3–15 cm below the crack's downward side. Wall colour only: the label is unchanged |
-| `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |
-| `--camera-isp`, `--awb-strength`, `--exposure-ev-range` | phone-camera processing, partial white balance, exposure spread |
+## How a wall is built
 
-Seeds are reproducible per wall: a wall's material, cracks, cameras and lights
-depend only on its seed, not on which seeds ran before it in the same process.
+1. **Wall and material.** A material category is drawn uniformly from 15:
+   painted plaster and textured stucco (neutral, colour and mid-tone coats),
+   concrete, brick, wall tile, large tile, marble, stone block, cobble, rubble
+   stone and sandstone ashlar. Wood and irregular stone are not used: cracks
+   on them hurt transfer to real photos. The wall then draws a crack style
+   (below).
+2. **Context.** Indoors, a room segment: floor, ceiling and two side walls.
+   In 70% of rooms the side walls carry a crack-free copy of the wall's own
+   finish; otherwise both get one material drawn from the other 14
+   inspection-wall categories (bump only, no displacement); the floor gets one of 7 Infinigen
+   floor materials. Outdoors, a building facade with ground, sky, sometimes
+   an inside corner, an eave or a downpipe, and weathering.
+3. **Fixtures**, planned on their own random stream and built: switched
+   sockets, doors, skirting, ceiling trim, return vents, service hatches,
+   trunking, plumbing, cables and conduits indoors; windows with sills, panel
+   seams, downpipes, vents, hatches and lights outdoors. Indoor
+   walls with a socket get up to two more. Each plate is a UK double
+   socket, two rockers above two three-pin outlets, so there is no
+   separate switch. The plate is white, black, or satin metal. Doors are closed SynDefect3D panel
+   leaves set in a mitred architrave of the same wood (65-90 mm wide,
+   24-30 mm proud of the wall, lapping over the leaf's edges). The leaf face
+   sits 8 mm in front of the wall, behind the architrave, and its back half
+   and back handle are removed because the wall is not cut. Skirting is a floor board with its
+   bead on the top edge; ceiling trim is that board turned over, so the
+   bead hangs down. Service hatches, indoors and outdoors,
+   are flush cabinet doors with one chrome cam lock. The cabinet is
+   white, black, or satin metal.
+   Windows are Infinigen casements mounted on the wall face, with opaque
+   tinted glass so the uncut wall does not show through the panes, and a
+   projecting sill with a metal drip under the frame.
+   Utility boxes are powder-coated cabinets with a smoked window; their
+   conduits run on to the edge of the wall. A wall cable or conduit is
+   the same kind of route, one to three runs side by side, and it may
+   turn before it gets there. Trunking is one of those routes as a duct,
+   and plumbing is a pair of pipes on one route.    The service hatch is
+   the same cabinet indoors and outdoors. The vent is the same
+   return grille indoors and outdoors, with horizontal louvres, in
+   white, black, or satin metal. An outdoor wall light is a
+   matte cylinder open at both ends, and it casts warm light up and
+   down the wall.
+   Fixtures are weathered: painted and plastic parts are yellowed and
+   grimy, and about half of the frames, boxes and trims have a sealant bead
+   where they meet the wall. Fixtures and skirting mount on the wall's
+   displaced relief, not its flat plane, and props keep clear of it:
+   stone stands out of the plane by up to 3 cm and brick by about 1 cm,
+   estimated per wall from its displacement scale (`material_diversity.RELIEF_M`),
+   so nothing sinks into it.
+4. **Crack tokens** around the fixtures. No crack centre falls under a large
+   fixture (grown by 0.3 × the largest token size + 3 cm); 30% of tokens are
+   tried 3–15 cm beside a cable, pipe or trunking run, so services partly
+   cover some cracks. On facades, half the cracks are moved to fixture
+   junctions: diagonal from the corners of openings, or near-straight along
+   sills and trims.
+5. **Crack injection** into the wall material: the crack field becomes real
+   displaced relief and a coverage AOV for the labels (see below).
+6. **Lighting and cameras.** Indoor light regimes: window raking, window soft,
+   ceiling diffuse, lamp mixed, flash, with a weaker second source half the
+   time. Outdoors: direct sun, overcast, shade or golden hour. Two close-ups
+   per crack (phone lenses, up to 38° yaw and 26° pitch, off-centre aim) plus
+   about one context view per four close-ups. A camera with another object
+   within 0.35 m along its view axis is dropped.
+7. **Props.** Each indoor wall is furnished as one room (kitchen 20%,
+   bathroom 20%, living room 25%, bedroom 20%, utility 15%) with up to three
+   items from that room's list (24 models). The
+   bathroom, kitchen and fixture models are the SynDefect3D versions. Every
+   item is loose: it stands on the floor at any angle, its back 2 cm to
+   0.9 m from the wall (beyond the wall's relief). Close-ups are taken
+   0.16-0.45 m from the wall and context views 1-3 m, so an item further out
+   would stand behind the cameras.
 
-## Evaluation protocol
+   Every model is scaled into real-world size ranges (`Prop.size_m`), and
+   sofa, armchair and bed fabrics have their saturation damped to 55-75%.
 
-Protocol v2 is the standard from v1.7.0 on. All three scorers use it by default.
+   Every item is placed by its measured bounds and must clear the wall,
+   floor, ceiling, side walls, the far edge of the floor, fixtures and
+   skirting, cameras and lights (0.15 m around each) and the other items.
+   An item in the way of something steps further from the wall within the
+   0.9 m band; otherwise a new position and angle are drawn, up to 40
+   times, before it is dropped. Large furniture is dropped most often,
+   because it would stand where a context camera is. An item may
+   hide at most half of any crack seen face-on. A view then jammed against an
+   item is dropped. Shower stalls are left out: cracks seen through their
+   glass would be labelled background. Then the views are rendered with
+   per-view exposure (+0.4 to +1.3 EV) and partial white balance.
 
-- **Test-time upscaling 1.5x.** Each photo is upscaled 1.5x (bicubic) before
+### Crack styles
+
+Each wall draws one style (`--crack-style-mix`). A style sets only what
+defines that kind of crack; everything else is shared.
+
+| style | share | walls |
+|---|---|---|
+| legacy | 0.65 | indoor; 2–3 cracks of 0.20–0.45 m: hairline, forked, moderate, branched, open (0.8–6 mm mouth) and double runs |
+| major | 0.15 | indoor; 1–2 broad open and branched cracks, channel radius up to 12 mm, depth 8–18 mm |
+| network | 0.10 | indoor paint or stucco; 2–3 crack networks (crazing): warped Voronoi cells 2–6 cm across with an irregular outline and stained channels |
+| facade | 0.10 | outdoor; legacy cracks, half moved to fixture junctions, 60% with rain-wash dirt or efflorescence streaks below them |
+
+### Crack field and labels
+
+A crack is a polyline centreline with noise, a V-shaped channel profile with
+tip taper and forks, and a height field that is added to the host material's
+displacement, so the crack is real geometry under the light. On paint,
+plaster and stucco 70% of cracks get a coating edge: torn paint lips and
+1.5–4 mm chips, or a broken stucco finish coat. Brick, stone, concrete and
+tile keep a single-material groove. The label is the channel's support (the
+profile above 2% of its depth) plus the chips, written to a coverage AOV and
+resolved per instance by the exporter.
+
+## Options and ablation switches
+
+Run controls: `--seeds`, `--output`, `--resolution` (640), `--samples` (64),
+`--dicing-rate` (0.75), `--no-denoise`, `--no-render`, `--save-blend`,
+`--keep-going`, `--resume`.
+
+Every other option defaults to the configuration above and exists for data
+design and ablations. Each switch changes only its own factor; the other
+random streams are unchanged.
+
+| factor | switch | ablation setting |
+|---|---|---|
+| crack morphology | `--crack-style-mix` | `legacy=1` (one style) |
+| crack geometry | `--crack-render geometry\|pbr\|albedo` | bump map only, or colour only (labels identical) |
+| coating edges | `--crack-layered-fraction` (0.7) | `0` |
+| material diversity | `--material-categories CAT ...` | e.g. `paint_neutral paint_colour paint_colour_mid` |
+| crack-free walls | `--clean-wall-scale` (0), `--clean-wall-uniform` | `1` (per-material table: paint and stucco 0.15, concrete 0.35, masonry, tile and stone 0.60), or one rate for every material |
+| fixtures | `--no-fixtures`, `--crack-near-service-fraction` (0.3) | no fixtures (indoor rooms keep the sampled open shell) |
+| indoor context | `--shell-finish matched\|plain` | `plain` (flat-colour side walls and floor) |
+| props | `--max-props` (3) | `0` (bare room) |
+| lighting | `--light-profile default\|hard_mix\|fixed`, `--relight-per-view` | `fixed`: one constant soft key light indoors; `hard_mix` adds sun, bare-bulb and raking-torch sources |
+| camera processing | `--exposure-ev-range` (0.4 1.3), `--awb-strength` (0 0.5), `--camera-isp` | `0 0` and `1 1` (no exposure spread, full white balance); phone-like ISP |
+| viewpoints | `--closeups-per-defect` (2), `--closeup-fill` (0.6 1.5), `--closeup-max-yaw` (38), `--closeup-max-pitch` (26), `--closeup-aim-jitter` (0.3), `--context-view-fraction` (0.25) | frontal, centred or close-up-only views |
+
+## Evaluation
+
+```bash
+# Checkpoints are runs/s*/last.pt under --model.
+# BD3: 487 minor_crack + 355 plain (eval/bd3/README.md). predict.py writes <model>/pred_v2/s*/.
+python eval/bd3/predict.py --model path/to/checkpoint_dir
+python eval/bd3/score.py --pred path/to/checkpoint_dir/pred_v2/s0
+# CUBIT-InSeg at 1/3 scale (1500x1000): crack photos and spalling false alarms.
+# Data: --data, or $SYNCRACK3D_CUBIT / $SYNCRACK3D_BUILDCRACK. Neither dataset is included.
+python eval/cubit/score.py --model path/to/checkpoint_dir --data path/to/CUBIT-InSeg --out path/to/cubit_out
+python eval/cubit/compare.py --a path/to/cubit_a --b path/to/cubit_b --out compare.json
+# BuildCrack tiles, grouped by source photo. Pass one --model per checkpoint.
+python eval/buildcrack/score.py --model unet=path/to/checkpoint_dir --data path/to/BuildCrack --out path/to/buildcrack_out
+# Synthetic: build a frozen held-out set, then score on it.
+python eval/synth/build.py --out out/evalset
+python eval/synth/score.py --set out/evalset --model path/to/checkpoint_dir
+```
+
+- **Test-time upscaling 1.5×.** Each photo is upscaled 1.5× (bicubic) before
   inference and the class probabilities are resized back, so labels and
   predictions stay at the benchmark's resolution (`eval/infer.py`,
   `TEST_SCALE`). Real hairlines are 1–2 px, thinner than the training renders.
-  The factor was chosen on CUBIT (F1 rose to 1.5x and was flat at 2x) and then
-  checked on BuildCrack (+0.044 F1 on v1.3.0) and BD3 (IoU 0.573 -> 0.579).
-- **Centreline tolerance 5 px** (`eval/metrics.py`, `TOLERANCE_PX`). The
-  tolerance was raised from 3 px after the v1.0.0–v1.5.0 results. Human crack
-  polygons are wide and their centrelines uncertain (median labelled width
-  about 8.6 px on BuildCrack). From 1 to 5 px the absolute F1 changes (by up to
-  0.06 on BuildCrack), but the difference between versions moved by at most
-  0.004 and no ranking changed (`outputs/domain_transfer/syncrack3d_tolerance_check_v1.json`).
+  The factor was chosen on CUBIT (F1 rose to 1.5× and was flat at 2×) and then
+  checked on BuildCrack and BD3.
+- **Centreline precision, recall and F1 at 5 px** (`eval/metrics.py`,
+  `TOLERANCE_PX`). Both masks are thinned to 1 px skeletons; recall is the
+  labelled crack length within 5 px of the prediction, precision the
+  predicted length within 5 px of the label. Human crack polygons are wide
+  and their centrelines uncertain (median labelled width about 8.6 px on
+  BuildCrack). clDice and pixel crack IoU are reported beside it.
+- **False alarms.** A crack-free photo or tile is an alarm when predicted
+  crack pixels exceed 0.1% of it.
 - Result files record `protocol: {tolerance_px, test_scale}`, and
   `eval/cubit/compare.py` refuses to compare runs scored under different
-  protocols.
+  settings.
 
-The per-version sections above (v1.0.0–v1.7.0) report protocol v1: 3 px,
-no upscaling. To reproduce them, pass `--tolerance 3 --scale 1` to
-`cubit/score.py` and `buildcrack/score.py`, `--tolerance 3` to `bd3/score.py`,
-and `--scale 1` to `bd3/predict.py`. The metric key is now `centreline_f1`
-(it was `centreline_f1_3px`).
-
-Every release re-scored under protocol v2 (mean of five seeds; BuildCrack also
-as the five-seed vote). Files: `outputs/domain_transfer/syncrack3d_eval_v2/`.
-
-| version | BD3 F1 | BD3 IoU | BD3 plain alarms | CUBIT CR1 F1 | CUBIT spalling false crack | BuildCrack F1 | BuildCrack vote F1 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| v1.2.0 | 0.890 | 0.566 | 0.008 | 0.859 | 64% | 0.585 | 0.583 |
-| v1.3.0 | 0.896 | 0.579 | 0.008 | 0.871 | 63% | 0.595 | 0.599 |
-| v1.4.0 | 0.901 | 0.591 | 0.016 | 0.870 | 75% | 0.657 | 0.667 |
-| v1.5.0 | 0.901 | 0.588 | 0.010 | 0.871 | 72% | 0.645 | 0.651 |
-| v1.6.0 | 0.904 | 0.593 | 0.015 | 0.871 | 81% | 0.689 | 0.704 |
-| v1.7.0 | 0.909 | 0.597 | 0.016 | 0.875 | 80% | 0.696 | 0.710 |
-
-Upscaling raises false cracks on CUBIT spalling photos (v1.7.0: 72% under
-protocol v1, 80% under v2); BD3 plain-wall alarms stay below 2%.
-
-## Major cracks (experimental)
-
-`--crack-profile legacy` preserves the original default and seed morphology.
-`--crack-profile major` samples broad open and branched cracks equally;
-`--crack-profile mixed` chooses major or legacy with probability 0.5 per defect.
-These remain one **crack** class. No peeling/blister images are introduced.
-
-Major cracks use a spatially varying channel radius of 1.5–3.5 mm at narrow
-sections and 5–12 mm at wide sections, before `--crack-width-scale`; full
-untapered openings are twice the radius (3–24 mm at scale 1). Tips narrow
-further. Depth is 8–18 mm before `--crack-depth-scale`. The same field drives
-geometry and coverage; existing layered paint-edge chips remain available.
-These are procedural appearance ranges, not calibrated structural severity.
-Historical `crack_width_*_m` manifest fields store radii; new
-`full_opening_*_m` fields explicitly store full untapered opening bounds.
-
-From this app's root, generate a separate candidate dataset:
-
-```bash
-python syncrack3d/build_dataset.py --seeds 130000-130002 --output out/major_qa \
-  --crack-profile major --crack-width-scale 1 --min-defects 1 --max-defects 1 \
-  --max-props 0 --resolution 640 --samples 64 --wall-normal-mode explicit \
-  --dicing-rate .75 --closeup-fill .8 1 --preserve-closeup-scale \
-  --crack-fit-path --crack-label-mode support --crack-path-mode angular \
-  --crack-branch-mode local_curved --defect-size-range .3 .45 --save-blend
-```
-
-Use `mixed` for a candidate containing both fine and broad cracks; do not
-resume into a legacy output directory (resume skips existing scenes).
-The initial three-wall pilot used width scale 1.3, 384 px and 24 samples:
-6 rendered/exported views, 4 retained by training curation; instance contract
-0 issues and 0 blended pixels. Context views lose small cracks and the masks
-contain disconnected pieces; this is a smoke test, not dataset acceptance.
-19 tests pass; 1,000 legacy morphology seeds match the pre-change code.
-The v1.1.0 scores above are from adding major-profile walls to the legacy set,
-not from a matched legacy-versus-mixed retraining.
-Centreline recall measures missing labelled centreline coverage; it does not
-by itself show that insufficient predicted width explains the IoU gap.
-
-### Can this simulate structural fracture?
+## Can this simulate structural fracture?
 
 Not yet. The current wall is a flat host with shader displacement, with no
 loads, supports, elastic properties, fracture energy, reinforcement or masonry
@@ -968,7 +262,7 @@ Close-ups are posed at the cracks, so a policy trained on them never has to
 search. For embodied work, export the whole room instead, with no cameras:
 
 ```bash
-python syncrack3d/build_dataset.py --recipe legacy --max-props 3 --structures auto --structure-views 0 \
+python syncrack3d/build_dataset.py --crack-style-mix legacy=1 --max-props 3 \
   --seeds 190531 --output out/rooms --no-render --save-blend
 python isaac_port/export_room.py out/rooms/seed_190531 out/isaac/seed_190531            # Blender: bakes
 OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim-5/python isaac_port/compose_room.py out/isaac/seed_190531 --preview
@@ -1007,11 +301,10 @@ wall from 0.4–2.5 m at up to 35° off its normal; the rest look anywhere.
 with and without furniture and fixtures).
 
 `room_false_alarms.py` passes each render through the training camera model
-and runs a detector (protocol v2: 1.5× upscale, 5 px tolerance, majority of
-seeds). It assigns each false-alarm blob a cause: cast shadow, object edge,
+and runs a detector (1.5× upscale, 5 px tolerance, majority of seeds). It assigns each false-alarm blob a cause: cast shadow, object edge,
 shading edge, paint/material, or relief/other.
 
-Results for the v1.8.0 checkpoint on 3 rooms × 60 poses (2026-10-22), path
+Results for an earlier SynCrack3D checkpoint (v1.8.0 in docs/HISTORY.md) on 3 rooms × 60 poses, path
 traced:
 
 | lighting | views with a false alarm | crack-free views with one | blobs per view | visible cracks found |
@@ -1039,138 +332,3 @@ including the two-layer peel. Rebuilding this app from the repo with
 `python build_from_repo.py` would put that code back and overwrite the
 crack-only edits; do that only after those edits have been ported, and pass
 `--overwrite-local-edits` if you mean to discard them.
-
-## Crack networks (v1.4.0)
-
-Use `--crack-profile network` for map cracking/crazing: connected, irregular
-closed cells and shared junctions across each defect patch. A smoothly warped
-2-D Voronoi edge field drives both the shallow groove and its crack AOV.
-This is a procedural appearance model, not a fracture simulation.
-
-From this repository's root, with the usual Blender Python environment:
-
-```bash
-python -m syncrack3d.build_dataset --seeds 190010-190019 --output out/networks \
-  --wall-materials diverse --material-category paint_neutral --clean-wall-scale 0 \
-  --crack-profile network --crack-network-edge organic --crack-network-extent 1.4 \
-  --crack-network-spacing .02 .06 \
-  --crack-width-scale 2 --crack-label-mode support \
-  --defect-size-range .3 .45 --min-defects 1 --max-defects 2 --max-props 0 \
-  --resolution 1024 --samples 64 --dicing-rate 1 --wall-normal-mode explicit \
-  --closeup-fill .9 1.1 --closeups-per-defect 2
-```
-
-For a mixture, keep `--crack-profile legacy` (or `major`/`mixed`) and add
-`--crack-network-fraction .3`. That replaces approximately 30% of defect
-instances, chosen deterministically from each instance seed. The default is
-zero; existing profile/seed behavior stays unchanged.
-
-`--crack-network-spacing MIN MAX` is the cell spacing in metres; smaller
-values produce denser webs. Before width scaling, channel radii vary from
-0.06–0.32 mm (full openings 0.12–0.64 mm), and groove depth from 0.04–0.18 mm.
-Width/depth controls apply to networks. Coordinate warping slightly changes
-local opening widths. Networks always use weak variable channel staining (including seeds in the
-isolated-crack clean bucket) and omit the broad
-coating chips and wall offsets used by large isolated cracks. Path fitting,
-branch modes and path modes apply only to isolated cracks. Each network patch
-is one crack instance; cells and edges are not separate instances. Manifests
-record the sampled spacing, warp, seed offset, width, depth, edge and extent.
-
-Resolution, standoff, exposure and lighting determine whether these hairlines
-remain visible. Include close-ups and context views, and inspect export
-curation: invisible/subpixel annotations can be ignored or held out rather
-than accepted as training targets. The first 512 px, three-scene smoke test
-produced six views with zero instance-contract issues, but only two close-ups
-passed the existing evidence filter.
-
-`--crack-network-grime MIN MAX` sets the channel staining as a share of crack
-grime strength (default .15 .60). It only rescales the existing draw, so a
-seed's cells, widths and depth stay the same. At 640 px the default leaves
-lines 2–4% darker than the wall; v1.4.0 uses `.8 1` (4–8%) with width and
-depth scale 2, and drops views below 3%. See the v1.4.0 study above.
-
-`--crack-network-edge organic` is the default. The outline is a rounded
-square pushed inwards by low-frequency noise, and the crack lines narrow to
-nothing in a band near it, so the web ends in tapering cracks instead of
-along four straight edges. The outline comes from its own random stream, so
-a seed's cells, widths, depth and staining are unchanged.
-`--crack-network-extent` scales only that field (default 1.4). Extent 1
-keeps about 57% of a square patch's crack length; 1.4 keeps about 95%, and
-that is what ties the square networks in the v1.7.0 study. Pass
-`--crack-network-edge square --crack-network-extent 1` to reproduce the
-v1.4.0–v1.5.0 patches.
-
-Validation: 33 tests pass. The final controlled-wall pilot (seeds
-190000–190002, 512 px) passes the label contract on six views, with two
-close-ups retained. A 1024 px textured painted-wall check (seed 190010,
-width scale 2, dicing rate 1) shows visible faint networks and passes the
-contract on both views; its close-up is retained. A six-instance mixed
-smoke scene (seed 190020, fraction .5) contains three crazing networks and
-three ordinary cracks. These are generator checks, not transfer results.
-
-## Structural background details (v1.5.0)
-
-`--structures auto` adds an environment-dependent selection of background
-assemblies: sagging cables with anchor hardware and slack loops, clipped
-vertical cable bundles, conduit runs and elbows, downpipes with sockets and
-brackets, utility boxes with lids/screws/feed conduit, framed windows with
-mullions/sills/lintels, straight sealant panel joints, and projecting ledges.
-Indoor auto sampling excludes the exterior downpipe/ledge assemblies.
-v1.5.0 puts these beside the v1.4.0 crack networks by swapping the same
-162 views; see the v1.5.0 study above.
-
-These objects cast shadows and occlude the injected wall. They are **background**
-in crack masks, including cable edges, joints and shadows. Hidden portions of
-a crack lose their coverage naturally through Cycles visibility. Each assembly
-has an independent seed, metric placement, object list and background semantic
-record under `structures` in `scene.json`. They are never injection hosts.
-
-Use a mixture of cracked and deliberately clean scenes so these details appear
-without cracks as well as beside them:
-
-```bash
-python -m syncrack3d.build_dataset --seeds 192000-192019 --output out/structures \
-  --environment mixed --structures auto --structure-views 2 \
-  --structure-clean-fraction .35 --wall-materials diverse \
-  --min-defects 1 --max-defects 3 --max-props 0 \
-  --resolution 640 --samples 64 --wall-normal-mode explicit \
-  --crack-label-mode support
-
-python tools/prepare_defect_annotated_dataset.py -i out/structures/frames \
-  -o out/structure_pack --aov-masks on --instance-masks on --with-bboxes \
-  --max-negative-fraction .5
-python tools/check_instance_contract.py --pack out/structure_pack
-```
-
-`--structures services` restricts sampling to cables, conduit, pipes and boxes;
-`facade` samples windows, joints, ledges and downpipes. `all` attempts every
-assembly for QA, skipping large pieces if no collision-free placement is found.
-`off` is the default. Structural sampling uses its own random stream. Large
-assemblies avoid crack centres and service footprints; thin services may cross
-cracks. The existing `--max-props` controls furniture independently.
-
-`--structure-views N` adds up to N views of distinct structural assemblies
-(default 2), with role `structure` and no defect-target association. A structural
-view can still contain a real crack, so its labels always come from the rendered
-AOVs. `--structure-clean-fraction` defaults to zero; setting it to 1 generates
-only clean scenes when structures are enabled. Existing material-specific clean
-sampling still applies. Clean scenes now export explicit zero crack/instance
-passes and an empty instance manifest. Keep scene grouping when splitting.
-
-Window glazing is an opaque, recessed-looking surface within a raised frame,
-not a boolean opening through the injection host. This provides window borders,
-mullions and occlusion without labelling cracks behind glass. The assemblies
-are procedural geometry approximations; they do not model entire building
-interiors or construction systems. Panel joints are straight sealant strips,
-not fracture fields. No real BuildCrack annotations are modified by these flags.
-
-Validation on 2026-10-20: structure tests pass, including a rendered AOV
-occlusion fixture. Three retained QA scenes cover indoor positives (seed
-191000, 11 views), outdoor positives (191001, 10 views), and outdoor
-negatives (191002, 12 views). All 33 views pass the instance/class/box
-contract. All 12 clean crack AOVs and exported semantic masks are exactly
-zero, and all 12 negatives survive curation. Structural views with no
-visible crack are eligible negatives even when other views of the same
-scene contain cracks. Views containing faint or under-resolution cracks
-retain the existing evidence/ignore filtering. Transfer evidence for the
-structures swap is in the v1.5.0 study above.

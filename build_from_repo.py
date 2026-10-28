@@ -74,6 +74,10 @@ def main():
     for rel in files:
         copy_py(SRC_INFINIGEN / rel, out / rel, own_paths)
     shutil.copytree(SRC_INFINIGEN / "assets" / "fonts", out / "assets" / "fonts")
+    # colour palettes some materials sample at random (e.g. a plant pot's soil): read via repo_root()
+    palette = HERE / "infinigen_examples" / "configs_nature" / "palette"
+    shutil.rmtree(palette, ignore_errors=True)
+    shutil.copytree(REPO / "infinigen" / "infinigen_examples" / "configs_nature" / "palette", palette)
     # data files beside vendored modules (e.g. terrain/assets/caves/cfg.txt, checked at
     # import) and third-party licences (OcMesher, mesh_to_sdf)
     for d in sorted({(SRC_INFINIGEN / rel).parent for rel in files}):

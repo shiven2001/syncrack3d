@@ -1,0 +1,481 @@
+# Copyright (C) 2024, Princeton University.
+# This source code is licensed under the BSD 3-Clause license found in the LICENSE file in the root directory of this source tree.
+
+import bmesh
+
+# Authors: Lingjie Mei
+import bpy
+import numpy as np
+from numpy.random import uniform
+
+from cwg_infinigen.assets.composition import material_assignments
+from cwg_infinigen.assets.utils.autobevel import BevelSharp
+from cwg_infinigen.assets.utils.decorate import (
+    read_center,
+    read_co,
+    read_normal,
+    subsurf,
+    write_attribute,
+    write_co,
+)
+from cwg_infinigen.assets.utils.nodegroup import geo_radius
+from cwg_infinigen.assets.utils.object import (
+    join_objects,
+    new_bbox,
+    new_cube,
+    new_cylinder,
+    new_line,
+)
+from cwg_infinigen.assets.objects.bathroom.fittings import bathroom_chrome
+from cwg_infinigen.assets.objects.wall_decorations.primitives import (
+    assign,
+    box,
+    cylinder,
+    shade_smooth,
+)
+from cwg_infinigen.core import surface
+from cwg_infinigen.core.placement.factory import AssetFactory
+from cwg_infinigen.core.util import blender as butil
+from cwg_infinigen.core.util.blender import deep_clone_obj
+from cwg_infinigen.core.util.math import FixedSeed
+from cwg_infinigen.core.util.random import weighted_sample
+
+
+class BathtubFactory(AssetFactory):
+    def __init__(self, factory_seed, coarse=False):
+        super(BathtubFactory, self).__init__(factory_seed, coarse)
+        with FixedSeed(factory_seed):
+            # A 2 m tub needs a 3 m clear wall run; flats fit compact baths.
+            self.width = uniform(1.45, 1.72)
+            self.size = uniform(0.8, 1)
+            self.depth = uniform(0.55, 0.7)
+            prob = np.array([2, 2])
+            self.bathtub_type = np.random.choice(
+                ["alcove", "freestanding"], p=prob / prob.sum()
+            )  # , 'corner'
+            self.contour_fn = (
+                self.make_corner_contour if self.has_corner else self.make_box_contour
+            )
+            self.has_curve = uniform() < 0.5
+            self.has_legs = uniform() < 0.5
+
+            self.thickness = (
+                uniform(0.04, 0.08) if self.has_base else uniform(0.02, 0.04)
+            )
+            self.disp_x = uniform(0, 0.2, 2)
+            self.disp_y = uniform(0, 0.1)
+
+            self.leg_height = uniform(0.2, 0.3) * self.depth
+            self.leg_side = uniform(0.05, 0.1)
+            self.leg_radius = uniform(0.02, 0.03)
+            self.leg_y_scale = uniform()
+            self.leg_subsurf_level = np.random.randint(3)
+
+            self.taper_factor = uniform(-0.1, 0.1)
+            self.stretch_factor = uniform(-0.2, 0.2)
+
+            self.alcove_levels = np.random.randint(1, 3) if self.has_base else 1
+            self.levels = 5
+            self.side_levels = 2
+
+            self.is_hole_centered = False
+            self.hole_radius = uniform(0.015, 0.02)
+
+            # /////////////////// assign materials ///////////////////
+
+            surface_gen_class = weighted_sample(material_assignments.ceramics)
+            self.surface_material_gen = surface_gen_class
+
+            leg_surface_gen_class = weighted_sample(material_assignments.metal_neutral)
+            self.leg_surface_material_gen = leg_surface_gen_class
+
+            hole_surface_gen_class = weighted_sample(material_assignments.metal_neutral)
+            self.hole_surface_material_gen = hole_surface_gen_class
+
+            self.scratch = None
+            self.edge_wear = None
+
+            # ////////////////////////////////////////////////////////
+
+            self.beveler = BevelSharp(mult=5, segments=5)
+
+    @property
+    def has_base(self):
+        return self.bathtub_type != "freestanding"
+
+    @property
+    def has_corner(self):
+        return self.bathtub_type == "corner"
+
+    def create_placeholder(self, **kwargs) -> bpy.types.Object:
+        return new_bbox(-self.size, 0, 0, self.width, 0, self.depth)
+
+    def create_asset(self, **params) -> bpy.types.Object:
+        self.surface = self.surface_material_gen()
+        self.leg_surface = self.leg_surface_material_gen()
+        self.hole_surface = self.hole_surface_material_gen()
+
+        if self.has_base:
+            obj = self.make_base()
+            cutter = self.make_cutter()
+            butil.modify_mesh(obj, "BOOLEAN", object=cutter, operation="DIFFERENCE")
+            butil.delete(cutter)
+        else:
+            obj = self.make_freestanding()
+            parts = [obj]
+            if self.has_legs:
+                parts.extend(self.make_legs(obj))
+            else:
+                parts.append(self.add_base(obj))
+            butil.modify_mesh(obj, "SOLIDIFY", thickness=self.thickness)
+            subsurf(obj, self.side_levels)
+            obj = join_objects(parts)
+        hole = self.add_hole(obj)
+        obj = join_objects([obj, hole])
+        obj.rotation_euler[-1] = np.pi / 2
+        butil.apply_transform(obj, True)
+
+        if self.bathtub_type == "freestanding":
+            butil.modify_mesh(obj, "SUBSURF", levels=1, apply=True)
+        else:
+            self.beveler(obj)
+
+        # Deck filler is a child so ceramic/subsurf on the tub cannot eat it.
+        filler = self.add_filler(obj)
+        filler.parent = obj
+        self._filler_obj = filler
+        return obj
+
+    def make_freestanding(self):
+        obj = self.make_bowl()
+        self.remove_top(obj)
+        with butil.ViewportMode(obj, "EDIT"):
+            bpy.ops.mesh.select_mode(type="EDGE")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.mesh.region_to_loop()
+            bpy.ops.mesh.extrude_edges_move()
+            bpy.ops.transform.resize(
+                value=(
+                    1 + self.thickness * 2 / self.width,
+                    1 + self.thickness / self.size,
+                    1,
+                )
+            )
+        obj.location[1] -= self.size / 2
+        butil.apply_transform(obj, True)
+        butil.modify_mesh(
+            obj, "SIMPLE_DEFORM", deform_method="TAPER", angle=self.taper_factor
+        )
+        butil.modify_mesh(
+            obj, "SIMPLE_DEFORM", deform_method="STRETCH", angle=self.taper_factor
+        )
+        obj.location = (
+            0,
+            self.size / 2,
+            -np.min(read_co(obj)[:, -1]) * uniform(0.5, 0.7),
+        )
+        butil.apply_transform(obj, True)
+        return obj
+
+    def remove_top(self, obj):
+        butil.select_none()
+        with butil.ViewportMode(obj, "EDIT"):
+            bm = bmesh.from_edit_mesh(obj.data)
+            geom = [f for f in bm.faces if f.calc_center_median()[-1] > self.depth]
+            bmesh.ops.delete(bm, geom=geom, context="FACES_KEEP_BOUNDARY")
+            bmesh.update_edit_mesh(obj.data)
+
+    def make_legs(self, obj):
+        legs = []
+        co, normal = read_center(obj), read_normal(obj)
+        x, y, z = co.T
+        leg_height = np.min(z) + self.leg_height
+        for u in [1, -1]:
+            for v in [1, -1]:
+                metric = np.where(z < leg_height, u * x + v * y, -np.inf)
+                i = np.argmax(metric)
+                p = co[i]
+                n = normal[i]
+                q = co[i] + self.leg_side * np.array(
+                    [n[0], n[1] * self.leg_y_scale, n[2]]
+                )
+                r = np.array([q[0], q[1], 0])
+                leg = new_line(2)
+                write_co(leg, np.stack([p, q, r]))
+                subsurf(leg, self.leg_subsurf_level)
+                surface.add_geomod(
+                    leg,
+                    geo_radius,
+                    apply=True,
+                    input_args=[self.leg_radius, 32],
+                    input_kwargs={"to_align_tilt": False},
+                )
+                butil.modify_mesh(
+                    leg, "BEVEL", width=self.leg_radius * uniform(0.3, 0.7)
+                )
+                leg.location[-1] = self.leg_radius
+                butil.apply_transform(leg, True)
+                write_attribute(leg, 1, "leg", "FACE")
+                legs.append(leg)
+        return legs
+
+    def add_base(self, obj):
+        obj = deep_clone_obj(obj)
+        cutter = new_cube()
+        x, y, z_ = read_co(obj).T
+        cutter.scale = 10, 10, np.min(z_) + self.leg_height
+        butil.apply_transform(cutter, True)
+        butil.modify_mesh(obj, "BOOLEAN", object=cutter, operation="INTERSECT")
+        butil.delete(cutter)
+        with butil.ViewportMode(obj, "EDIT"):
+            bm = bmesh.from_edit_mesh(obj.data)
+            geom = [f for f in bm.faces if len(f.verts) > 10]
+            bmesh.ops.delete(bm, geom=geom, context="FACES_KEEP_BOUNDARY")
+            bmesh.update_edit_mesh(obj.data)
+            bpy.ops.mesh.select_mode(type="EDGE")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.mesh.region_to_loop()
+            bpy.ops.mesh.select_all(action="INVERT")
+            bpy.ops.mesh.delete(type="EDGE")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.mesh.extrude_edges_move(
+                TRANSFORM_OT_translate={"value": (0, 0, -self.depth)}
+            )
+        x, y, z = read_co(obj).T
+        z = np.clip(z, 0, None)
+        write_co(obj, np.stack([x, y, z], -1))
+        with butil.ViewportMode(obj, "EDIT"):
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+        subsurf(obj, 2)
+        butil.modify_mesh(obj, "SOLIDIFY", thickness=self.thickness)
+        return obj
+
+    def make_box_contour(self, t, i):
+        return [
+            (t + self.disp_x[0] * i, t + self.disp_y * i),
+            (self.width - t - self.disp_x[1] * i, t + self.disp_y * i),
+            (self.width - t - self.disp_x[1] * i, self.size - t - self.disp_y * i),
+            (t + self.disp_x[0] * i, self.size - t - self.disp_y * i),
+        ]
+
+    def make_corner_contour(self, t, i):
+        return [
+            (t + self.disp_y * i, t + self.disp_y * i),
+            (self.width - t - self.disp_x[1] * i, t + self.disp_y * i),
+            (
+                self.width - t - self.disp_x[1] * i,
+                self.size - (t + self.disp_y * i) / np.sqrt(2),
+            ),
+            (
+                self.size - (t + self.disp_y * i) / np.sqrt(2),
+                self.width - t - self.disp_x[0] * i,
+            ),
+            (t + self.disp_y * i, self.width - t - self.disp_x[0] * i),
+        ]
+
+    # noinspection PyArgumentList
+    def make_base(self):
+        contour = self.contour_fn(0, 0)
+        obj = new_cylinder(vertices=len(contour))
+        co = np.concatenate(
+            [np.array([[x, y, 0], [x, y, self.depth]]) for x, y in contour]
+        )
+        write_co(obj, co)
+        return obj
+
+    # noinspection PyArgumentList
+    def make_bowl(self):
+        if self.has_curve:
+            lower = self.contour_fn(0, 1)
+            upper = self.contour_fn(0, -1)
+        else:
+            lower = self.contour_fn(0, 0)
+            upper = self.contour_fn(0, 0)
+        obj = new_cylinder(vertices=len(lower))
+        co = np.concatenate(
+            [
+                np.array([[x, y, 0], [z, w, self.depth * 2]])
+                for (x, y), (z, w) in zip(lower[::-1], upper[::-1])
+            ]
+        )
+        write_co(obj, co)
+        subsurf(obj, self.alcove_levels, True)
+        levels = self.levels - self.alcove_levels - self.side_levels
+        subsurf(obj, levels)
+        return obj
+
+    # noinspection PyArgumentList
+    def make_cutter(self):
+        if self.has_curve:
+            lower = self.contour_fn(self.thickness, 1)
+            upper = self.contour_fn(self.thickness, -1)
+        else:
+            lower = self.contour_fn(self.thickness, 0)
+            upper = self.contour_fn(self.thickness, 0)
+        obj = new_cylinder(vertices=len(lower))
+        co = np.concatenate(
+            [
+                np.array(
+                    [[x, y, self.thickness], [z, w, self.depth * 2 - self.thickness]]
+                )
+                for (x, y), (z, w) in zip(lower[::-1], upper[::-1])
+            ]
+        )
+        write_co(obj, co)
+        subsurf(obj, self.alcove_levels, True)
+        levels = self.levels - self.alcove_levels
+        subsurf(obj, levels)
+        return obj
+
+    def find_hole(self, obj, x=None, y=None):
+        if x is None:
+            x = self.width / 2
+        if y is None:
+            y = self.size / 2
+        up_facing = read_normal(obj)[:, -1] > 0
+        center = read_center(obj)
+        i = np.argmin(np.abs(center[:, :2] - np.array([[x, y]])).sum(1) - up_facing)
+        return center[i]
+
+    def add_hole(self, obj):
+        match self.bathtub_type:
+            case "alcove":
+                location = self.find_hole(obj)
+            case "freestanding":
+                location = self.find_hole(obj, uniform(0.35, 0.4) * self.width)
+            case _:
+                location = self.find_hole(obj, self.size / 2, self.size / 2)
+        if self.is_hole_centered:
+            location = self.find_hole(obj)
+        obj = new_cylinder()
+        obj.scale = self.hole_radius, self.hole_radius, 0.005
+        obj.location = location
+        butil.apply_transform(obj, True)
+        write_attribute(obj, 1, "hole", "FACE")
+        return obj
+
+    def add_filler(self, tub):
+        """Deck-mounted bath mixer on the room-facing rim, spout into the basin.
+
+        Built from primitives (same chrome as the rest of the bathroom). Kept as
+        a child of the tub: joining it and then running SUBSURF melted the spout
+        into the porcelain.
+        """
+        chrome = bathroom_chrome()
+        r = uniform(0.012, 0.015)
+        rise = uniform(0.085, 0.110)
+        reach = uniform(0.14, 0.18)
+        handle_off = uniform(0.052, 0.062)
+        z_deck = 0.0
+        parts = []
+
+        def chrome_cyl(radius, height, loc, rot=(0.0, 0.0, 0.0), name="bath_fill"):
+            o = cylinder(radius, height, location=loc, rotation=rot, name=name)
+            assign(o, chrome)
+            shade_smooth(o)
+            return o
+
+        # Shared deck plate, then the column and a level spout over the water.
+        plate = chrome_cyl(r * 2.4, 0.010, (0.0, 0.0, z_deck + 0.005), name="bath_plate")
+        parts.append(plate)
+        parts.append(
+            chrome_cyl(r, rise, (0.0, 0.0, z_deck + 0.010 + rise / 2), name="bath_riser")
+        )
+        neck_z = z_deck + 0.010 + rise
+        parts.append(
+            chrome_cyl(
+                r * 0.92,
+                reach,
+                (-reach / 2, 0.0, neck_z),
+                rot=(0.0, np.pi / 2, 0.0),
+                name="bath_neck",
+            )
+        )
+        elbow = chrome_cyl(
+            r * 1.05,
+            r * 2.1,
+            (-reach, 0.0, neck_z),
+            rot=(0.0, np.pi / 2, 0.0),
+            name="bath_elbow",
+        )
+        parts.append(elbow)
+        drop = uniform(0.022, 0.030)
+        parts.append(
+            chrome_cyl(
+                r * 0.82,
+                drop,
+                (-reach, 0.0, neck_z - drop / 2),
+                name="bath_nozzle",
+            )
+        )
+        parts.append(
+            chrome_cyl(
+                r * 1.02,
+                0.008,
+                (-reach, 0.0, neck_z - drop),
+                name="bath_aerator",
+            )
+        )
+
+        # Hot / cold levers on the same rim, offset along the tub length.
+        # Stay in the deck plane (no +X stubs) so the set does not hang off the lip.
+        for sign in (-1, 1):
+            hy = sign * handle_off
+            parts.append(
+                chrome_cyl(r * 1.55, 0.012, (0.0, hy, z_deck + 0.006), name="bath_hbase")
+            )
+            parts.append(
+                chrome_cyl(
+                    r * 0.55,
+                    0.032,
+                    (0.0, hy, z_deck + 0.028),
+                    name="bath_hstem",
+                )
+            )
+            lever = box(
+                (0.012, 0.042, 0.010),
+                location=(0.0, hy + sign * 0.018, z_deck + 0.042),
+                name="bath_lever",
+            )
+            assign(lever, chrome)
+            butil.modify_mesh(lever, "BEVEL", width=0.002, segments=2)
+            parts.append(lever)
+
+        filler = join_objects(parts)
+        filler.name = f"BathtubFactory({self.factory_seed}).filler"
+        # Sit on the outer rim, not the inner slope: a median of the whole front
+        # band pulled the plate over the water so half of it looked airborne.
+        plate_r = r * 2.4
+        co = read_co(tub)
+        z_top = float(co[:, 2].max())
+        high = co[co[:, 2] > z_top - 0.045]
+        if len(high) > 8:
+            x_outer = float(high[:, 0].max())
+            rim = high[high[:, 0] > x_outer - 0.08]
+            # Centre the plate on the outer rim so it is not cantilevered inward.
+            rim_x = x_outer - plate_r
+            y0, y1 = float(high[:, 1].min()), float(high[:, 1].max())
+            rim_y = y0 + uniform(0.14, 0.20) * (y1 - y0)
+            rim_z = float(rim[:, 2].max()) if len(rim) else z_top
+        else:
+            rim_x = -max(self.thickness * 0.7, 0.030)
+            rim_y = self.width * uniform(0.14, 0.20)
+            rim_z = z_top
+        filler.location = (rim_x, rim_y, rim_z)
+        butil.apply_transform(filler, loc=True)
+        return filler
+
+    def finalize_assets(self, assets):
+        self.surface.apply(assets, clear=True)
+        filler = getattr(self, "_filler_obj", None)
+        if filler is not None:
+            surface.assign_material(filler, bathroom_chrome())
+        if self.has_legs and not self.has_base:
+            self.leg_surface.apply(assets, "leg", metal_color="bw+natural")
+        self.hole_surface.apply(assets, "hole", metal_color="bw+natural")
+
+        if self.scratch:
+            self.scratch.apply(assets)
+        if self.edge_wear:
+            self.edge_wear.apply(assets)

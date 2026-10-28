@@ -1,7 +1,7 @@
 """Score SynCrack3D crack checkpoints on BuildCrack tiles.
 
 358 paired 448 px tiles. Labels are 0/255. Crack is prediction class 1.
-Centreline F1 is pooled (protocol v2: 5 px tolerance, 1.5x test-time upscaling). Empty tiles stay in the pool, and a plain
+Centreline F1 is pooled (5 px tolerance, 1.5x test-time upscaling). Empty tiles stay in the pool, and a plain
 tile is an alarm when predicted crack pixels exceed 0.1%.
 
 Tiles cut from one photo are one bootstrap unit: a numeric prefix, or a DJI
@@ -11,7 +11,7 @@ scores. The vote marks a pixel as crack when a majority of the seeds do, and
 its interval resamples source images only.
 
     python eval/buildcrack/score.py \\
-        --model v1.2.0=path/to/checkpoint_dir --out path/to/out
+        --model unet=path/to/checkpoint_dir --out path/to/out
 """
 
 import argparse
@@ -85,8 +85,8 @@ def main():
                     help="name=directory, directory contains runs/s*/last.pt; repeat for comparisons")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--bootstrap", type=int, default=N_BOOT)
-    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
-    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px")
+    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (1: none)")
     args = ap.parse_args()
     if args.data is None:
         ap.error("pass --data path/to/BuildCrack or set SYNCRACK3D_BUILDCRACK")

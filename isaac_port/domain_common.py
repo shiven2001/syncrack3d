@@ -1,16 +1,9 @@
 """Default SynCrack3D scene options for porting a wall. Cracks only."""
 
-COMMON = (
-    "--substrate paint --min-defects 2 --max-defects 3 --max-props 0 --resolution 640 "
-    "--samples 64 "
-    "--wall-normal-mode explicit --dicing-rate .75 "
-    "--exposure-ev-range .4 1.3 --closeup-fill .6 1.5 --closeup-aim-jitter .3 "
-    "--preserve-closeup-scale --closeups-per-defect 1 --crack-fit-path --crack-label-mode support "
-    "--crack-path-mode angular --crack-branch-mode local_curved --crack-width-scale 1.3 "
-    "--crack-depth-scale .5 --defect-size-range .20 .45 --wall-materials diverse "
-    "--clean-wall-scale 0 --crack-layered-fraction .7"
-).split()
+# Legacy-style cracks on an open room without fixtures or props, one close-up per crack.
+COMMON = ("--crack-style-mix legacy=1 --no-fixtures --shell-finish plain --max-props 0 "
+          "--closeups-per-defect 1").split()
 
 
 def common_options(a):
-    return [*COMMON, "--material-category", a.material_category, *a.extra]
+    return [*COMMON, "--material-categories", a.material_category, *a.extra]

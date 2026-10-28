@@ -582,3 +582,25 @@ terrain/utils/random.py
 tools/__init__.py
 tools/suffixes.py
 assets/materials/ceramic/exterior_stone.py
+# v1.18.0 room furniture (bathroom and seating packages)
+assets/objects/bathroom/__init__.py
+assets/objects/bathroom/accessories.py
+assets/objects/bathroom/bathroom_sink.py
+assets/objects/bathroom/bathtub.py
+assets/objects/bathroom/fittings.py
+assets/objects/bathroom/hardware.py
+assets/objects/bathroom/shower.py
+assets/objects/bathroom/toilet.py
+assets/objects/bathroom/vanity.py
+assets/objects/seating/__init__.py
+assets/objects/seating/bed.py
+assets/objects/seating/bedframe.py
+assets/objects/seating/chairs/__init__.py
+assets/objects/seating/chairs/bar_chair.py
+assets/objects/seating/chairs/chair.py
+assets/objects/seating/chairs/office_chair.py
+assets/objects/seating/chairs/seats/curvy_seats.py
+assets/objects/seating/chairs/seats/round_seats.py
+assets/objects/seating/mattress.py
+assets/objects/seating/pillow.py
+assets/objects/seating/sofa.py

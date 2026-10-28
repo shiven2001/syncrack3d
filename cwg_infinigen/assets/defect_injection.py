@@ -381,18 +381,11 @@ def _inject_crack(
     crack_grime_focus=2.2,
     crack_width_scale=1.0,
     crack_profile="legacy",
-    crack_network_fraction=0.0,
-    crack_network_spacing=(0.02, 0.06),
     crack_network_grime=(0.15, 0.60),
-    crack_network_edge="organic",
     crack_network_extent=1.4,
     crack_weathering_fraction=0.0,
-    crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
-    crack_fit_path=False,
-    crack_label_mode="profile",
-    crack_branch_mode="original",
-    crack_path_mode="original",
+    crack_path_mode="angular",
     layered_fraction=0.0,
     crack_render="geometry",
 ):
@@ -411,25 +404,19 @@ def _inject_crack(
     from cwg_infinigen.assets.defect_fields import adapt_crack_branches, adapt_crack_morphology, adapt_crack_path
 
     from cwg_infinigen.assets.defect_fields import sample_crack_network
-    from cwg_infinigen.core.util.math import int_hash
-    if not 0 <= crack_network_fraction <= 1:
-        raise ValueError("network fraction must be 0..1")
-    network_rng = np.random.default_rng(int_hash((int(seed), "network_selection_v1")))
-    network = crack_profile == "network" or network_rng.random() < crack_network_fraction
+    network = crack_profile == "network"
     half = min(extent, 0.42) * 0.42
     if network:
         # Network field size relative to the card; the card, its placement and
         # the close-up framing are unchanged. Draws nothing.
         half *= float(crack_network_extent)
-    p = (sample_crack_network(seed, half, crack_network_spacing, crack_network_grime, crack_network_edge) if network else
+    p = (sample_crack_network(seed, half, grime_range=crack_network_grime) if network else
          sample_crack_morphology(seed, half=half, profile=crack_profile))
-    p = adapt_crack_morphology(
-        p, width_scale=crack_width_scale, jitter_scale=crack_jitter_scale,
-        depth_scale=crack_depth_scale, fit_path=crack_fit_path and not network,
-    )
+    # A crack path is fitted inside its card so a small card cannot clip it into islands.
+    p = adapt_crack_morphology(p, width_scale=crack_width_scale, depth_scale=crack_depth_scale, fit_path=not network)
     if not network:
         p = adapt_crack_path(p, seed, crack_path_mode)
-        p = adapt_crack_branches(p, crack_branch_mode)
+        p = adapt_crack_branches(p)
     uv, _tex = _uv_socket(nt, *frame)
     geo = {}
     prof = build_crack_field(nt, uv, p, out=geo)
@@ -556,14 +543,12 @@ def _inject_crack(
     if not network and crack_weathering_fraction > 0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked:
         weathering = _crack_weathering(nt, state, frame, geo, p, seed, float(crack_weathering_fraction),
                                        bsdf.inputs["Base Color"])
-    if crack_label_mode not in ("profile", "support"):
-        raise ValueError("crack_label_mode must be profile or support")
-    # prof is normalized groove depth, NOT binary surface coverage. Passing it
-    # straight to an AOV and thresholding at .5 labels only the deepest half of
-    # a V-channel. For the explicit support policy, each shader sample labels
-    # the channel footprint; Cycles averaging supplies pixel antialias coverage.
-    # The .02 floor excludes the vanishing border fade, in field units, not px.
-    label = prof if crack_label_mode == "profile" else _math(nt, "GREATER_THAN", prof, .02)
+    # prof is normalized groove depth, NOT binary surface coverage: thresholding
+    # it at .5 would label only the deepest half of a V-channel. Each shader
+    # sample labels the channel footprint (support); Cycles averaging supplies
+    # pixel antialias coverage. The .02 floor excludes the vanishing border
+    # fade, in field units, not px.
+    label = _math(nt, "GREATER_THAN", prof, .02)
     if chips is not None:
         label = _math(nt, "MAXIMUM", label, chips, clamp=True)  # edge chips are part of the crack
     if crack_render == "pbr":
@@ -601,16 +586,16 @@ def _inject_crack(
         "network": p.get("network"),
         "grime_strength_effective": strength,
         "width_scale": float(crack_width_scale),
-        "jitter_scale": float(crack_jitter_scale),
+        "jitter_scale": 1.0,
         "depth_scale": float(crack_depth_scale),
-        "fit_path": bool(crack_fit_path and not network),
-        "branch_mode": "cellular" if network else crack_branch_mode,
+        "fit_path": not network,
+        "branch_mode": "cellular" if network else "local_curved",
         "branch_specs": p["fork_specs"],
         "path_mode": "cellular" if network else crack_path_mode,
         "path_knots_m": p.get("path_knots"),
-        "label_mode": crack_label_mode,
+        "label_mode": "support",
         "render": crack_render,
-        "label_support_profile_floor": .02 if crack_label_mode == "support" else None,
+        "label_support_profile_floor": .02,
         "lip_width_m": round(float(p.get("w_lip", 0.0)), 6),
         "lip_height_m": round(float(p.get("h_lip", 0.0)), 6),
         "n_forks": len(p.get("fork_specs") or ()),
