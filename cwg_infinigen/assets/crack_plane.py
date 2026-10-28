@@ -869,7 +869,7 @@ class CrackPlaneFactory(AssetFactory):
             orientation="wall",
         )
         plane.data.materials.append(mat)
-        plane["syndefect_surface"] = "wall"
+        plane["syncrack_surface"] = "wall"
         _disable_decal_lighting(plane)
         return plane
 
@@ -906,7 +906,7 @@ class CrackPlaneFactory(AssetFactory):
                 # plaster, so wall_normal points out into the room. Without this
                 # the camera has to guess from a local axis, and that fallback
                 # points into the host for some card windings.
-                obj["syndefect_normal"] = tuple(float(c) for c in wall_normal)
+                obj["syncrack_normal"] = tuple(float(c) for c in wall_normal)
                 _disable_decal_lighting(obj)
             except Exception as e:
                 logger.warning("Failed to embed crack plane %s: %s", obj.name, e)
@@ -949,7 +949,7 @@ class CeilingCrackPlaneFactory(AssetFactory):
             orientation="ceiling",
         )
         plane.data.materials.append(mat)
-        plane["syndefect_surface"] = "ceiling"
+        plane["syncrack_surface"] = "ceiling"
         _disable_decal_lighting(plane)
         return plane
 
@@ -979,7 +979,7 @@ class CeilingCrackPlaneFactory(AssetFactory):
                 obj.location += Vector(ceil_normal * EMBED_OFFSET)
                 # Direction this card faces, recorded after placement so the
                 # camera does not have to infer it from a local axis.
-                obj["syndefect_normal"] = tuple(float(c) for c in -ceil_normal)
+                obj["syncrack_normal"] = tuple(float(c) for c in -ceil_normal)
                 _disable_decal_lighting(obj)
             except Exception as e:
                 logger.warning(
@@ -1024,7 +1024,7 @@ class FloorCrackPlaneFactory(AssetFactory):
             orientation="floor",
         )
         plane.data.materials.append(mat)
-        plane["syndefect_surface"] = "floor"
+        plane["syncrack_surface"] = "floor"
         _disable_decal_lighting(plane)
         return plane
 
@@ -1040,7 +1040,7 @@ class FloorCrackPlaneFactory(AssetFactory):
                 floor_normal = np.array(butil.global_polygon_normal(obj, face))
                 obj.location += Vector(floor_normal * EMBED_OFFSET)
                 # Already +Z, out of the slab and into the room, per above.
-                obj["syndefect_normal"] = tuple(float(c) for c in floor_normal)
+                obj["syncrack_normal"] = tuple(float(c) for c in floor_normal)
                 _disable_decal_lighting(obj)
             except Exception as e:
                 logger.warning(

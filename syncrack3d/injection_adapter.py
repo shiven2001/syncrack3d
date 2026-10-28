@@ -56,7 +56,7 @@ def _state_for_bindings(bindings):
             room_name,
             _ObjectState(obj=host, tags={t.Semantics.Room}),
         )
-        binding.defect["syndefect_surface"] = binding.surface
+        binding.defect["syncrack_surface"] = binding.surface
         state.objs[f"defect_{index:04d}"] = _ObjectState(
             obj=binding.defect,
             relations=[_Relation(target_name=room_name)],

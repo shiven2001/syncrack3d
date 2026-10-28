@@ -166,7 +166,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     wall = build.hosts[0]
     # The camera-facing plane is at y=0, with geometric normal -Y. Positive
     # height must move toward cameras at negative Y; no sign flip.
-    wall["syndefect_displacement_sign"] = 1
+    wall["syncrack_displacement_sign"] = 1
 
     # 1. Wall material. The material helpers import Infinigen's room decorator
     # lazily, and that first import draws from numpy, so only a process's first
@@ -321,7 +321,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
     # The record keeps the v1.17.0 schema plus prop_room; fixed settings are written as constants.
     record = {
-        "schema": "syndefect3d/cwg_scene/1",
+        "schema": "syncrack3d/cwg_scene/1",
         "seed": seed,
         "spec": spec.to_dict(),
         "defects_placed": [p.to_dict() for p in placements],

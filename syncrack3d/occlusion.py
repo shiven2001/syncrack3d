@@ -21,8 +21,8 @@ Props do three jobs here, all of which matter more than looking furnished:
 
 Each indoor wall draws a room (kitchen, bathroom, living room, bedroom or
 utility) and then props from that room's list, so a toilet does not stand beside
-a sofa. The bathroom, kitchen and fixture assets are the SynDefect3D versions
-(stainless and chrome fittings, vanity units). Every prop is
+a sofa. The bathroom, kitchen and fixture assets are the vendored Infinigen
+versions (stainless and chrome fittings, vanity units). Every prop is
 loose: it stands on the floor anywhere in front of the wall, from the wall gap
 out to `MAX_STANDOFF_M`, turned any way.
 A prop in the way of something steps further from the wall within that band, or

@@ -80,7 +80,7 @@ def write_scene_manifest(
         hosts.append(
             {
                 "name": host.name,
-                "surface": host.get("syndefect_surface"),
+                "surface": host.get("syncrack_surface"),
                 "finish": host.get("surface_finish"),
                 "module_id": host.get("cwg_module_id"),
                 "panel": host.get("cwg_panel"),
@@ -91,7 +91,7 @@ def write_scene_manifest(
             }
         )
     payload = {
-        "schema": "syndefect3d/controlled_wall_scene/1",
+        "schema": "syncrack3d/controlled_wall_scene/1",
         "generator_version": GENERATOR_VERSION,
         "spec": spec.to_dict(),
         "hosts": hosts,

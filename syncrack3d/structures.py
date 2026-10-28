@@ -4,7 +4,7 @@ These are occluding geometry, never injection hosts or crack annotations.
 Windows are Infinigen casements on the wall face. The host is not cut, so
 the glass is an opaque tint and the wall behind it does not show through.
 Doors are closed
-solid SynDefect3D panel leaves on the wall face, with no extra surround
+solid panel leaves on the wall face, with no extra surround
 and no wall behind them that can crack (cracks keep out). The indoor electrical
 plate is a UK double socket: two rockers together above two Type-G
 outlets, in white, black, or satin metal. There is no separate switch. A wall cable or conduit is
@@ -166,7 +166,7 @@ def sample_structure_plan(seed, spec, profile="auto", environment="indoor", incl
     return plans
 
 
-# SynDefect3D door leaf: (module under cwg_infinigen.assets.objects, factory, weight).
+# Panel door leaf: (module under cwg_infinigen.assets.objects, factory, weight).
 # Glazed and louvred leaves are not used: the wall is not cut, so a window or
 # slit shows the host surface through the opening.
 DOOR_MODELS = (("elements.doors.panel", "PanelDoorFactory", 1.),)
@@ -211,7 +211,7 @@ def _bead_paths(lo, hi, edges, radius, r, floor_z):
 
 
 def _spawn_model(module, factory, seed, **kwargs):
-    """A SynDefect3D/Infinigen model, or None if it cannot be built here."""
+    """An Infinigen model, or None if it cannot be built here."""
     from syncrack3d.occlusion import _load
 
     try:

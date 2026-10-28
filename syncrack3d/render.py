@@ -221,7 +221,7 @@ def write_view_metadata(out_dir, stem, camera):
     payload = {"schema": "syncrack3d/capture_role/1", "frame_stem": stem,
                "camera_role": camera.get("cwg_role", "context"),
                "structure_target": camera.get("cwg_structure_target"),
-               "defect_target": camera.get("syndefect_target"), "instances": []}
+               "defect_target": camera.get("syncrack_target"), "instances": []}
     (folder / f"DefectViewMeta_{stem}.json").write_text(json.dumps(payload, indent=2))
 
 

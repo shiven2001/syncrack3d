@@ -68,7 +68,7 @@ lights, cameras and timing.
    seams, downpipes, vents, hatches and lights outdoors. Indoor
    walls with a socket get up to two more. Each plate is a UK double
    socket, two rockers above two three-pin outlets, so there is no
-   separate switch. The plate is white, black, or satin metal. Doors are closed SynDefect3D panel
+   separate switch. The plate is white, black, or satin metal. Doors are closed panel
    leaves set in a mitred architrave of the same wood (65-90 mm wide,
    24-30 mm proud of the wall, lapping over the leaf's edges). The leaf face
    sits 8 mm in front of the wall, behind the architrave, and its back half
@@ -114,7 +114,7 @@ lights, cameras and timing.
 7. **Props.** Each indoor wall is furnished as one room (kitchen 20%,
    bathroom 20%, living room 25%, bedroom 20%, utility 15%) with up to three
    items from that room's list (24 models). The
-   bathroom, kitchen and fixture models are the SynDefect3D versions. Every
+   bathroom, kitchen and fixture models are the vendored Infinigen versions. Every
    item is loose: it stands on the floor at any angle, its back 2 cm to
    0.9 m from the wall (beyond the wall's relief). Close-ups are taken
    0.16-0.45 m from the wall and context views 1-3 m, so an item further out
@@ -324,11 +324,9 @@ traced:
 - **Real-time renders** find more cracks (51% under soft light) at a similar
   false-alarm rate.
 
-## Maintainers
+## Licence notes
 
-This folder is a snapshot of the repository generator, then edited here.
-`controlled_wall_generator/` and `infinigen/` keep paint peeling and blistering,
-including the two-layer peel. Rebuilding this app from the repo with
-`python build_from_repo.py` would put that code back and overwrite the
-crack-only edits; do that only after those edits have been ported, and pass
-`--overwrite-local-edits` if you mean to discard them.
+`cwg_infinigen/` is a vendored subset of [Infinigen](https://github.com/princeton-vl/infinigen)
+(Princeton University, BSD 3-Clause; see `LICENSE-INFINIGEN`), with imports
+renamed to `cwg_infinigen`. OcMesher, mesh_to_sdf, and font licences stay
+beside those trees.

@@ -7,7 +7,7 @@ apartment pipeline sampled that only incidentally, through room layout; here it
 is swept on purpose.
 
 Incidence is measured from the wall normal, the same convention as
-``syndefect_light_incidence_deg`` in placement/camera.py: 0 degrees is head-on
+``syncrack_light_incidence_deg`` in placement/camera.py: 0 degrees is head-on
 and flattens a dome, 90 degrees is grazing and rakes across relief. Pipeline
 measurements put a blister at 3.1% Weber contrast at 45 degrees against 37.8% at
 grazing, so a dataset that samples only one end of that range teaches the

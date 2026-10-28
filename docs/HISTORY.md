@@ -12,7 +12,7 @@ Props were seven small items (bottle, food box, floor lamp, two shelves, table t
 at most one per wall, standing 0.15-0.9 m off the wall and never in front of a crack:
 188 of 500 v1.17 training walls had one. v1.18.0 furnishes each indoor wall as one room
 (kitchen, bathroom, living room, bedroom, utility) with up to three items from 24 Infinigen
-and SynDefect3D models (the bathroom and seating packages were vendored for this). Every
+models (the bathroom and seating packages were vendored for this). Every
 item is loose: it stands on the floor at any angle, its back 2 cm to 0.9 m from the wall,
 clear of everything else, so cracks run beside furniture edges and contact shadows and up to
 half of a crack may be hidden. Wall-backed and wall-hung items (mirrors, pictures, wall and
@@ -23,12 +23,12 @@ earlier, wall-backed version) 41 had props. Walls, cracks, lights and cameras ar
 props are drawn last, and views jammed against a prop are dropped. Not yet trained or
 evaluated.
 
-Fixtures changed in the same version. The flat brown door slab became a closed SynDefect3D
+Fixtures changed in the same version. The flat brown door slab became a closed
 panel door leaf (with its own handle and wood or painted finish), set in a mitred
 architrave of the same wood that laps over its edges, so the door reads as hung in an
 opening rather than standing in front of the wall. Glazed and louvred leaves were dropped
-(the wall is not cut, so the wall showed through them), and SynDefect3D's own casing was not
-used: it is swept through a cut wall and left dark blocks at its top corners here. Half of the sockets and switches are SynDefect3D models (US-style double
+(the wall is not cut, so the wall showed through them), and the stock Infinigen casing was not
+used: it is swept through a cut wall and left dark blocks at its top corners here. Half of the sockets and switches are Infinigen models (US-style double
 socket, wide rocker switch) beside this app's UK-style ones, and a wall mixer tap is a new
 indoor fixture. Indoor walls with sockets get up to two more, and doors usually get a switch
 beside them. Painted and plastic fixture parts are yellowed and grimy, and about half of the
@@ -554,8 +554,7 @@ reported here. The scored crack checkpoint stays
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
-cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
-                 injection/fields, AOV labels, sensor model, props) - see NOTICE.md
+cwg_infinigen/   vendored Infinigen subset (materials, defect injection/fields, AOV labels, sensor model, props); see LICENSE-INFINIGEN
 tools/           export (masks/splits/boxes/COCO) and label-contract check
 isaac_port/      wall -> displaced, labelled USD panels in Isaac Sim, checked against Blender
 ```
@@ -1087,15 +1086,6 @@ traced:
   These are 10 of 188 false-alarm blobs.
 - **Real-time renders** find more cracks (51% under soft light) at a similar
   false-alarm rate.
-
-## Maintainers
-
-This folder is a snapshot of the repository generator, then edited here.
-`controlled_wall_generator/` and `infinigen/` keep paint peeling and blistering,
-including the two-layer peel. Rebuilding this app from the repo with
-`python build_from_repo.py` would put that code back and overwrite the
-crack-only edits; do that only after those edits have been ported, and pass
-`--overwrite-local-edits` if you mean to discard them.
 
 ## Crack networks (v1.4.0)
 

@@ -211,7 +211,7 @@ def build_defects(
         # Injection seeds each defect from int_hash(card.name), so the name must
         # differ between scenes; the per-scene factory seed makes it unique.
         card.name = f"CWG_Defect_{index:02d}_{defect_class}_{factory_seed}"
-        card["syndefect_surface"] = "wall"
+        card["syncrack_surface"] = "wall"
         card["cwg_defect_class"] = defect_class
         bpy.context.view_layer.update()
 

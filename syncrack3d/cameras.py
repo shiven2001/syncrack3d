@@ -156,7 +156,7 @@ def sample_camera_poses(
             cam.data.lens = focal_mm
             cam["cwg_role"] = "closeup"
             cam["cwg_target_index"] = placement.index
-            cam["syndefect_target"] = placement.object_name
+            cam["syncrack_target"] = placement.object_name
             poses.append(
                 CameraPose(
                     index=index,

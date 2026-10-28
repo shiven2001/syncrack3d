@@ -847,7 +847,7 @@ def build_instance_sidecar(
         }
         records.append(record)
     return {
-        "schema": "syndefect3d/frame_instances/1",
+        "schema": "syncrack3d/frame_instances/1",
         "sample_id": sample_id,
         "scene_id": scene_id,
         "frame_stem": stem,
@@ -861,7 +861,7 @@ def build_instance_sidecar(
         "under_resolution_ignore_floor": (
             None if under_resolution_floor is None else float(under_resolution_floor)
         ),
-        "hard_threshold_policy": "syndefect3d/majority_coverage/1",
+        "hard_threshold_policy": "syncrack3d/majority_coverage/1",
         # /2: the semantic class is the owner's, and only a cross-class
         # conflict joins blended ids in `ambiguous`. /1 also voided owned rim
         # pixels whose class AOV fell just under the threshold.
