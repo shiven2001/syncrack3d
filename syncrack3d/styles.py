@@ -60,7 +60,7 @@ def wall_style(seed, args):
     import random
     from argparse import Namespace
 
-    from syncrack3d.material_diversity import PAINTED_CATEGORIES
+    from syncrack3d.material_diversity import DEFAULT_CATEGORIES, PAINTED_CATEGORIES
 
     rng = random.Random(int(hashlib.md5(f"{int(seed)}:crack_style".encode()).hexdigest()[:16], 16))
     mix = parse_style_mix(args.crack_style_mix)
@@ -71,7 +71,10 @@ def wall_style(seed, args):
         wall.structures = "off"
     if style == "network":
         allowed = args.material_categories
-        painted = [c for c in PAINTED_CATEGORIES if allowed is None or c in allowed]
+        if allowed is None:
+            painted = [c for c in DEFAULT_CATEGORIES if c in PAINTED_CATEGORIES]
+        else:
+            painted = [c for c in PAINTED_CATEGORIES if c in allowed]
         if painted:
             wall.material_category = rng.choice(painted)
     return style, wall

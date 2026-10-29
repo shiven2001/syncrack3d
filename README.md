@@ -50,31 +50,58 @@ lights, cameras and timing.
 
 ## How a wall is built
 
-1. **Wall and material.** A material category is drawn uniformly from 15:
-   painted plaster and textured stucco (neutral, colour and mid-tone coats),
-   concrete, brick, wall tile, large tile, marble, stone block, cobble, rubble
-   stone and sandstone ashlar. Wood and irregular stone are not used: cracks
-   on them hurt transfer to real photos. The wall then draws a crack style
-   (below).
+1. **Wall and material.** The inspection wall draws from Infinigen 2's wall
+   picker (`wall_material_rand`, vendored under `syncrack3d/vendor`, BSD) with
+   its own weights: mostly paint (about 39%, sometimes with a splat layer),
+   then wall tile, stucco, brick, wood planks, stone-block masonry, concrete,
+   painted brick, cobble and stone. Masonry and cobble are added to the
+   picker, and so is painted stucco (about 14%: knockdown, sand float, skip
+   trowel, popcorn and heavy orange peel), which Infinigen 2 lacks; it is
+   built the way Infinigen 2's paint is (`syncrack3d/materials_v2/stucco.py`),
+   with 0.5-6 mm of real displacement. Brick, block and tile courses stay
+   horizontal. Each seed rebuilds the procedural graph, so the finish varies
+   without an Infinigen install. Fixtures and props stand off the
+   wall by its own measured relief (`syncrack3d/relief.py`). Shaders that draw their own cracks are left out so the
+   only cracks in frame are labelled ones: `paint_flaked`, `wall_flaked_tile`,
+   the cracked coat of `bricks_paint`, and the scratch layer. The older 15
+   categories remain available through `--material-categories`, which draws
+   uniformly from what it names. The wall then draws a crack style (below).
 2. **Context.** Indoors, a room segment: floor, ceiling and two side walls.
-   In 70% of rooms the side walls carry a crack-free copy of the wall's own
-   finish; otherwise both get one material drawn from the other 14
-   inspection-wall categories (bump only, no displacement); the floor gets one of 7 Infinigen
-   floor materials. Outdoors, a building facade with ground, sky, sometimes
-   an inside corner, an eave or a downpipe, and weathering.
+   The side walls always carry a crack-free copy of the wall's own finish.
+   The ceiling is Infinigen 2's ceiling picker (light paint,
+   concrete, wood planks, wall tile); the floor is its floor picker (wood
+   planks, carpet, concrete, indoor ground tile). Outdoors, a building facade
+   whose ground is Infinigen 2's terrain picker (dirt, soil, sand, sandstone,
+   granite, smooth stone, gravel concrete; `ground_cracked` and `stone` read as
+   cracks, `mud` and `ice` as standing water, so they are left out), plus sky,
+   sometimes
+   an inside corner, an eave or a downpipe, and weathering. All of these
+   surfaces are displaced as real geometry, not a bump map.
 3. **Fixtures**, planned on their own random stream and built: switched
-   sockets, doors, skirting, ceiling trim, return vents, service hatches,
-   trunking, plumbing, cables and conduits indoors; windows with sills, panel
-   seams, downpipes, vents, hatches and lights outdoors. Indoor
-   walls with a socket get up to two more. Each plate is a UK double
+   sockets, doors, return vents, service hatches, trunking, plumbing,
+   cables and conduits indoors; windows with sills, panel seams, downpipes,
+   vents, hatches and lights outdoors. Indoor walls with a socket get up to
+   two more. Finishes come from one palette per scene, all Infinigen 2:
+   plastic services, pipes (copper, chrome, white or grey), hardware,
+   cables, downpipes, window frames and doors. A window sill is always the
+   wall's own material.
+
+   Every fixture is placed by one rule with its own values
+   (`structures.RULES`): a size, a height band for its bottom (a socket
+   0.21-0.41 m, a window sill 0.85-1.05 m, a door on the floor), a gap kept
+   below the ceiling, the built parts beyond its box (a window's sill, a
+   door's casing), how far it stands off the wall, and a placement order.
+   A draw is kept only if what it covers once built stays 5 cm from every
+   fixture at an overlapping depth off the wall (a cable may cross a flush
+   sealant seam, not a window); otherwise it is redrawn, and after 80 draws
+   left out, so nothing clips. Cables, conduits, trunking and pipes are
+   placed last, as routes from the floor to the ceiling or a side. Each plate is a UK double
    socket, two rockers above two three-pin outlets, so there is no
    separate switch. The plate is white, black, or satin metal. Doors are closed panel
    leaves set in a mitred architrave of the same wood (65-90 mm wide,
    24-30 mm proud of the wall, lapping over the leaf's edges). The leaf face
    sits 8 mm in front of the wall, behind the architrave, and its back half
-   and back handle are removed because the wall is not cut. Skirting is a floor board with its
-   bead on the top edge; ceiling trim is that board turned over, so the
-   bead hangs down. Service hatches, indoors and outdoors,
+   and back handle are removed because the wall is not cut. Service hatches, indoors and outdoors,
    are flush cabinet doors with one chrome cam lock. The cabinet is
    white, black, or satin metal.
    Windows are Infinigen casements mounted on the wall face, with opaque
@@ -91,12 +118,11 @@ lights, cameras and timing.
    matte cylinder open at both ends, and it casts warm light up and
    down the wall.
    Fixtures are weathered: painted and plastic parts are yellowed and
-   grimy, and about half of the frames, boxes and trims have a sealant bead
-   where they meet the wall. Fixtures and skirting mount on the wall's
-   displaced relief, not its flat plane, and props keep clear of it:
-   stone stands out of the plane by up to 3 cm and brick by about 1 cm,
-   estimated per wall from its displacement scale (`material_diversity.RELIEF_M`),
-   so nothing sinks into it.
+   grimy, and about half of the frames, boxes and trunking have a sealant
+   bead where they meet the wall. Fixtures mount on the wall's displaced
+   relief, not its flat plane, and props keep clear of it: the relief is
+   measured on each wall's own material (`syncrack3d/relief.py`), up to
+   about 8 cm for rough stone masonry, so nothing sinks into it.
 4. **Crack tokens** around the fixtures. No crack centre falls under a large
    fixture (grown by 0.3 × the largest token size + 3 cm); 30% of tokens are
    tried 3–15 cm beside a cable, pipe or trunking run, so services partly
@@ -122,10 +148,16 @@ lights, cameras and timing.
 
    Every model is scaled into real-world size ranges (`Prop.size_m`), and
    sofa, armchair and bed fabrics have their saturation damped to 55-75%.
+   The shapes are Infinigen 1's; the surfaces are Infinigen 2's. Each part's
+   material is replaced by one from the Infinigen 2 object picker for its
+   role (upholstery, cabinet, table top, furniture wood, brushed steel for
+   fridges and chrome, other metal, plastic, glass, ceramic), as bump on metre box-projected UVs. The
+   furniture picker's cracked-paint layer is left out. Printed labels,
+   plants and soil keep their Infinigen 1 material.
 
    Every item is placed by its measured bounds and must clear the wall,
-   floor, ceiling, side walls, the far edge of the floor, fixtures and
-   skirting, cameras and lights (0.15 m around each) and the other items.
+   floor, ceiling, side walls, the far edge of the floor, fixtures,
+   cameras and lights (0.15 m around each) and the other items.
    An item in the way of something steps further from the wall within the
    0.9 m band; otherwise a new position and angle are drawn, up to 40
    times, before it is dropped. Large furniture is dropped most often,
@@ -328,5 +360,7 @@ traced:
 
 `cwg_infinigen/` is a vendored subset of [Infinigen](https://github.com/princeton-vl/infinigen)
 (Princeton University, BSD 3-Clause; see `LICENSE-INFINIGEN`), with imports
-renamed to `cwg_infinigen`. OcMesher, mesh_to_sdf, and font licences stay
-beside those trees.
+renamed to `cwg_infinigen`. Infinigen 2.0.0a3 wall shaders and ProcFunc 0.37.0
+are vendored under `syncrack3d/vendor/` (BSD-3-Clause; `LICENSE-INFINIGEN2`,
+`LICENSE-PROCFUNC`). OcMesher,
+mesh_to_sdf, and font licences stay beside those trees.

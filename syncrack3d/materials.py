@@ -147,7 +147,7 @@ def make_substrate_material(spec: MaterialSpec, index: int) -> bpy.types.Materia
     return mat
 
 
-def enable_true_displacement(wall, dicing_rate: float = 2.0) -> None:
+def enable_true_displacement(wall, dicing_rate: float = 2.0, modifier_name: str = "wall_adaptive") -> None:
     """Displace every host as real geometry, whether or not it has a defect.
 
     Blender materials default to bump-only. Defect injection was the only
@@ -160,7 +160,7 @@ def enable_true_displacement(wall, dicing_rate: float = 2.0) -> None:
         if material is not None and hasattr(material, "displacement_method"):
             material.displacement_method = "DISPLACEMENT"
     if not any(mod.type == "SUBSURF" for mod in wall.modifiers):
-        modifier = wall.modifiers.new("wall_adaptive", "SUBSURF")
+        modifier = wall.modifiers.new(modifier_name, "SUBSURF")
         modifier.subdivision_type = "SIMPLE"
     wall.cycles.use_adaptive_subdivision = True
     wall.cycles.dicing_rate = dicing_rate

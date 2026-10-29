@@ -24,17 +24,37 @@ def test_reproducible_independent_plan():
     assert np.array_equal(np.random.get_state()[1], before[1][1])
 
 
-def test_large_assemblies_clear_each_other():
-    for seed in range(30):
+def test_no_two_fixtures_collide():
+    """Every fixture, runs included, by the one shared rule: what it covers once
+    built stays clear of every other fixture at an overlapping depth."""
+    from syncrack3d.structures import RULES, _collides, plan_shapes
+
+    for seed in range(40):
         spec = sample_scene_spec(seed)
-        plans = sample_structure_plan(seed, spec, 'all')
-        for i, p in enumerate(plans):
-            if p.kind not in ('window', 'utility_box'):
-                continue
-            for q in plans[:i]:
-                if q.kind == "panel_seam":
-                    continue
-                assert abs(p.u_m - q.u_m) >= (p.width_m + q.width_m) * .5 + .05 or abs(p.v_m - q.v_m) >= (p.height_m + q.height_m) * .5 + .05
+        for env in ("indoor", "outdoor"):
+            for profile in ("all", "auto"):
+                plans = sample_structure_plan(seed, spec, profile, env)
+                for i, p in enumerate(plans):
+                    for q in plans[:i]:
+                        assert not _collides(plan_shapes(p, spec), RULES[p.kind].depth,
+                                             plan_shapes(q, spec), RULES[q.kind].depth), (seed, env, p, q)
+
+
+def test_every_kind_has_a_rule():
+    from syncrack3d.structures import RULES
+
+    assert set(RULES) == set(KINDS)
+
+
+def test_windows_sit_at_sill_height_below_the_ceiling():
+    from syncrack3d.structures import WINDOW_HEAD_GAP_M, WINDOW_SILL_M
+
+    for seed in range(60):
+        spec = sample_scene_spec(seed)
+        for p in sample_structure_plan(seed, spec, include_kinds=["window"]):
+            sill = p.v_m - p.height_m * .5
+            assert WINDOW_SILL_M[0] - 1e-9 <= sill <= WINDOW_SILL_M[1] + 1e-9
+            assert p.v_m + p.height_m * .5 <= spec.height_m - WINDOW_HEAD_GAP_M + 1e-9
 
 
 def test_geometry_is_background():
@@ -180,34 +200,12 @@ def test_environment_pools_and_mounting_heights():
             for p in plans:
                 if p.kind == 'socket':
                     assert .25 <= p.v_m <= .45
-                elif p.kind in ('door', 'skirting'):
+                elif p.kind == 'door':
                     assert p.v_m == p.height_m * .5
-                elif p.kind == 'ceiling_trim':
-                    assert p.v_m + p.height_m * .5 == pytest.approx(spec.height_m)
     assert set(INDOOR_KINDS) <= seen['indoor']
     assert set(OUTDOOR_KINDS) <= seen['outdoor']
     assert not set(OUTDOOR_KINDS) & seen['indoor']
     assert not set(INDOOR_KINDS) & seen['outdoor']
-
-
-def test_skirting_clears_door_opening():
-    import bpy
-    from syncrack3d.occlusion import _world_bounds
-    from syncrack3d.build_dataset import clear_scene
-    clear_scene()
-    try:
-        spec = sample_scene_spec(193000)
-        plans = sample_structure_plan(193000, spec, include_kinds=['door', 'skirting'])
-        assert {p.kind for p in plans} == {'door', 'skirting'}
-        records = build_structures(plans)
-        door = next(p for p in plans if p.kind == 'door')
-        for rec in records:
-            if rec['kind'] == 'skirting':
-                for name in rec['objects']:
-                    lo, hi = _world_bounds(bpy.data.objects[name])  # boards and their sealant beads
-                    assert hi[0] <= door.u_m-door.width_m*.5 + .004 or lo[0] >= door.u_m+door.width_m*.5 - .004
-    finally:
-        clear_scene()
 
 
 def _build_kinds(seed, kinds):
@@ -353,5 +351,119 @@ def test_fixtures_mount_on_the_wall_relief():
                 b = _world_bounds(bpy.data.objects[name])
                 if b is not None:  # sealant beads press 1-2 mm into the surface they seal
                     assert b[1][1] <= -relief + .002, name
+    finally:
+        clear_scene()
+
+
+def test_route_ends_on_the_wall_edge_run_on_to_the_extent():
+    from syncrack3d.structures import _reach_extent
+
+    left, right, top, extent = -1.47, 1.47, 2.58, (-6.0, 1.5, 4.0)
+    across = _reach_extent([(left, 1.2), (right, 1.2)], left, right, top, extent)
+    assert across == [(-5.97, 1.2), (1.47, 1.2)]  # the right side is the corner: no further
+    elbow = _reach_extent([(.3, top), (.3, 1.0), (left, 1.0)], left, right, top, extent)
+    assert elbow == [(.3, 3.98), (.3, 1.0), (-5.97, 1.0)]  # inner corner unchanged
+    up = [(.2, .02), (.2, top)]
+    assert _reach_extent(up, left, right, top, None) == up
+
+
+def test_outdoor_service_runs_reach_the_facade_edge():
+    import bpy
+    from syncrack3d.build_dataset import clear_scene
+    from syncrack3d.occlusion import _world_bounds
+
+    kinds = ["wall_cable", "conduit", "trunking", "plumbing", "utility_box", "downpipe"]
+    try:
+        for seed in (11, 12, 13):
+            clear_scene()
+            spec = sample_scene_spec(seed)
+            extent = (-spec.width_m * .5 - 4.0, spec.width_m * .5 + 3.0, spec.height_m + 2.0)
+            plans = sample_structure_plan(seed, spec, environment="outdoor", include_kinds=kinds)
+            for rec in build_structures(plans, 0., spec.height_m, spec.width_m, extent=extent):
+                if rec["kind"] not in kinds:
+                    continue
+                parts = [_world_bounds(bpy.data.objects[n]) for n in rec["objects"]]
+                lo = np.min([b[0] for b in parts if b is not None], axis=0)
+                hi = np.max([b[1] for b in parts if b is not None], axis=0)
+                # Every run leaves the test wall: by a side or over the top, or
+                # a utility box's conduit down into the ground.
+                into_ground = rec["kind"] == "utility_box" and lo[2] < .01
+                assert (lo[0] < extent[0] + .1 or hi[0] > extent[1] - .1
+                        or hi[2] > extent[2] - .1 or into_ground), (seed, rec["kind"], lo, hi)
+    finally:
+        clear_scene()
+
+
+def test_fixture_finishes_are_infinigen2():
+    import bpy
+    from syncrack3d.structures import _fixture_finish
+
+    for role in ("enamel", "dark", "metal"):
+        mat = _fixture_finish(f"probe_{role}", role, 5)
+        assert mat.displacement_method == "BUMP"
+        assert not any(n.bl_idname == "ShaderNodeGroup" and n.node_tree and "shader_" in n.node_tree.name
+                       for n in mat.node_tree.nodes)
+        bpy.data.materials.remove(mat)
+
+
+def test_fixture_palette_is_per_scene_and_varies():
+    from syncrack3d.structures import PALETTE, _Palette
+
+    assert _Palette(5).record() == _Palette(5).record()
+    seen = {role: {_Palette(s).record()[role] for s in range(200)} for role in PALETTE}
+    for role, finishes in seen.items():
+        if role != "sill":
+            assert len(finishes) > 1, role  # not one fixed finish for every scene
+    assert seen["sill"] == {"wall"}
+
+
+def test_wall_sill_uses_the_wall_material():
+    import bpy
+    from syncrack3d.build_dataset import clear_scene
+    from syncrack3d.geometry import build_scene
+    from syncrack3d.structures import _Palette
+
+    try:
+        clear_scene()
+        spec = sample_scene_spec(4)
+        wall = build_scene(spec).hosts[0]
+        plans = [p for p in sample_structure_plan(4, spec, include_kinds=["window"])]
+        records = build_structures(plans, wall=wall, palette_seed=7)
+        sill = next(bpy.data.objects[n] for n in records[0]["objects"] if n.endswith("_sill"))
+        mat = sill.data.materials[0]
+        assert mat.get("cwg_palette") == "wall"
+        assert mat.node_tree.nodes.keys() == wall.data.materials[0].node_tree.nodes.keys()
+        assert sill.data.uv_layers.active.name == "CWG_BoxUV"
+    finally:
+        clear_scene()
+
+
+def test_routed_runs_do_not_pass_through_other_fixtures():
+    import bpy
+    from syncrack3d.build_dataset import clear_scene
+    from syncrack3d.occlusion import _world_bounds
+    from syncrack3d.structures import ROUTED_KINDS
+
+    try:
+        for seed in range(6):
+            clear_scene()
+            spec = sample_scene_spec(seed)
+            plans = sample_structure_plan(seed, spec, "all", "indoor")
+            recs = build_structures(plans, 0., spec.height_m, spec.width_m)
+            solid = [(rec["index"], _world_bounds(bpy.data.objects[n])) for rec in recs
+                     if rec["kind"] not in ROUTED_KINDS + ("panel_seam",)
+                     for n in rec["objects"] if "sealant" not in n and bpy.data.objects[n].type == "MESH"]
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            for rec in recs:
+                if rec["kind"] not in ROUTED_KINDS:
+                    continue
+                for n in rec["objects"]:
+                    ev = bpy.data.objects[n].evaluated_get(depsgraph)
+                    mesh = ev.to_mesh()
+                    pts = np.array([ev.matrix_world @ v.co for v in mesh.vertices])
+                    ev.to_mesh_clear()
+                    for index, (lo, hi) in solid:
+                        inside = np.all((pts > lo + .002) & (pts < hi - .002), axis=1)
+                        assert not inside.any(), (seed, n, index)
     finally:
         clear_scene()

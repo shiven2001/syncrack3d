@@ -13,6 +13,8 @@ def test_layer_mode_follows_the_host():
     assert crack_layer_mode("Plaster") == "paint"
     assert crack_layer_mode("StuccoPlaster") == "stucco"
     assert crack_layer_mode("", "paint") == "paint"
+    assert crack_layer_mode("infinigen2:paint_wall", "paint") == "paint"
+    assert crack_layer_mode("infinigen2:wall_bricks", "masonry") == "none"
     assert crack_layer_mode(None, "masonry") == "none"
     for gen in MASONRY:
         assert crack_layer_mode(gen, "paint") == "none"

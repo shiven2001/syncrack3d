@@ -46,12 +46,26 @@ def validate_base_scene(build: BuildResult, capture: CaptureSetup) -> dict:
             errors.append(f"host must have exactly one material: {host.name}")
             continue
         mat = host.data.materials[0]
+        out = next(
+            (n for n in mat.node_tree.nodes if n.bl_idname == "ShaderNodeOutputMaterial"),
+            None,
+        )
         bsdf = next(
             (n for n in mat.node_tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"),
             None,
         )
-        if bsdf is None or not bsdf.inputs["Base Color"].is_linked:
-            errors.append(f"host material lacks linked Principled Base Color: {host.name}")
+        # Legacy Infinigen-1 materials expose a top-level Principled with linked
+        # Base Color. Infinigen 2 composites often MixShader at the top and keep
+        # Principled inside groups; they must still carry real Displacement.
+        has_legacy_albedo = bsdf is not None and bsdf.inputs["Base Color"].is_linked
+        has_displacement = (
+            out is not None and out.inputs["Displacement"].is_linked
+            and mat.displacement_method in {"DISPLACEMENT", "BOTH", "DISPLACEMENT_AND_BUMP"}
+        )
+        if not has_legacy_albedo and not has_displacement:
+            errors.append(
+                f"host material lacks linked Principled Base Color or Displacement: {host.name}"
+            )
     if errors:
         raise RuntimeError("Controlled wall validation failed: " + "; ".join(errors))
     return {

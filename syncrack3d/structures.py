@@ -11,18 +11,25 @@ outlets, in white, black, or satin metal. There is no separate switch. A wall ca
 one route that reaches a wall edge and may turn once or twice, drawn as
 one to three runs side by side. Trunking is one duct, and plumbing
 is a pair of pipes; each reaches a wall edge and may turn the same way.
+Every fixture is placed by one rule with its own values (``RULES``): what it
+covers once built (a window with its sill, a door with its casing, a run along
+its route) keeps ``CLEARANCE_M`` from every fixture at an overlapping depth off
+the wall, or it is redrawn, and left out after 80 draws. Runs are placed last,
+from the floor to the ceiling or a side. Windows sit at a 0.85-1.05 m sill with
+the head at least 0.3 m below the ceiling; the sill goes under the frame as built.
 A utility box feeds the same kind of
 conduit up or down to that edge. Panel
 seams are sealant joints, not simulated fractures.
 
 Painted parts share one off-white enamel and metal parts share one satin,
-both from the Infinigen plastic and brushed-metal shaders. A service hatch, a return vent, and a socket plate each pick their own
+both from the Infinigen 2 plastic and brushed-metal shaders. A service hatch, a return vent, and a socket plate each pick their own
 shell: that enamel, black, or the satin.
-About half of the frames, boxes and trims carry a sealant bead where they
+About half of the frames, boxes and trunking carry a sealant bead where they
 meet the wall - thin bright lines right beside where cracks run.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 import math
 import random
@@ -32,15 +39,201 @@ import numpy as np
 # auto: indoor or outdoor kinds by environment; facade: openings and downpipes;
 # all: every kind (geometry tests); off: none (fixtures ablation).
 PROFILES = ("off", "auto", "facade", "all")
-KINDS = ("cable", "wall_cable", "conduit", "downpipe", "utility_box", "window",
+KINDS = ("wall_cable", "conduit", "downpipe", "utility_box", "window",
          "panel_seam", "service_hatch", "vent")
-INDOOR_KINDS = ("socket", "door", "skirting", "ceiling_trim",
-                "trunking", "plumbing")
+INDOOR_KINDS = ("socket", "door", "trunking", "plumbing")
 OUTDOOR_KINDS = ("wall_light",)
 KINDS += INDOOR_KINDS + OUTDOOR_KINDS
 LARGE_KINDS = ("utility_box", "window", "door", "vent",
                "service_hatch", "socket", "wall_light")
 SALT = 0x53545255
+CLEARANCE_M = .05  # every fixture keeps this far from every other
+WINDOW_SILL_M = (.85, 1.05)  # sill height above the floor
+WINDOW_HEAD_GAP_M = .30  # lintel above the frame
+ROUTE_INSET_M = (.03, .02)  # how close a run's ends come to a side, and to the floor or ceiling
+
+
+@dataclass(frozen=True)
+class FixtureRule:
+    """One kind's values for the placement rule every fixture shares.
+
+    Each fixture is drawn as a candidate (size, position) and kept if what it
+    covers once built stays `CLEARANCE_M` clear of every fixture already placed
+    whose depth off the wall overlaps its own (a cable can cross a flush
+    sealant seam, not a window). Kinds are placed in `order`; runs come last,
+    so they find their way around the rest.
+    """
+    order: int
+    size: Callable  # (rng, spec) -> (width, height) in metres
+    depth: tuple  # (near, far) metres out from the wall face its parts occupy
+    bottom: tuple | None = None  # (lo, hi) of its bottom above the floor; None: .3 m up to wherever it fits
+    head_gap: float = .10  # its top at least this far below the ceiling
+    min_h: float | None = None  # may be shortened to this to fit under the head gap (else redrawn)
+    pad: tuple = (0., 0., 0., 0.)  # built parts beyond its box: left, right, below, above
+    span: str = "box"  # box | row (full width) | column (floor to ceiling) | route (edge to edge)
+    counts: tuple = (1,)  # route: parallel runs
+    pitch: float = 0.  # route: widest spacing between runs
+    thickness: float = 0.  # route: one run's width, clips included
+    feed: bool = False  # conduits from the box to the floor or the ceiling
+    stub: bool = False  # row: a vertical joint from the floor up to it
+
+
+RULES = {
+    "door": FixtureRule(0, lambda r, s: (.94, min(2.08, s.height_m - .20)), (0., .08),
+                        bottom=(0., 0.), pad=(.01, .01, 0., .01)),
+    "window": FixtureRule(1, lambda r, s: (min(1.35, s.width_m * .40) * r.uniform(.8, 1.15),
+                                           min(1.15, s.height_m * .46) * r.uniform(.8, 1.15)), (0., .20),
+                          bottom=WINDOW_SILL_M, head_gap=WINDOW_HEAD_GAP_M, min_h=.55, pad=(.09, .09, .075, .01)),
+    "service_hatch": FixtureRule(2, lambda r, s: (r.uniform(.62, .80), min(r.uniform(1.18, 1.50), s.height_m * .62)),
+                                 (0., .02), bottom=(.22, .48), head_gap=.08, min_h=.9),
+    "utility_box": FixtureRule(3, lambda r, s: (r.uniform(.36, .46), r.uniform(.42, .56)), (0., .13),
+                               bottom=(.45, 1.5), head_gap=.45, feed=True),
+    "vent": FixtureRule(4, lambda r, s: (side := r.uniform(.40, .50), side * r.uniform(.88, .98)), (0., .03),
+                        bottom=(.18, .30)),
+    "socket": FixtureRule(5, lambda r, s: (.146, .086), (0., .02), bottom=(.207, .407)),
+    "wall_light": FixtureRule(5, lambda r, s: (.12, .20), (0., .13), bottom=(1.7, 2.3)),
+    "downpipe": FixtureRule(6, lambda r, s: (.13, s.height_m), (0., .13), span="column", pad=(.025, .025, 0., 0.)),
+    "panel_seam": FixtureRule(7, lambda r, s: (s.width_m, .006), (0., .002), head_gap=.15, span="row", stub=True),
+    "trunking": FixtureRule(8, None, (.002, .04), span="route", thickness=.075),
+    "plumbing": FixtureRule(9, None, (.002, .07), span="route", counts=(2,), pitch=.22, thickness=.05),
+    "conduit": FixtureRule(10, None, (.002, .05), span="route", counts=(1, 2, 2, 3), pitch=.044, thickness=.045),
+    "wall_cable": FixtureRule(11, None, (.002, .025), span="route", counts=(1, 2, 2, 3), pitch=.02,
+                              thickness=.025),
+}
+ROUTED_KINDS = tuple(k for k, rule in RULES.items() if rule.span == "route")
+
+
+def _overlaps(a, b, gap=CLEARANCE_M):
+    """Two (u0, u1, v0, v1) wall rectangles within `gap` of each other."""
+    return a[0] < b[1] + gap and b[0] < a[1] + gap and a[2] < b[3] + gap and b[2] < a[3] + gap
+
+
+def _collides(shapes, depth, other_shapes, other_depth):
+    """The one rule: parts at overlapping depths off the wall, closer than CLEARANCE_M on it."""
+    if not (depth[0] < other_depth[1] and other_depth[0] < depth[1]):
+        return False
+    return any(_overlaps(a, b) for a in shapes for b in other_shapes)
+
+
+def _route(r, wall_w, wall_h, reach):
+    """One edge-to-edge centre line (x, z): straight up, straight across, an
+    elbow to a side, or a zigzag. None when the wall is too small for the style drawn."""
+    left, right = -wall_w * .5 + ROUTE_INSET_M[0], wall_w * .5 - ROUTE_INSET_M[0]
+    bottom, top = ROUTE_INSET_M[1], wall_h - ROUTE_INSET_M[1]
+    style = r.choice(("up", "up", "across", "elbow", "elbow", "zee"))
+    if style == "up":
+        if right - reach <= left + reach + .05:
+            return None
+        x = r.uniform(left + reach, right - reach)
+        return [(x, bottom), (x, top)]
+    if style == "across":
+        lo, hi = .4, top - reach - .03
+        if hi <= lo + .05:
+            return None
+        z = r.uniform(lo, hi)
+        return [(left, z), (right, z)]
+    if style == "elbow":
+        x0, x1 = left + .25 + reach, right - .25 - reach
+        z0, z1 = bottom + .4 + reach, top - .28 - reach
+        if x1 <= x0 + .05 or z1 <= z0 + .05:
+            return None
+        x, z = r.uniform(x0, x1), r.uniform(z0, z1)
+        side = left if r.random() < .5 else right
+        end = bottom if r.random() < .5 else top
+        return [(x, end), (x, z), (side, z)]
+    x0 = left + .12 + reach
+    x_mid = (left + right) * .5 - .1
+    x2_hi = right - .12 - reach
+    z0, z1 = bottom + .45 + reach, top - .35 - reach
+    if x_mid <= x0 + .05 or z1 <= z0 + .05:
+        return None
+    x1 = r.uniform(x0, x_mid)
+    if x2_hi <= x1 + .35:
+        return None
+    x2 = r.uniform(x1 + .35, x2_hi)
+    z = r.uniform(z0, z1)
+    return [(x1, bottom), (x1, z), (x2, z), (x2, top)]
+
+
+def _legs(pts, half):
+    """Each straight leg of a centre line as a (u0, u1, v0, v1) band `half` wide each side."""
+    out = []
+    for a, b in zip(pts, pts[1:]):
+        u0, u1 = sorted((a[0], b[0]))
+        v0, v1 = sorted((a[1], b[1]))
+        out.append((u0 - half, u1 + half, v0 - half, v1 + half))
+    return out
+
+
+def _shapes(kind, spec, u_m, v_m, width_m, height_m, route=(), count=1, feed_up=False, joint_u_m=0., **_):
+    """The (u0, u1, v0, v1) wall rectangles a planned fixture covers once built."""
+    rule = RULES[kind]
+    wall_w, wall_h = spec.width_m, spec.height_m
+    if rule.span == "route":
+        return _legs(route, ((count - 1) * rule.pitch + rule.thickness) * .5)
+    left, right, below, above = rule.pad
+    bottom, top = v_m - height_m * .5, v_m + height_m * .5
+    if rule.span == "row":
+        shapes = [(-wall_w * .5, wall_w * .5, bottom, top)]
+        if rule.stub:
+            shapes.append((joint_u_m - .01, joint_u_m + .01, 0., top))
+        return shapes
+    shapes = [(u_m - width_m * .5 - left, u_m + width_m * .5 + right, bottom - below, top + above)]
+    if rule.feed:
+        shapes.append((u_m - .06, u_m + .06, top, wall_h) if feed_up else (u_m - .06, u_m + .06, 0., bottom))
+    return shapes
+
+
+def plan_shapes(plan, spec):
+    """What a StructurePlan covers on the wall once built (see ``_shapes``)."""
+    return _shapes(spec=spec, **plan.to_dict())
+
+
+def _candidate(kind, rule, r, spec):
+    """One draw of a fixture under its rule: its plan fields, or None when the
+    draw cannot fit on the wall at all."""
+    wall_w, wall_h = spec.width_m, spec.height_m
+    if rule.span == "route":
+        count = r.choice(rule.counts)
+        half = ((count - 1) * rule.pitch + rule.thickness) * .5
+        pts = _route(r, wall_w, wall_h, half + .03)
+        if pts is None:
+            return None
+        legs = _legs(pts, half)
+        # Reported on the wall: the clearance band past a run's end is not the run.
+        u0, u1 = max(-wall_w * .5, min(b[0] for b in legs)), min(wall_w * .5, max(b[1] for b in legs))
+        v0, v1 = max(0., min(b[2] for b in legs)), min(wall_h, max(b[3] for b in legs))
+        return dict(u_m=(u0 + u1) * .5, v_m=(v0 + v1) * .5, width_m=u1 - u0, height_m=v1 - v0,
+                    route=tuple(tuple(pt) for pt in pts), count=count)
+    w, h = rule.size(r, spec)
+    left, right = rule.pad[:2]
+    joint = None
+    if rule.span == "row":
+        x, joint = 0., r.uniform(-wall_w * .5 + .1, wall_w * .5 - .1)
+    else:
+        lo, hi = -wall_w * .5 + w * .5 + left, wall_w * .5 - w * .5 - right
+        if hi < lo:
+            return None
+        x = r.uniform(lo, hi)
+    ceiling = wall_h - rule.head_gap
+    if rule.span == "column":
+        bottom, h = 0., wall_h
+    else:
+        lo, hi = rule.bottom if rule.bottom is not None else (.3, ceiling - h)
+        if hi < lo:
+            return None
+        bottom = r.uniform(lo, hi)
+        if bottom + h > ceiling:
+            # Too tall here: shorten it if the kind allows (a window, not lower), else redraw.
+            if rule.min_h is None or ceiling - bottom < rule.min_h:
+                return None
+            h = ceiling - bottom
+    fields = dict(u_m=x, v_m=bottom + h * .5, width_m=w, height_m=h)
+    if joint is not None:
+        fields["joint_u_m"] = joint
+    if rule.feed:
+        fields["feed_up"] = r.random() < .4
+    return fields
 
 
 @dataclass(frozen=True)
@@ -52,13 +245,22 @@ class StructurePlan:
     width_m: float
     height_m: float
     seed: int
+    route: tuple = ()  # runs: the centre line, (x, z) points on the test wall
+    count: int = 1  # runs: parallel runs along it
+    feed_up: bool = False  # utility box: its conduits rise to the ceiling (else drop to the floor)
+    joint_u_m: float = 0.  # panel seam: where its vertical joint stands
 
     def to_dict(self):
         return asdict(self)
 
 
 def sample_structure_plan(seed, spec, profile="auto", environment="indoor", include_kinds=None):
-    """Fixture plans for one wall, from their own stream; planned before any crack."""
+    """Fixture plans for one wall, from their own stream; planned before any crack.
+
+    Every kind is placed by the same rule with its own values (``RULES``):
+    draw a candidate, keep it when it collides with nothing placed so far
+    (``_collides``), else redraw, up to 80 times, then leave that fixture out.
+    """
     if profile not in PROFILES:
         raise ValueError(f"unknown structure profile: {profile}")
     if profile == "off":
@@ -73,7 +275,7 @@ def sample_structure_plan(seed, spec, profile="auto", environment="indoor", incl
     else:
         indoor = ["wall_cable", "conduit", "utility_box", "window", "panel_seam",
                   "service_hatch", "vent", *INDOOR_KINDS]
-        outdoor = ["cable", "wall_cable", "conduit", "downpipe", "utility_box", "window",
+        outdoor = ["wall_cable", "conduit", "downpipe", "utility_box", "window",
                    "panel_seam", "service_hatch", "vent", *OUTDOOR_KINDS]
         pool = (["window", "panel_seam", "downpipe", "service_hatch", "vent", *OUTDOOR_KINDS]
                 if profile == "facade" else
@@ -83,86 +285,21 @@ def sample_structure_plan(seed, spec, profile="auto", environment="indoor", incl
         # Rooms have several switched sockets. The rocker is on the socket plate.
         if "socket" in kinds:
             kinds += ["socket"] * r.randint(0, 2)
-    # Floor-anchored doors and boundary trims reserve their footprints first.
-    kinds.sort(key=lambda k: 0 if k == "door" else 1 if k in ("skirting", "ceiling_trim") else 2)
-    plans = []
+    kinds.sort(key=lambda k: RULES[k].order)
+    plans, placed = [], []
     for i, kind in enumerate(kinds):
-        w, h = {
-            "cable": (spec.width_m - .04, .55),
-            "wall_cable": (.09, spec.height_m),
-            "conduit": (.07, spec.height_m),
-            "downpipe": (.13, spec.height_m),
-            "utility_box": (r.uniform(.36, .46), r.uniform(.42, .56)),
-            "window": (min(1.35, spec.width_m * .40), min(1.15, spec.height_m * .46)),
-            "panel_seam": (spec.width_m, .006),
-            "socket": (.146, .086),
-            "door": (.94, min(2.08, spec.height_m - .20)),
-            "skirting": (spec.width_m, .11), "ceiling_trim": (spec.width_m, .065),
-            "vent": (side := r.uniform(.40, .50), side * r.uniform(.88, .98)),
-            "trunking": (.08, spec.height_m), "plumbing": (.30, spec.height_m),
-            "service_hatch": (r.uniform(.62, .80), min(r.uniform(1.18, 1.50), spec.height_m * .62)),
-            "wall_light": (.12, .20),
-        }[kind]
-        if kind == "window":
-            w *= r.uniform(.8, 1.15)
-            h *= r.uniform(.8, 1.15)
-        for attempt in range(60):
-            x = r.uniform(-spec.width_m * .5 + w * .5, spec.width_m * .5 - w * .5)
-            z = r.uniform(max(h * .5, .3), spec.height_m - max(h * .5, .15))
-            if kind == "door":
-                z = h * .5
-            elif kind == "socket":
-                z = r.uniform(.25, .45)
-            elif kind == "window":
-                # Sill about 0.9–1.1 m above the floor.
-                z = h * .5 + r.uniform(.85, 1.05)
-                if z + h * .5 > spec.height_m - .10:
-                    z = spec.height_m - .10 - h * .5
-            elif kind == "service_hatch":
-                # A cabinet door standing above the floor, like a meter cupboard.
-                z = h * .5 + r.uniform(.22, .48)
-                if z + h * .5 > spec.height_m - .08:
-                    z = spec.height_m - .08 - h * .5
-            elif kind in ("wall_cable", "conduit", "trunking", "plumbing"):
-                z = spec.height_m * .5
-            elif kind == "cable":
-                x = 0.
-                # Ends sit at the wall edges. The sag has to clear a door leaf.
-                door_top = max((q.v_m + q.height_m * .5 for q in plans if q.kind == "door"), default=0.)
-                z = spec.height_m - .08
-                if z - .22 < door_top + .06:
-                    continue
-            elif kind == "utility_box":
-                lo, hi = h * .5 + .45, spec.height_m - h * .5 - .45
-                z = r.uniform(lo, hi) if hi > lo + .05 else spec.height_m * .5
-            elif kind == "skirting":
-                x, z = 0., h * .5
-            elif kind == "ceiling_trim":
-                x, z = 0., spec.height_m - h * .5
-            elif kind == "vent":
-                # A return grille just above the skirting.
-                z = h * .5 + r.uniform(.18, .30)
-            elif kind == "wall_light":
-                z = r.uniform(spec.height_m * .60, spec.height_m - h * .5 - .10)
-            if kind in ("skirting", "ceiling_trim"):
+        rule = RULES[kind]
+        for _ in range(80):
+            fields = _candidate(kind, rule, r, spec)
+            if fields is None:
+                continue
+            shapes = _shapes(kind, spec, **fields)
+            if not any(_collides(shapes, rule.depth, other, depth) for other, depth in placed):
                 break
-            if kind in ("trunking", "plumbing", "conduit", "wall_cable", "downpipe") and any(q.kind == "door" and
-                    abs(x-q.u_m) < (w+q.width_m)*.5 and z-h*.5 < q.height_m for q in plans):
-                continue
-            if kind in ("downpipe", "wall_cable", "conduit", "trunking", "plumbing") and any(
-                    q.kind in ("downpipe", "wall_cable", "conduit", "trunking", "plumbing") and
-                    abs(x - q.u_m) < (w + q.width_m) * .5 + .06 for q in plans):
-                continue
-            if kind not in LARGE_KINDS:
-                break
-            if any(p.kind != "panel_seam" and
-                   abs(x - p.u_m) < (w + p.width_m) * .5 + .05 and
-                   abs(z - p.v_m) < (h + p.height_m) * .5 + .05 for p in plans):
-                continue
-            break
         else:
-            continue  # no physically plausible space: report only built plans
-        plans.append(StructurePlan(i, kind, x, z, w, h, r.randrange(2**31)))
+            continue  # no clear spot: leave it out rather than overlap
+        placed.append((shapes, rule.depth))
+        plans.append(StructurePlan(i, kind, seed=r.randrange(2**31), **fields))
     return plans
 
 
@@ -172,11 +309,10 @@ def sample_structure_plan(seed, spec, profile="auto", environment="indoor", incl
 DOOR_MODELS = (("elements.doors.panel", "PanelDoorFactory", 1.),)
 # Sealant beads where these meet the wall: which outline edges get one.
 SEALED_EDGES = {"door": "lrt", "window": "lrtb", "utility_box": "lrtb", "vent": "lrtb",
-                "service_hatch": "lrtb", "skirting": "t", "ceiling_trim": "b",
-                "trunking": "tb"}
+                "service_hatch": "lrtb", "trunking": "tb"}
 # The part whose outline meets the wall and is sealed (not feeds, hoods or louvres).
 OUTLINE_PARTS = {"door": ("_casing",), "window": ("_frame",),
-                 "skirting": ("_section",), "ceiling_trim": ("_section",), "trunking": ("_section",),
+                 "trunking": ("_section",),
                  "utility_box": ("_housing",), "vent": ("_frame",),
                  "service_hatch": ("_frame",)}
 _SEALANT_COLOURS = ((.93, .93, .91), (.88, .87, .82), (.80, .80, .79), (.86, .82, .70))
@@ -335,8 +471,8 @@ def _opaque_glazing(mat):
         mat.surface_render_method = "DITHERED"
 
 
-# One product line. Enamel is the Infinigen rough-plastic shader at a fixed
-# off-white; metal is the Infinigen brushed-metal shader at one satin. The
+# One product line. Enamel and charcoal are the Infinigen 2 plastic shader at a
+# fixed colour; metal is the Infinigen 2 brushed-metal shader at one satin. The
 # seed only changes the fine grain, not the colour, so every fixture matches.
 _ENAMEL = (0.88, 0.87, 0.84, 1.0)
 _CHARCOAL = (0.045, 0.046, 0.048, 1.0)
@@ -344,34 +480,83 @@ _SATIN_HSV = (0.0, 0.012, 0.80)
 
 
 def _fixture_finish(name, role, seed):
-    """Shared enamel, charcoal or satin. Displacement stays a bump."""
-    from cwg_infinigen.core.surface import shaderfunc_to_material
-    from cwg_infinigen.core.util.math import FixedSeed
+    """Shared enamel, charcoal or satin, from Infinigen 2. Displacement stays a bump."""
+    import colorsys
 
-    with FixedSeed(int(seed) % (2 ** 31)):
-        if role == "metal":
-            from cwg_infinigen.assets.materials.metal.brushed_metal import (
-                shader_brushed_metal,
-            )
-            mat = shaderfunc_to_material(
-                shader_brushed_metal, name=name, scale=1.0,
-                base_color_hsv=_SATIN_HSV, seed=float(seed % 997))
-        else:
-            from cwg_infinigen.assets.materials.plastic.plastic_rough import (
-                shader_rough_plastic,
-            )
-            mat = shaderfunc_to_material(
-                shader_rough_plastic, name=name,
-                base_color=_ENAMEL if role == "enamel" else _CHARCOAL,
-                roughness=0.40 if role == "enamel" else 0.55,
-                scale=0.8, seed=float(seed % 997), clear=False,
-                displacement_scale=0.0)
-    if hasattr(mat, "displacement_method"):
-        mat.displacement_method = "BUMP"
-    for node in mat.node_tree.nodes:
-        if node.type == "DISPLACEMENT" and "Scale" in node.inputs:
-            node.inputs["Scale"].default_value = 0.0
-    return mat
+    from syncrack3d.infinigen2_bridge import realize_fixture_material
+
+    if role == "metal":
+        return realize_fixture_material("metal", colorsys.hsv_to_rgb(*_SATIN_HSV), seed, name)
+    return realize_fixture_material("plastic", _ENAMEL if role == "enamel" else _CHARCOAL, seed, name)
+
+
+# One palette per scene: each role draws one finish, so a room's trunking,
+# conduit and clips match each other but rooms differ. A finish is
+# (kind, colour): plastic and metal at a named colour, or an Infinigen 2
+# leaf (wood, painted_wood, concrete, stone), or "wall": a crack-free copy of
+# the test wall's own material. A sill is always the wall's.
+_COLOURS = {
+    "white": _ENAMEL[:3], "cream": (0.80, 0.74, 0.60), "light_grey": (0.62, 0.63, 0.63),
+    "grey": (0.36, 0.37, 0.38), "charcoal": _CHARCOAL[:3], "brown": (0.22, 0.13, 0.08),
+    "satin": None, "galvanised": (0.55, 0.56, 0.56), "copper": (0.85, 0.42, 0.27),
+    "chrome": (0.90, 0.90, 0.92), "aluminium": (0.78, 0.79, 0.80),
+}
+PALETTE = {
+    "services": ((("plastic", "white"), 5.0), (("plastic", "light_grey"), 2.0), (("plastic", "cream"), 1.0),
+                 (("plastic", "charcoal"), 1.0), (("metal", "galvanised"), 1.0)),
+    "pipes": ((("metal", "copper"), 4.0), (("metal", "chrome"), 2.5), (("plastic", "white"), 2.0),
+              (("plastic", "grey"), 1.5)),
+    "hardware": ((("metal", "satin"), 5.0), (("metal", "galvanised"), 3.0), (("plastic", "charcoal"), 2.0)),
+    "cable": ((("plastic", "charcoal"), 5.0), (("plastic", "white"), 4.0), (("plastic", "grey"), 1.0)),
+    "downpipe": ((("plastic", "white"), 3.0), (("plastic", "grey"), 2.0), (("plastic", "charcoal"), 1.5),
+                 (("plastic", "brown"), 1.0), (("metal", "galvanised"), 1.0)),
+    "sill": ((("wall", None), 1.0),),  # always the wall's own material
+    "window_frame": ((("plastic", "white"), 4.0), (("plastic", "charcoal"), 2.0), (("metal", "aluminium"), 1.5),
+                     (("painted_wood", None), 1.0), (("wood", None), 1.0)),
+    "door": ((("painted_wood", None), 3.0), (("wood", None), 2.0)),
+}
+
+
+def _finish_material(name, finish, seed, wall=None):
+    """Build one palette finish. Falls back to white plastic when "wall" has no wall."""
+    import colorsys
+
+    from syncrack3d.infinigen2_bridge import realize_fixture_material
+
+    kind, colour = finish
+    if kind == "wall":
+        if wall is not None and wall.data.materials and wall.data.materials[0] is not None:
+            mat = wall.data.materials[0].copy()  # before injection: no cracks
+            mat.name = name
+            mat.displacement_method = "BUMP"
+            mat["cwg_needs_uv"] = True  # the wall's shader reads metre UVs
+            return mat
+        kind, colour = "plastic", "white"
+    rgb = colorsys.hsv_to_rgb(*_SATIN_HSV) if colour == "satin" else _COLOURS.get(colour)
+    return realize_fixture_material(kind, rgb, seed, name)
+
+
+class _Palette:
+    """One scene's fixture finishes, drawn once and each built once."""
+
+    def __init__(self, seed, wall=None):
+        r = random.Random(int(seed) ^ 0x50414C45)
+        self.choice = {role: r.choices([f for f, _ in opts], weights=[w for _, w in opts], k=1)[0]
+                       for role, opts in PALETTE.items()}
+        self.seed, self.wall, self._made = int(seed), wall, {}
+
+    def __call__(self, role):
+        if role not in self._made:
+            kind, colour = self.choice[role]
+            name = f"CWG_Fixture_{role}_{kind}" + (f"_{colour}" if colour else "")
+            # Role index, not hash(role): string hashes change between processes.
+            seed = (self.seed * 31 + list(PALETTE).index(role)) % 2**31
+            self._made[role] = _finish_material(name, self.choice[role], seed, self.wall)
+            self._made[role]["cwg_palette"] = f"{kind}:{colour}" if colour else kind
+        return self._made[role]
+
+    def record(self):
+        return {role: f"{k}:{c}" if c else k for role, (k, c) in self.choice.items()}
 
 
 def _shell_finish(name, seed):
@@ -382,92 +567,53 @@ def _shell_finish(name, seed):
     return mat
 
 
-def _downpipe_plastic(name, tone):
-    """PVC rainwater pipe: sheen, fine speckle, and vertical rain streaks."""
-    import bpy
+def _flexible_conduit(name, tone, seed):
+    """Dark flexible conduit: Infinigen 2 plastic, with ribs along a vertical
+    drop added to its bump."""
+    from syncrack3d.infinigen2_bridge import realize_fixture_material
 
-    mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
+    mat = realize_fixture_material("plastic", tone, seed, name)
     nt = mat.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    bsdf.inputs["Base Color"].default_value = (*tone, 1.0)
-    bsdf.inputs["Roughness"].default_value = 0.34
-    if "Specular IOR Level" in bsdf.inputs:
-        bsdf.inputs["Specular IOR Level"].default_value = 0.46
+    out = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputMaterial")
+    base = out.inputs["Displacement"].links[0].from_socket
     coord = nt.nodes.new("ShaderNodeNewGeometry")
-    mapping = nt.nodes.new("ShaderNodeMapping")
-    # World metres: a hard X/Y scale puts several rain marks around an
-    # 80 mm pipe, and a mild Z scale keeps them running downward.
-    mapping.inputs["Scale"].default_value = (55.0, 55.0, 1.4)
-    grain = nt.nodes.new("ShaderNodeTexNoise")
-    grain.inputs["Scale"].default_value = 1.0
-    grain.inputs["Detail"].default_value = 4.0
-    grain.inputs["Roughness"].default_value = 0.45
-    nt.links.new(coord.outputs["Position"], mapping.inputs["Vector"])
-    nt.links.new(mapping.outputs["Vector"], grain.inputs["Vector"])
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.50
-    ramp.color_ramp.elements[1].position = 0.78
-    stain = (tone[0] * 0.55, tone[1] * 0.50, tone[2] * 0.42, 1.0)
-    mix = nt.nodes.new("ShaderNodeMix")
-    mix.data_type = "RGBA"
-    mix.inputs[6].default_value = (*tone, 1.0)
-    mix.inputs[7].default_value = stain
-    nt.links.new(grain.outputs["Fac"], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], mix.inputs[0])
-    nt.links.new(mix.outputs[2], bsdf.inputs["Base Color"])
-    rough = nt.nodes.new("ShaderNodeMapRange")
-    rough.inputs["From Min"].default_value = 0.15
-    rough.inputs["From Max"].default_value = 0.85
-    rough.inputs["To Min"].default_value = 0.22
-    rough.inputs["To Max"].default_value = 0.55
-    nt.links.new(grain.outputs["Fac"], rough.inputs["Value"])
-    nt.links.new(rough.outputs["Result"], bsdf.inputs["Roughness"])
-    bump = nt.nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.04
-    bump.inputs["Distance"].default_value = 0.0008
-    nt.links.new(grain.outputs["Fac"], bump.inputs["Height"])
-    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
-    return mat
-
-
-def _flexible_conduit(name, tone):
-    """Dark flexible conduit: ribs running along a vertical drop."""
-    from syncrack3d.materials import make_solid_material
-
-    mat = make_solid_material(name, (*tone, 1), roughness=.4)
-    nt = mat.node_tree
-    bsdf = nt.nodes["Principled BSDF"]
-    coord = nt.nodes.new("ShaderNodeNewGeometry")
-    mapping = nt.nodes.new("ShaderNodeMapping")
-    mapping.inputs["Scale"].default_value = (1.0, 1.0, 1.0)
     wave = nt.nodes.new("ShaderNodeTexWave")
     wave.wave_type = "BANDS"
     wave.bands_direction = "Z"
     wave.inputs["Scale"].default_value = 38.0
     wave.inputs["Distortion"].default_value = 0.0
-    bump = nt.nodes.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.45
-    bump.inputs["Distance"].default_value = 0.0012
-    nt.links.new(coord.outputs["Position"], mapping.inputs["Vector"])
-    nt.links.new(mapping.outputs["Vector"], wave.inputs["Vector"])
-    nt.links.new(wave.outputs["Fac"], bump.inputs["Height"])
-    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    ribs = nt.nodes.new("ShaderNodeDisplacement")
+    ribs.inputs["Midlevel"].default_value = 0.0
+    ribs.inputs["Scale"].default_value = 0.0006
+    add = nt.nodes.new("ShaderNodeVectorMath")
+    add.operation = "ADD"
+    nt.links.new(coord.outputs["Position"], wave.inputs["Vector"])
+    nt.links.new(wave.outputs["Fac"], ribs.inputs["Height"])
+    nt.links.new(base, add.inputs[0])
+    nt.links.new(ribs.outputs["Displacement"], add.inputs[1])
+    nt.links.new(add.outputs["Vector"], out.inputs["Displacement"])
     return mat
 
 
-def add_downpipe(collection, prefix, x, bottom, top, seed):
-    """A round PVC downpipe: joint collars, stand-off clips, and an outlet shoe.
+def add_downpipe(collection, prefix, x, bottom, top, seed, plastic=None, metal=None):
+    """A round downpipe: joint collars, stand-off clips, and an outlet shoe.
 
-    The wall face is y=0 and the pipe stands in front of it. Returns the new
-    objects, already in ``collection``.
+    The wall face is y=0 and the pipe stands in front of it. `plastic` and
+    `metal` are the scene palette's finishes; without them the pipe draws its
+    own from ``PALETTE["downpipe"]``. Returns the new objects, already in
+    ``collection``.
     """
     import bpy
     from mathutils import Vector
 
     r = random.Random(seed)
-    plastic = _downpipe_plastic(prefix + "_pvc", _ENAMEL[:3])
-    metal = _fixture_finish(prefix + "_clip", "metal", seed)
+    if plastic is None:
+        finishes = PALETTE["downpipe"]
+        finish = random.Random(seed ^ 0x44504950).choices(
+            [f for f, _ in finishes], weights=[w for _, w in finishes], k=1)[0]
+        plastic = _finish_material(prefix + "_pipe", finish, seed)
+    if metal is None:
+        metal = _fixture_finish(prefix + "_clip", "metal", seed)
     radius = r.uniform(0.036, 0.048)
     standoff = 0.026
     y = -(radius + standoff)
@@ -534,10 +680,11 @@ def add_downpipe(collection, prefix, x, bottom, top, seed):
     return made
 
 
-def _segment_hits_door(a, b, doors, margin=.07):
+def _segment_hits(a, b, rects, margin=.07):
+    """Whether the leg a-b (x, z) comes within `margin` of any rect (u, v, w, h)."""
     x0, x1 = sorted((a[0], b[0]))
     z0, z1 = sorted((a[1], b[1]))
-    for u, v, w, h in doors:
+    for u, v, w, h in rects:
         if x1 < u - w * .5 - margin or x0 > u + w * .5 + margin:
             continue
         if z1 < v - h * .5 - margin or z0 > v + h * .5 + margin:
@@ -616,101 +763,68 @@ def _parallel(pts, count, gap):
     return [_offset_route(pts, (i - mid) * gap) for i in range(count)]
 
 
-def _service_bundle(r, hint_x, wall_w, wall_h, doors, gap, count=None):
-    """One edge-to-edge route, drawn as `count` parallel runs (1–3 if omitted)."""
-    left, right = -wall_w * .5 + .03, wall_w * .5 - .03
-    bottom, top = .02, wall_h - .02
-    if count is None:
-        count = r.choice((1, 2, 2, 3))
-    reach = (count - 1) * gap * .5 + .04
-
-    def fits(pts):
-        copies = _parallel(pts, count, gap)
-        for route in copies:
-            if any(_segment_hits_door(a, b, doors) for a, b in zip(route, route[1:])):
-                return None
-        return copies
-
-    if right - left < .4 or top - bottom < .5:
-        x = min(right - reach, max(left + reach, hint_x))
-        pts = [(x, bottom), (x, top)]
-        return pts, fits(pts) or [pts]
-    for _ in range(16):
-        style = r.choice(("up", "up", "across", "elbow", "elbow", "zee"))
-        if style == "up":
-            lo, hi = left + reach, right - reach
-            if hi <= lo + .05:
-                continue
-            x = r.uniform(lo, hi)
-            pts = [(x, bottom), (x, top)]
-        elif style == "across":
-            door_top = max((v + h * .5 for _, v, _, h in doors), default=0.)
-            lo, hi = max(.4, door_top + reach), top - reach
-            if hi <= lo + .05:
-                continue
-            z = r.uniform(lo, hi)
-            pts = [(left, z), (right, z)]
-        elif style == "elbow":
-            x0, x1 = left + .25 + reach, right - .25 - reach
-            z0, z1 = bottom + .4 + reach, top - .28 - reach
-            if x1 <= x0 + .05 or z1 <= z0 + .05:
-                continue
-            x, z = r.uniform(x0, x1), r.uniform(z0, z1)
-            side = left if r.random() < .5 else right
-            end = bottom if r.random() < .5 else top
-            pts = [(x, end), (x, z), (side, z)]
-        else:
-            x0 = left + .12 + reach
-            x_mid = (left + right) * .5 - .1
-            if x_mid <= x0 + .05:
-                continue
-            x1 = r.uniform(x0, x_mid)
-            x2_hi = right - .12 - reach
-            if x2_hi <= x1 + .35:
-                continue
-            x2 = r.uniform(x1 + .35, x2_hi)
-            z0, z1 = bottom + .45 + reach, top - .35 - reach
-            if z1 <= z0 + .05:
-                continue
-            z = r.uniform(z0, z1)
-            pts = [(x1, bottom), (x1, z), (x2, z), (x2, top)]
-        copies = fits(pts)
-        if copies is not None:
-            return pts, copies
-    x = min(right - reach, max(left + reach, hint_x))
-    pts = [(x, bottom), (x, top)]
-    return pts, fits(pts) or [pts]
+def _reach_extent(pts, left, right, top, extent):
+    """Carry the ends of a route that stop on the test wall's left, right or top
+    edge on to `extent` (left, right, top). Outdoors the facade continues past
+    the test wall, and a run that stopped at its edge stopped mid-facade."""
+    if extent is None:
+        return pts
+    ext_left, ext_right, ext_top = extent
+    out = [list(pt) for pt in pts]
+    for end in (out[0], out[-1]):
+        if end[0] <= left + 1e-6:
+            end[0] = min(left, ext_left + .03)
+        elif end[0] >= right - 1e-6:
+            end[0] = max(right, ext_right - .03)
+        if end[1] >= top - 1e-6:
+            end[1] = max(top, ext_top - .02)
+    return [tuple(pt) for pt in out]
 
 
-def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None):
+def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None, extent=None,
+                     wall=None, palette_seed=None):
+    """Build the planned fixtures. Returns their records.
+
+    Finishes come from one ``_Palette`` per scene (`palette_seed`, default from
+    the plans): trim, plastic services, pipes, hardware, cables, downpipes,
+    window frames and doors. A sill is the test wall's own material, so `wall`
+    is the test wall (before injection); without it a sill is white uPVC.
+
+    `extent` (left, right, top) in wall coordinates is how far the surface the
+    test wall belongs to continues: an outdoor facade runs on past it, so
+    cables, conduits, trunking, pipes and downpipes that reach the test
+    wall's edge carry on to the facade's. Default: the test wall itself.
+    """
     import bpy
     from mathutils import Vector
     from syncrack3d.geometry import _collection, _box
     from syncrack3d.materials import make_solid_material
-    from syncrack3d.occlusion import _world_bounds
+    from syncrack3d.occlusion import _box_uv, _world_bounds
 
     col = _collection("CWG_STRUCTURES")
+    if palette_seed is None:
+        palette_seed = 0
+        for q in plans:
+            palette_seed = (palette_seed * 1_000_003 + int(q.seed)) % 2**31
+    palette = _Palette(palette_seed, wall)
+    dark_finish = _fixture_finish("CWG_Fixture_dark", "dark", palette_seed)
     if wall_height_m is None:
         tops = [p.v_m + p.height_m * .5 for p in plans if p.kind in ("wall_cable", "conduit", "downpipe")]
         wall_height_m = max(tops) if tops else 2.6
     if wall_width_m is None:
-        spans = [p.width_m for p in plans if p.kind in ("skirting", "ceiling_trim", "panel_seam")]
+        spans = [p.width_m for p in plans if p.kind == "panel_seam"]
         reach = max((abs(p.u_m) + p.width_m * .5 for p in plans), default=1.6)
         wall_width_m = max(spans) if spans else max(3.2, reach * 2 + .6)
+    top_m = wall_height_m if extent is None else max(wall_height_m, extent[2])
     records = []
     plans = list(plans)
-    old_skirting = bpy.data.objects.get("CWG_Skirting")
-    if (old_skirting is not None and any(p.kind == "door" for p in plans)
-            and not any(p.kind == "skirting" for p in plans)):
-        # Replace the base wall's uninterrupted board with sections around
-        # the door, even when skirting was not explicitly sampled.
-        plans.append(StructurePlan(max(p.index for p in plans)+1, "skirting",
-                                   0., .0425, float(old_skirting.dimensions.x), .085,
-                                   next(p.seed for p in plans if p.kind == "door") ^ SALT))
-    if any(p.kind == "skirting" for p in plans):
-        old = bpy.data.objects.get("CWG_Skirting")
-        if old is not None:
-            bpy.data.objects.remove(old, do_unlink=True)
+    left, right = -wall_width_m * .5 + ROUTE_INSET_M[0], wall_width_m * .5 - ROUTE_INSET_M[0]
+    route_top = wall_height_m - ROUTE_INSET_M[1]
+
+    def planned_route(p):
+        """The run's planned centre line, its ends carried on to `extent`."""
+        return _reach_extent([tuple(pt) for pt in p.route], left, right, route_top, extent)
+
     for p in plans:
         r = random.Random(p.seed)
         prefix = f"CWG_Structure_{p.index:02d}_{p.kind}"
@@ -718,9 +832,9 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
         col.objects.link(root)
         objects = []
         fixture_model = None
-        paint = _fixture_finish(prefix + '_paint', 'enamel', p.seed)
-        dark = _fixture_finish(prefix + '_rubber', 'dark', p.seed ^ 0x51)
-        metal = _fixture_finish(prefix + '_metal', 'metal', p.seed ^ 0xA3)
+        paint = palette("sill") if p.kind == "window" else palette("services")
+        dark = palette("cable") if p.kind == "wall_cable" else dark_finish
+        metal = palette("pipes") if p.kind == "plumbing" else palette("hardware")
 
         def tag(obj):
             obj["cwg_role"] = "structure"
@@ -732,6 +846,8 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
 
         def box(label, dims, loc, mat=paint, bevel_m=None):
             obj = tag(_box(prefix + '_' + label, dims, loc, mat, col, root))
+            if mat.get("cwg_needs_uv"):
+                _box_uv(obj)
             bevel = obj.modifiers.new('Soft manufactured edges', 'BEVEL')
             bevel.width = min(.003, min(dims) * .15) if bevel_m is None else bevel_m
             bevel.segments = 2
@@ -760,19 +876,11 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
             return tag(obj)
 
         x, z, w, h = p.u_m, p.v_m, p.width_m, p.height_m
-        if p.kind == 'cable':
-            # A suspended span from one edge of the wall to the other.
-            radius = r.uniform(.003, .006)
-            points = [(x + w * (t / 12 - .5), -.07 - .035 * math.sin(math.pi * t / 12),
-                       z - .18 * math.sin(math.pi * t / 12)) for t in range(13)]
-            tube('sag', points, radius, dark, True)
-            for end in (points[0], points[-1]):
-                box('anchor', (.04, .055, .04), (end[0], -.03, end[2]), metal)
-        elif p.kind == 'wall_cable':
-            doors = [(q.u_m, q.v_m, q.width_m, q.height_m) for q in plans if q.kind == 'door']
+        if p.kind == 'wall_cable':
             radius = r.uniform(.003, .006)
             gap = radius * 2 + r.uniform(.004, .008)
-            centre, routes = _service_bundle(r, x, wall_width_m, wall_height_m, doors, gap)
+            centre = planned_route(p)
+            routes = _parallel(centre, p.count, gap)
             span = (len(routes) - 1) * gap + radius * 2 + .006
             for route in routes:
                 bent = _chamfer(route, r.uniform(.05, .09))
@@ -781,10 +889,10 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                 dims = (.012, .02, span) if horizontal else (span, .02, .012)
                 box('clip', dims, (px, -.012, pz), metal)
         elif p.kind == 'conduit':
-            doors = [(q.u_m, q.v_m, q.width_m, q.height_m) for q in plans if q.kind == 'door']
             radius = r.uniform(.011, .016)
             gap = radius * 2 + r.uniform(.006, .012)
-            centre, routes = _service_bundle(r, x, wall_width_m, wall_height_m, doors, gap)
+            centre = planned_route(p)
+            routes = _parallel(centre, p.count, gap)
             y = -(radius + .02)
             depth = abs(y) - .008
             span = (len(routes) - 1) * gap + radius * 2 + .012
@@ -801,7 +909,9 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                 box('bracket', dims, (px, y * .5 - .004, pz), metal)
         elif p.kind == 'downpipe':
             bottom, top = max(.04, z - h * .5), z + h * .5
-            for obj in add_downpipe(col, prefix, x, bottom, top, p.seed):
+            if top >= wall_height_m - .01:
+                top = max(top, top_m)
+            for obj in add_downpipe(col, prefix, x, bottom, top, p.seed, palette("downpipe"), palette("hardware")):
                 tag(obj)
         elif p.kind == 'utility_box':
             # Powder-coated control cabinet. A smoked window shows the lamps,
@@ -864,11 +974,11 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                         old.objects.unlink(head)
                     col.objects.link(head)
                     tag(head)
-            up = r.random() < .4
+            up = p.feed_up  # planned: the side nothing is mounted on
             n_pipes = 3
-            conduit_mat = _flexible_conduit(prefix + '_conduit_plastic', _CHARCOAL[:3])
+            conduit_mat = _flexible_conduit(prefix + '_conduit_plastic', _CHARCOAL[:3], p.seed)
             exit_z = z + h * .5 - .01 if up else z - h * .5 + .01
-            end_z = wall_height_m if up else 0.
+            end_z = top_m if up else 0.
             sign = 1. if up else -1.
             spacing, pipe_r, pipe_y = .032, .009, -.07
             for i in range(n_pipes):
@@ -882,6 +992,7 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
             # Infinigen casement on the wall face. No wall cutout: the factory
             # glass is swapped for an opaque tint so the host does not show.
             leaf = None
+            frame_x, frame_w, frame_bottom = x, w, z - h * .5
             try:
                 from syncrack3d.occlusion import _load
 
@@ -897,17 +1008,24 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                 for old in tuple(leaf.users_collection):
                     old.objects.unlink(leaf)
                 col.objects.link(leaf)
-                for mat in leaf.data.materials:
+                for slot in leaf.material_slots:
+                    mat = slot.material
                     if mat is not None and mat.node_tree is not None and any(
                             n.type == 'BSDF_TRANSPARENT' for n in mat.node_tree.nodes):
                         _opaque_glazing(mat)
+                    elif mat is not None:
+                        slot.material = palette("window_frame")
                 _fit_on_wall(leaf, x, z, w, h, -.002, turn=False, grow=1.05)
+                # Scaled uniformly, the model may come out narrower or shorter
+                # than planned: the sill goes under the frame as built.
+                lo, hi = _world_bounds(leaf)
+                frame_x, frame_w, frame_bottom = (lo[0] + hi[0]) * .5, hi[0] - lo[0], lo[2]
                 tag(leaf)
                 fixture_model = 'WindowFactory'
             else:
                 fw, fd = .048, .04
                 fy = -.005 - fd * .5
-                frame = metal
+                frame = palette("window_frame")
                 glass = make_solid_material(prefix + '_opaque_glazing', (.10, .16, .20, 1), roughness=.1)
                 box('frame_rail', (w, fd, fw), (x, fy, z + h * .5 - fw * .5), frame)
                 box('frame_rail', (w, fd, fw), (x, fy, z - h * .5 + fw * .5), frame)
@@ -920,16 +1038,16 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
             # with a metal drip on the front underside. The junction anchors
             # sit just below this bottom edge.
             depth, thick, ear = .18, .08, .08
-            bottom = z - h * .5 - .0675
+            bottom = frame_bottom - .0675
             back = -.006
-            box('sill', (w + 2 * ear, depth, thick), (x, back - depth * .5, bottom + thick * .5))
-            box('drip_edge', (w + 2 * ear - .01, .014, .016),
-                (x, back - depth + .008, bottom + .008), metal)
+            box('sill', (frame_w + 2 * ear, depth, thick), (frame_x, back - depth * .5, bottom + thick * .5))
+            box('drip_edge', (frame_w + 2 * ear - .01, .014, .016),
+                (frame_x, back - depth + .008, bottom + .008), metal)
         elif p.kind == 'panel_seam':
             # Opaque sealant in a narrow construction joint: never a crack field.
             box('horizontal_sealant', (w, .004, h), (x, -.004, z), dark)
             if r.random() < .7:
-                box('vertical_sealant', (h, .004, max(.4, z)), (x + w * .22, -.004, max(.4, z) * .5), dark)
+                box('vertical_sealant', (h, .004, z), (p.joint_u_m, -.004, z * .5), dark)
         elif p.kind == 'socket':
             # UK double switched socket. Two rockers sit together above
             # two Type-G outlets; a screw is on each side of the plate.
@@ -1008,11 +1126,12 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                 bpy.context.view_layer.update()
                 _cut_behind(leaf, -.0005)
                 tag(leaf)
-                face = leaf.material_slots[max(wood, key=lambda i: sum(
-                    f.area for f in leaf.data.polygons if f.material_index == i))].material
+                face = palette("door")
+                for i in wood:
+                    leaf.material_slots[i].material = face
                 fixture_model = factory
             else:
-                face = make_solid_material(prefix+'_leaf', (.22, .13, .065, 1), roughness=.6)
+                face = palette("door")
                 box('closed_leaf', (leaf_w, .004, leaf_h), (leaf_x, -.006, undercut + leaf_h * .5), face)
                 hx, hz = x0+.07, .98
                 box('handle_plate', (.035, .012, .12), (hx, -.014, hz), metal)
@@ -1022,33 +1141,11 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
             # Behind the leaf: moulding grooves cut deeper than its offset show wood, not wall.
             box('leaf_backing', (leaf_w, .001, leaf_h), (leaf_x, -.0008, undercut + leaf_h * .5), face)
             tag(_architrave(prefix + '_casing', x0, x1, top, trim, proud, face, col))
-        elif p.kind in ('skirting', 'ceiling_trim'):
-            # Skirting is a floor board with its bead on the top edge. Ceiling
-            # trim is that same profile turned over, so the bead hangs down.
-            depth = .018
-            # Small open butt joints between boards; split around door jambs.
-            cuts = [(x-w*.5, x+w*.5)]
-            if p.kind == 'skirting':
-                for door in (q for q in plans if q.kind == 'door'):
-                    left, right = door.u_m-door.width_m*.5, door.u_m+door.width_m*.5
-                    cuts = [(a, b) for lo, hi in cuts for a, b in
-                            ((lo, min(hi, left)), (max(lo, right), hi)) if b-a > .01]
-            for lo, hi in cuts:
-                count = max(1, math.ceil((hi-lo)/1.4))
-                length = (hi-lo)/count
-                for j in range(count):
-                    cx = lo+(j+.5)*length
-                    box('joint_backing', (length, .003, h), (cx, -.002, z), dark)
-                    box('section', (length-.002, depth, h), (cx, -depth*.5-.004, z))
-                    # +z is the top of a skirting board. Ceiling trim flips it.
-                    bead = h * .28 if p.kind == 'skirting' else -h * .28
-                    box('moulding', (length-.003, .008, h*.18), (cx, -depth-.004, z+bead))
         elif p.kind == 'trunking':
             # One rectangular duct from a wall edge to a wall edge. A turn is
             # a right angle; the incoming length owns the corner.
-            doors = [(q.u_m, q.v_m, q.width_m, q.height_m) for q in plans if q.kind == 'door']
             duct, depth, half = .055, .028, .0275
-            centre, _routes = _service_bundle(r, x, wall_width_m, wall_height_m, doors, duct, count=1)
+            centre = planned_route(p)
             y = -.004 - depth * .5
 
             def _advance(a, b, dist):
@@ -1130,10 +1227,9 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
         elif p.kind == 'plumbing':
             # A pair of pipes on one edge-to-edge route. They stay parallel
             # through a right-angle bend, with a valve on one of them.
-            doors = [(q.u_m, q.v_m, q.width_m, q.height_m) for q in plans if q.kind == 'door']
             radius, gap, y = .011, r.uniform(.14, .22), -.045
-            centre, routes = _service_bundle(
-                r, x, wall_width_m, wall_height_m, doors, gap, count=2)
+            centre = planned_route(p)
+            routes = _parallel(centre, p.count, gap)
             cut = r.uniform(.06, .10)
             for route in routes:
                 bent = _chamfer(route, cut)
@@ -1220,8 +1316,6 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
                     lo, hi = _world_bounds(o)
                     edges = "tb" if hi[0] - lo[0] >= hi[2] - lo[2] else "lr"
                     outlines.append((lo, hi, edges))
-            elif p.kind in ("skirting", "ceiling_trim"):
-                outlines = [(*_world_bounds(o), SEALED_EDGES[p.kind]) for o in parts]
             else:
                 lo, hi = _union_bounds(parts)
                 outlines = [(lo, hi, SEALED_EDGES[p.kind])]
@@ -1236,11 +1330,14 @@ def build_structures(plans, relief_m=0.0, wall_height_m=None, wall_width_m=None)
         records.append(dict(**p.to_dict(), object_name=root.name,
                             objects=[o.name for o in objects], semantic_class='background',
                             dimensions_convention='nominal assembly footprint; hardware may extend',
-                            geometry_model=fixture_model or 'surface_geometry', sealant=sealed))
+                            geometry_model=fixture_model or 'surface_geometry', sealant=sealed,
+                            finishes={"main": paint.get("cwg_palette", paint.name),
+                                      "metal": metal.get("cwg_palette", metal.name),
+                                      "dark": dark.get("cwg_palette", dark.name)}))
     return records
 
 
-SERVICE_KINDS = ("wall_cable", "conduit", "trunking", "plumbing", "cable", "downpipe")
+SERVICE_KINDS = ROUTED_KINDS + ("downpipe",)
 
 
 def crack_regions(plans):
@@ -1258,6 +1355,11 @@ def crack_regions(plans):
             keepout.append((p.u_m, p.v_m, p.width_m + 0.06, p.height_m + 0.06))
         elif p.kind in LARGE_KINDS:
             keepout.append((p.u_m, p.v_m, p.width_m + 0.04, p.height_m + 0.04))
+        elif p.kind in ROUTED_KINDS and p.route:
+            # Each leg of the run, not its bounding box (an L-shaped run's box is mostly bare wall).
+            half = RULES[p.kind].thickness * .5
+            for u0, u1, v0, v1 in _legs(p.route, half):
+                near.append(((u0 + u1) * .5, (v0 + v1) * .5, u1 - u0, v1 - v0))
         elif p.kind in SERVICE_KINDS:
             near.append((p.u_m, p.v_m, p.width_m, p.height_m))
     return keepout, near

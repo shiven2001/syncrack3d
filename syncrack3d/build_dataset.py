@@ -4,8 +4,10 @@
 1. wall and material: a 15-category palette drawn uniformly (material_diversity);
    the wall draws a crack style (styles.py) that sets its crack morphology and
    setting (indoor room or outdoor facade);
-2. context: an indoor room shell (ceiling, side walls in the wall's own finish or
-   both in one other wall category, an Infinigen floor) or an outdoor facade with ground and sky;
+2. context: an indoor room shell (Infinigen 2 floor and ceiling pickers; side
+   walls always in the wall's own finish) or
+   an outdoor facade whose ground is the Infinigen 2 terrain picker without its
+   crack-like and watery leaves. Every surface is displaced as geometry;
 3. fixtures: planned on their own stream and built (switched sockets, doors,
    trims, services; windows with sills and downpipes outdoors);
 4. crack tokens around the fixtures (none under a large assembly, some beside a
@@ -72,10 +74,12 @@ from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
     apply_weathering,
     build_outdoor,
+    facade_bounds,
     outdoor_lighting,
     sample_outdoor_plan,
 )
 from syncrack3d.room_shell import (  # noqa: E402
+    apply_floor_ceiling,
     apply_matched_finish,
     build_room_shell,
     sample_shell_plan,
@@ -92,6 +96,7 @@ from syncrack3d.scene_setup import (  # noqa: E402
 from syncrack3d.spec import sample_scene_spec  # noqa: E402
 from syncrack3d.material_diversity import (  # noqa: E402
     CATEGORIES as MATERIAL_CATEGORIES,
+    DEFAULT_CATEGORIES,
     apply_wall_material,
     is_clean_wall,
     virtual_targets,
@@ -193,16 +198,20 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     if outdoor_plan is None:
         shell = build_room_shell(spec, shell_plan)
         if args.shell_finish == "matched":
-            shell_finish = apply_matched_finish(shell, wall, seed, args.material_categories)
+            shell_finish = apply_matched_finish(shell, wall, seed, args.dicing_rate)
+        else:
+            shell_finish.update(apply_floor_ceiling(shell, seed, args.dicing_rate))
     else:
-        build_outdoor(spec, outdoor_plan, wall)
+        build_outdoor(spec, outdoor_plan, wall, seed, args.dicing_rate)
     configure_capture_scene(spec, build.root)
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
     # 3. Fixtures, on their own stream and blind to cracks, built now.
     structure_plans = sample_structure_plan(seed, spec, args.structures, environment)
     relief = round(wall_relief(wall, material_record["category"]), 5)
-    structures = build_structures(structure_plans, relief, spec.height_m, spec.width_m)
+    extent = facade_bounds(spec, outdoor_plan) if outdoor_plan is not None else None
+    structures = build_structures(structure_plans, relief, spec.height_m, spec.width_m, extent=extent,
+                                  wall=wall, palette_seed=seed)
     skirting = bpy.data.objects.get("CWG_Skirting")
     if skirting is not None:  # the base wall's own board, when no fixture plan replaced it
         skirting.location.y -= relief
@@ -461,8 +470,9 @@ def main():
     data.add_argument("--crack-style-mix", default=DEFAULT_MIX,
                       help="per-wall crack styles with weights (styles.py), e.g. legacy=1 for one style")
     data.add_argument("--material-categories", nargs="+", choices=list(MATERIAL_CATEGORIES), metavar="CATEGORY",
-                      help="draw the wall material from these categories only (default: all 15): "
-                           + ", ".join(MATERIAL_CATEGORIES))
+                      help="draw the wall material uniformly from these categories (default: Infinigen 2's "
+                           "wall picker weights over " + ", ".join(DEFAULT_CATEGORIES) + "); also: "
+                           + ", ".join(c for c in MATERIAL_CATEGORIES if c not in DEFAULT_CATEGORIES))
     data.add_argument("--clean-wall-scale", type=float, default=0.0,
                       help="multiplier on the per-category crack-free wall rates (0: every wall cracked)")
     data.add_argument("--clean-wall-uniform", type=float, default=None,

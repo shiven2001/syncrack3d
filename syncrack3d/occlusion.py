@@ -28,6 +28,11 @@ out to `MAX_STANDOFF_M`, turned any way.
 A prop in the way of something steps further from the wall within that band, or
 tries another spot.
 
+Geometry is Infinigen 1's; surfaces are Infinigen 2's. Each part's v1 material
+is swapped for one from the Infinigen 2 object picker for its role (upholstery,
+cabinet, table top, steel, glass...), on metre box-projected UVs, as bump.
+Printed labels, plants and soil keep their v1 material.
+
 Every prop is placed by its measured bounds (Infinigen origins are often at a
 corner or mid-height) and must clear the wall, the floor, the ceiling, the side
 returns, the far edge of the floor, the wall fixtures and skirting, the cameras,
@@ -114,6 +119,22 @@ ROOMS = {
 # Upholstery drawn too vivid for most homes: saturation is damped (not removed).
 UPHOLSTERED = frozenset({"SofaFactory", "ArmChairFactory", "BedFactory"})
 UPHOLSTERY_SATURATION = (0.55, 0.75)
+# v1 material name keywords (lower case) -> Infinigen 2 prop role. First match
+# wins; a name that matches none (labels, brand, plant, soil) keeps v1.
+PROP_ROLES = (
+    (("glass",), "glass"),
+    (("lampshade",), "fabric"),
+    (("fabric", "knit", "leather", "art_composite"), "upholstery"),
+    (("chrome", "steel", "handle", "galvanized"), "steel"),
+    (("metal",), "decorative"),
+    (("plastic", "gasket", "foot"), "plastic"),
+    (("marble", "ceramic", "vanitytop"), "table_top"),
+    (("shelves", "vanitybody"), "cabinet"),
+    (("wood",), "furniture"),
+)
+# Props whose factory assigns materials in finalize_assets, which spawning
+# does not run: their bare meshes get this role.
+BARE_ROLES = {"ToiletFactory": "ceramic"}
 # One of each per room: a second toilet or fridge in front of the same wall looks wrong.
 ONE_PER_ROOM = frozenset({"ToiletFactory", "BathtubFactory", "VanityCabinetFactory", "StandingSinkFactory",
                           "BeverageFridgeFactory", "BedFactory",
@@ -281,13 +302,81 @@ def _fit_size(obj, prop):
     bpy.context.view_layer.update()
 
 
+def _prop_role(material) -> str | None:
+    name = material.name.lower()
+    return next((role for keys, role in PROP_ROLES if any(k in name for k in keys)), None)
+
+
+def _box_uv(part) -> None:
+    """Metre UVs by box projection: each face takes the two axes across its normal.
+
+    Most v1 props have no UVs, and the rest are not in metres; Infinigen 2
+    shaders read UVs at metre scale.
+    """
+    mesh = part.data
+    if "CWG_BoxUV" in mesh.uv_layers or not mesh.polygons:
+        return
+    n_poly, n_loop = len(mesh.polygons), len(mesh.loops)
+    normals = np.empty(n_poly * 3)
+    mesh.polygons.foreach_get("normal", normals)
+    totals = np.empty(n_poly, dtype=np.int64)
+    mesh.polygons.foreach_get("loop_total", totals)
+    verts = np.empty(n_loop, dtype=np.int64)
+    mesh.loops.foreach_get("vertex_index", verts)
+    co = np.empty(len(mesh.vertices) * 3)
+    mesh.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)[verts] * np.array(part.matrix_world.to_scale())
+    axis = np.repeat(np.abs(normals.reshape(-1, 3)).argmax(1), totals)
+    u = np.where(axis == 0, co[:, 1], co[:, 0])
+    v = np.where(axis == 2, co[:, 1], co[:, 2])
+    layer = mesh.uv_layers.new(name="CWG_BoxUV")
+    if layer is None:  # a mesh already at Blender's UV-layer limit keeps its own
+        return
+    layer.data.foreach_set("uv", np.stack([u, v], 1).ravel())
+    mesh.uv_layers.active = layer
+    layer.active_render = True
+
+
+def _v2_materials(obj, factory_seed: int, bare_role: str | None = None) -> None:
+    """Swap each part's v1 material for an Infinigen 2 one of the same role.
+
+    One v2 material per v1 material, so parts that shared a finish still share
+    one. A part with no material gets `bare_role`, when given. Seeds come from
+    the factory seed, not the prop stream.
+    """
+    from cwg_infinigen.core.util.math import int_hash
+    from syncrack3d.infinigen2_bridge import realize_prop_material
+
+    swapped = {}
+    for part in (obj, *obj.children_recursive):
+        if part.type != "MESH":
+            continue
+        if bare_role is not None and not any(slot.material for slot in part.material_slots):
+            if "bare" not in swapped:
+                swapped["bare"] = realize_prop_material(bare_role, int_hash((int(factory_seed), "bare")) % (2**31))
+            _box_uv(part)
+            part.data.materials.clear()
+            part.data.materials.append(swapped["bare"])
+            continue
+        for slot in part.material_slots:
+            old = slot.material
+            role = _prop_role(old) if old is not None else None
+            if role is None:
+                continue
+            if old.name not in swapped:
+                seed = int_hash((int(factory_seed), old.name)) % (2**31)
+                swapped[old.name] = realize_prop_material(role, seed)
+            _box_uv(part)
+            slot.material = swapped[old.name]
+
+
 def _damp_saturation(obj, rng):
     """Calm vivid upholstery: a Hue/Saturation step in front of each fabric's base colour."""
     factor = rng.uniform(*UPHOLSTERY_SATURATION)
     materials = {slot.material for part in (obj, *obj.children_recursive) if part.type == "MESH"
                  for slot in part.material_slots if slot.material is not None and slot.material.use_nodes}
     for mat in materials:
-        if not any(k in mat.name for k in ("fabric", "knit", "art_composite")):
+        if mat.get("cwg_prop_role") not in ("upholstery", "fabric"):
             continue  # wood frames and plastic feet keep their colour
         nt = mat.node_tree
         for bsdf in [n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"]:
@@ -318,6 +407,7 @@ def _spawn(prop, rng, index, collection):
     obj.parent = None
     bpy.context.view_layer.update()
     _fit_size(obj, prop)
+    _v2_materials(obj, factory_seed, BARE_ROLES.get(prop.factory))
     if prop.factory in UPHOLSTERED:
         _damp_saturation(obj, rng)
     obj.location = (0.0, -2.0, 0.0)

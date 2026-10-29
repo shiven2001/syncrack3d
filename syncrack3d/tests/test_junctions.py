@@ -32,11 +32,9 @@ def test_window_corners_point_outwards_and_sill_crack_is_horizontal():
         assert all(t[1] > 1.4 + 0.6 for t in tops)  # above the lintel
 
 
-def test_door_jambs_are_vertical_and_trims_horizontal():
+def test_door_jambs_are_vertical():
     for seed in range(20):
         r = random.Random(seed)
         jambs = [a for a in _anchors(_plan("door", v=1.05, w=0.9, h=2.1), r) if a[0] == "door_jamb"]
         assert len(jambs) == 2 and all(abs(a[2] - 90) <= 3 for a in jambs)
-        for kind in ("ceiling_trim", "skirting"):
-            assert all(abs(a[2]) <= 4 and a[3] == "edge" for a in _anchors(_plan(kind, h=0.1), r))
-    assert _anchors(_plan("cable"), random.Random(0)) == []
+    assert _anchors(_plan("wall_cable"), random.Random(0)) == []

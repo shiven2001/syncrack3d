@@ -161,17 +161,11 @@ def build_room_shell(spec, plan: ShellPlan) -> list:
 # --------------------------------------------------------------------------- matched finishes
 # --shell-finish matched. The plain shell above gives every room grey side walls
 # beside a coloured or tiled test wall, so the one textured surface in frame is
-# always the one with cracks. Here the side walls usually carry the test wall's
-# own finish (a crack-free copy made before injection), otherwise both get one
-# other inspection-wall category; the floor gets an Infinigen floor material.
-# The ceiling stays plain.
+# always the one with cracks. Here the side walls always carry the test wall's
+# own finish (a crack-free copy made before injection), as one room's walls
+# do. Either shell gets Infinigen 2's floor and ceiling pickers. Every finished
+# surface is displaced as geometry.
 SHELL_FINISHES = ("plain", "matched")
-MATCH_PROBABILITY = 0.7
-FLOOR_GENERATORS = (
-    ("wood", "HardwoodFloor"), ("wood", "SquareWoodTile"), ("wood", "StaggeredWoodTile"),
-    ("wood", "CrossedWoodTile"), ("wood", "HexagonWoodTile"), ("wood", "NonWoodTile"),
-    ("ceramic", "Concrete"),
-)
 
 
 def _face_frame(obj, angle: float) -> None:
@@ -196,68 +190,80 @@ def _metric_uv_xy(obj) -> None:
             uv.data[li].uv = (co.x, co.y)
 
 
-def apply_matched_finish(built, wall, seed: int, allowed=None) -> dict:
-    """Give the side walls and floor real finishes. Returns the record.
+def apply_matched_finish(built, wall, seed: int, dicing_rate: float = 2.0) -> dict:
+    """Give the side walls the test wall's finish, and the floor and ceiling
+    theirs (apply_floor_ceiling). Returns the record. All are displaced as geometry.
 
-    Side walls that do not copy the test wall share one material from another
-    of the inspection-wall categories (`allowed`, default all of them).
-
-    Draws from its own streams and restores numpy's global state and the
-    test wall's paint parameters afterwards, so the wall, cracks, cameras and
-    lights come out exactly as with the plain shell.
+    Draws nothing from the shared random streams, so the wall, cracks, cameras
+    and lights come out exactly as with the plain shell.
     """
-    import importlib
     import math
 
-    import gin
-    import numpy as np
+    from syncrack3d.material_diversity import _metric_uv
+    from syncrack3d.materials import enable_true_displacement
 
-    from cwg_infinigen.core import surface
-    from cwg_infinigen.core.util.math import int_hash
-    from syncrack3d.material_diversity import CATEGORIES, PAINT_PARAMS, _metric_uv, apply_wall_material
-
-    r = random.Random(int_hash((seed, "shell_finish")))
-    np_state, py_state = np.random.get_state(), random.getstate()
-    np.random.seed(int_hash((seed, "shell_finish_np")) % (2**32))
     record = {"finish": "matched"}
-    try:
-        returns = [o for o in built if o.name.startswith("CWG_Shell_Return_")]
+    returns = [o for o in built if o.name.startswith("CWG_Shell_Return_")]
+    if returns and wall.data.materials:
+        material = wall.data.materials[0].copy()  # before injection: no cracks
+        material.name = "CWG_Shell_Return_Matched"
         for obj in returns:
             _face_frame(obj, math.pi / 2 if obj.name.endswith("left") else -math.pi / 2)
             _metric_uv(obj)
-        if returns:
-            if r.random() < MATCH_PROBABILITY and wall.data.materials:
-                material = wall.data.materials[0].copy()  # before injection: no cracks
-                material.name = "CWG_Shell_Return_Matched"
-                record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category")}
-            else:
-                own = wall.get("cwg_material_category")
-                others = [c for c in (allowed or CATEGORIES) if c != own] or list(allowed or CATEGORIES)
-                category = r.choice(others)
-                generator, _finish, _rec = apply_wall_material(returns[0], r.randrange(1, 2**31), forced=category)
-                material = returns[0].data.materials[0]
-                material.name = "CWG_Shell_Return_Other"
-                record["returns"] = {"source": "other_category", "category": category, "generator": generator}
-            # Side walls are never photographed at crack distance: bump, no subdivision.
-            material.displacement_method = "BUMP"
-            for obj in returns:
-                obj.data.materials.clear()
-                obj.data.materials.append(material)
-        floor = next(o for o in built if o.name == "CWG_Shell_Floor")
-        module, cls = r.choice(FLOOR_GENERATORS)
-        generator = getattr(importlib.import_module(f"cwg_infinigen.assets.materials.{module}"), cls)()
-        floor_material = generator.generate()
-        floor_material.displacement_method = "BUMP"
-        _metric_uv_xy(floor)
-        floor.data.materials.clear()
-        surface.assign_material(floor, floor_material)
-        record["floor"] = cls
-    finally:
-        np.random.set_state(np_state)
-        random.setstate(py_state)
-        category = wall.get("cwg_material_category")
-        if category in PAINT_PARAMS:  # the side-wall paint rebinds these; give the wall's back
-            with gin.unlock_config():
-                for key, value in PAINT_PARAMS[category].items():
-                    gin.bind_parameter(f"plaster_paint_params.{key}", value)
+            obj.data.materials.clear()
+            obj.data.materials.append(material)
+            enable_true_displacement(obj, dicing_rate, modifier_name="return_adaptive")
+        record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category"),
+                             "displacement": material.displacement_method}
+    record.update(apply_floor_ceiling(built, seed, dicing_rate))
     return record
+
+
+def apply_floor_ceiling(built, seed: int, dicing_rate: float = 2.0) -> dict:
+    """Infinigen 2 floor and ceiling (when the shell has one). Returns their records."""
+    record = {"floor": apply_floor_finish(next(o for o in built if o.name == "CWG_Shell_Floor"), seed, dicing_rate)}
+    ceiling = apply_ceiling_finish(built, seed, dicing_rate)
+    if ceiling is not None:
+        record["ceiling"] = ceiling
+    return record
+
+
+def _apply_picker(obj, kind: str, seed: int, dicing_rate: float) -> dict:
+    """Shade a horizontal slab with an Infinigen 2 picker and displace it as geometry.
+
+    Horizontal UVs are metres in x and y. Adaptive subdivision turns the
+    shader's Displacement socket into real relief.
+    """
+    from cwg_infinigen.core.util.math import int_hash
+    from syncrack3d.infinigen2_bridge import realize_picker
+    from syncrack3d.materials import enable_true_displacement
+
+    material = realize_picker(kind, int_hash((int(seed), f"{kind}_picker")) % (2**31))
+    obj.data.materials.clear()
+    obj.data.materials.append(material)
+    _metric_uv_xy(obj)
+    enable_true_displacement(obj, dicing_rate, modifier_name=f"{kind}_adaptive")
+    obj["cwg_material_generator"] = f"infinigen2:{kind}"
+    obj["cwg_material_source"] = "infinigen2_procedural"
+    return {
+        "picker": f"{kind}_material_rand",
+        "generator": f"infinigen2:{kind}",
+        "displacement": material.displacement_method,
+    }
+
+
+def apply_floor_finish(floor, seed: int, dicing_rate: float = 2.0) -> dict:
+    """Cover the floor with Infinigen's floor picker: wood planks, carpet,
+    concrete or indoor ground tile 0.1-0.6 m across (by shape), sometimes with a scratch or
+    splat layer."""
+    return _apply_picker(floor, "floor", seed, dicing_rate)
+
+
+def apply_ceiling_finish(built, seed: int, dicing_rate: float = 2.0) -> dict | None:
+    """Cover the ceiling with Infinigen's ceiling picker: light paint, concrete,
+    wood planks or wall tile. No-op when the shell has no ceiling; returns the
+    record, or None."""
+    ceiling = next((obj for obj in built if obj.name == "CWG_Shell_Ceiling"), None)
+    if ceiling is None:
+        return None
+    return _apply_picker(ceiling, "ceiling", seed, dicing_rate)

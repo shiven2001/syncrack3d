@@ -39,8 +39,13 @@ class BedFactory(bedframe.BedFrameFactory):
     def mattress_factory(self):
         factory = mattress.MattressFactory(self.factory_seed, self.coarse)
         factory.type = rg(self.mattress_types)
-        factory.width = self.width * uniform(0.88, 0.96)
-        factory.size = self.size * uniform(0.88, 0.96)
+        # Each rail is leg_thickness wide, so the opening is narrower than the
+        # outer frame. Sizing the mattress off the outer width drove it through
+        # the side rails.
+        opening_w = self.width - 2 * self.leg_thickness
+        opening_l = self.size - 2 * self.leg_thickness
+        factory.width = opening_w * uniform(0.97, 0.995)
+        factory.size = opening_l * uniform(0.97, 0.995)
         return factory
 
     @cached_property
@@ -137,7 +142,13 @@ class BedFactory(bedframe.BedFrameFactory):
 
     def make_mattress(self, i):
         mattress = self.mattress_factory(i=i)
-        mattress.location = self.size / 2, 0, self.mattress_factory.thickness / 2
+        # Seat rails occupy z in [-thickness/2, thickness/2]. The mattress used
+        # to start at z=0, so the slats ran through its underside.
+        mattress.location = (
+            self.size / 2,
+            0,
+            self.thickness / 2 + self.mattress_factory.thickness / 2 + 0.01,
+        )
         mattress.rotation_euler[-1] = np.pi / 2
         butil.apply_transform(mattress, True)
         self.mattress_factory.finalize_assets(mattress)

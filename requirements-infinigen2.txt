@@ -1,0 +1,3 @@
+# Not required to generate walls. The shader code and procfunc live in
+# syncrack3d/vendor. Install this only to refresh that vendor tree.
+infinigen==2.0.0a3

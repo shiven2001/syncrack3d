@@ -322,9 +322,14 @@ def crack_layer_mode(generator, surface_finish=None) -> str:
     stone, concrete, tile, marble and wood are one material.
     """
     gen = str(generator or "")
+    finish = str(surface_finish or "").strip().lower()
     if gen == "StuccoPlaster":
         return "stucco"
-    if gen == "Plaster" or (not gen and str(surface_finish or "").strip().lower() == "paint"):
+    if gen == "Plaster" or (not gen and finish == "paint"):
+        return "paint"
+    # Frozen Infinigen 2 walls keep a generator name, so the empty-name rule
+    # above does not see them. Paint finishes still grow a film.
+    if gen.startswith("infinigen2:") and finish == "paint":
         return "paint"
     return "none"
 

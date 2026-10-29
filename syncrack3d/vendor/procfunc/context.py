@@ -1,0 +1,101 @@
+import copy
+import multiprocessing
+import os
+from contextlib import contextmanager
+from dataclasses import asdict, dataclass
+from typing import Any, Literal
+
+
+@dataclass
+class ProcfuncContext:
+    """Global context for Procfunc configuration and system information."""
+
+    num_cpu_cores: int
+    current_trace_level: int | None  # compared against to TraceLevel int values
+
+    warn_mode_empty_geonodes: Literal["ignore", "warn", "throw"]
+    """
+    Controls behavior when a geometry node graph produces no mesh geometry (e.g. unconnected inputs).
+    'ignore' silently returns an empty mesh, 'warn' logs a warning, 'throw' raises an error.
+    """
+
+    warn_mode_transpile_dropped_attrs: Literal["ignore", "warn", "throw"]
+    """
+    Controls behavior when transpiling a bpy node whose attributes carry render-affecting
+    state procfunc has no binding for, so the transpiled result would render differently
+    (e.g. a non-identity texture_mapping on a ShaderNodeTex* node).
+    'ignore' drops it silently, 'warn' logs a warning, 'throw' raises an error.
+    """
+
+    record_node_definitions: bool = False
+    """
+    Record the user-space file/line/function that constructed each ProcNode, used only to
+    enrich node-instantiation error messages. Walks the stack once per node, which can
+    dominate build time in node-heavy callers, so off by default.
+    """
+
+    def __post_init__(self):
+        """Initialize computed fields after dataclass creation."""
+        if self.num_cpu_cores <= 0:
+            self.num_cpu_cores = multiprocessing.cpu_count()
+
+    def set_strict(self):
+        """Set all warning modes to 'throw'"""
+        self.warn_mode_empty_geonodes = "throw"
+        self.warn_mode_transpile_dropped_attrs = "throw"
+
+    def set_warn(self):
+        """Set all warning modes to 'warn'"""
+        self.warn_mode_empty_geonodes = "warn"
+        self.warn_mode_transpile_dropped_attrs = "warn"
+
+
+# Global context instance
+
+warn_modes = ["ignore", "warn", "throw"]
+
+_warn_mode_empty_geonodes = os.environ.get("PROCFUNC_WARN_MODE_EMPTY_GEONODES", "warn")
+assert _warn_mode_empty_geonodes in warn_modes
+
+_warn_mode_transpile_dropped_attrs = os.environ.get(
+    "PROCFUNC_WARN_MODE_TRANSPILE_DROPPED_ATTRS", "throw"
+)
+assert _warn_mode_transpile_dropped_attrs in warn_modes
+
+globals = ProcfuncContext(
+    num_cpu_cores=int(os.environ.get("PROCFUNC_NUM_CPU_CORES", 0)),
+    warn_mode_empty_geonodes=_warn_mode_empty_geonodes,  # type: ignore[invalid-assignment]
+    warn_mode_transpile_dropped_attrs=_warn_mode_transpile_dropped_attrs,  # type: ignore[invalid-assignment]
+    current_trace_level=None,
+    record_node_definitions=os.environ.get("PROCFUNC_RECORD_NODE_DEFINITIONS", "0")
+    == "1",
+)
+
+
+@contextmanager
+def override_globals(
+    new_context: ProcfuncContext | None = None,
+    **overrides: Any,
+):
+    """
+    Override the context for a block of code
+
+    Args:
+        new_context: If provided, will override the entire context with this new context
+        overrides: If provided, will override specific keys with these values
+    """
+    orig = copy.deepcopy(globals)
+
+    if new_context is not None:
+        for key, value in asdict(new_context).items():
+            setattr(globals, key, value)
+
+    if overrides is not None:
+        for key, value in overrides.items():
+            setattr(globals, key, value)
+
+    try:
+        yield
+    finally:
+        for key, value in asdict(orig).items():
+            setattr(globals, key, value)

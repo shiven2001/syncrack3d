@@ -1,8 +1,8 @@
 """Outdoor building environment around the wall (facade-style walls).
 
 Indoor walls get the room shell (room_shell.py). An outdoor wall becomes a
-building facade instead: open ground in front (cobble, poured concrete,
-dirt, mud, or a lawn of grass blades), no ceiling, visible sky, sometimes the building's inside corner, an eave
+building facade instead: open ground in front (Infinigen 2's terrain picker,
+with real displacement), no ceiling, visible sky, sometimes the building's inside corner, an eave
 or a downpipe, and weathering on the wall (rain streaks from the top, ground
 splash and dirt at the base, algae patches). Light is outdoor light: direct sun
 at a sampled elevation and direction (hard shadows), overcast sky, the shaded
@@ -26,6 +26,8 @@ from mathutils import Vector
 
 OUTDOOR_SALT = 0x4F555444
 SHELL_COLLECTION = "CWG_SHELL"
+# Drawn and discarded. The ground surface is the terrain picker; this choice
+# stays so the corner, eave and downpipe keep their existing random stream.
 GROUNDS = ("cobble", "concrete", "dirt", "mud", "lawn")
 SKIES = ("sun_direct", "overcast", "shade", "golden_hour")
 
@@ -77,8 +79,9 @@ def sample_outdoor_plan(seed: int, width_m: float) -> OutdoorPlan:
         elev, azi = 0.0, 0.0
         strength, kelvin, world = 0.0, 6500.0, r.uniform(1.5, 4.0)
     corner = r.choice(("left", "right")) if r.random() < 0.4 else None
+    r.choice(GROUNDS)
     return OutdoorPlan(
-        ground=r.choice(GROUNDS), ground_tone=r.uniform(0.0, 1.0),
+        ground="terrain", ground_tone=r.uniform(0.0, 1.0),
         corner=corner, corner_depth_m=r.uniform(1.5, 4.0),
         eave=r.random() < 0.5, eave_depth_m=r.uniform(0.3, 0.7),
         downpipe_x_m=(r.choice((-1, 1)) * (width_m * 0.5 - r.uniform(0.15, 0.6))) if r.random() < 0.4 else None,
@@ -100,495 +103,6 @@ def _principled_material(name, base, roughness=0.8):
     bsdf.inputs["Base Color"].default_value = base
     bsdf.inputs["Roughness"].default_value = roughness
     return mat, bsdf
-
-
-def _ground_seed(plan: OutdoorPlan) -> int:
-    from cwg_infinigen.core.util.math import int_hash
-
-    return int_hash(("ground", plan.ground, repr(round(float(plan.ground_tone), 6)))) % (2**32)
-
-
-def _restore_rng(fn):
-    """Infinigen shaders draw from numpy while they build. Put that state back."""
-    import numpy as np
-
-    from cwg_infinigen.core.util.math import FixedSeed
-
-    def wrapped(*args, **kwargs):
-        np_state, py_state = np.random.get_state(), random.getstate()
-        try:
-            with FixedSeed(kwargs.pop("fixed_seed")):
-                return fn(*args, **kwargs)
-        finally:
-            np.random.set_state(np_state)
-            random.setstate(py_state)
-
-    return wrapped
-
-
-def _bump_only(mat):
-    """Shader displacement is for a diced terrain mesh. This slab is a facade ground."""
-    mat.displacement_method = "BUMP"
-    for node in mat.node_tree.nodes:
-        if node.type == "DISPLACEMENT" and "Scale" in node.inputs:
-            node.inputs["Scale"].default_value = 0.0
-    return mat
-
-
-def _lawn_bed(name):
-    """Green thatch under the blades, with the same one-metre mowing stripes.
-
-    Gaps between blades would otherwise show the red dirt shader. A mown lawn
-    reads as green even where a single blade does not cover the soil.
-    """
-    dark = (0.05, 0.16, 0.035, 1.0)
-    mid = (0.10, 0.28, 0.055, 1.0)
-    mat, bsdf = _principled_material(name, mid, 0.86)
-    nt = mat.node_tree
-    geom = nt.nodes.new("ShaderNodeNewGeometry")
-    separated = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(geom.outputs["Position"], separated.inputs["Vector"])
-    divided = nt.nodes.new("ShaderNodeMath")
-    divided.operation = "DIVIDE"
-    divided.inputs[1].default_value = 1.05
-    nt.links.new(separated.outputs["X"], divided.inputs[0])
-    fract = nt.nodes.new("ShaderNodeMath")
-    fract.operation = "FRACT"
-    nt.links.new(divided.outputs["Value"], fract.inputs[0])
-    stripes = nt.nodes.new("ShaderNodeValToRGB")
-    stripes.color_ramp.elements[0].position = 0.38
-    stripes.color_ramp.elements[0].color = dark
-    stripes.color_ramp.elements[1].position = 0.62
-    stripes.color_ramp.elements[1].color = mid
-    nt.links.new(fract.outputs["Value"], stripes.inputs["Fac"])
-    grain = nt.nodes.new("ShaderNodeTexNoise")
-    grain.inputs["Scale"].default_value = 40.0
-    grain.inputs["Detail"].default_value = 4.0
-    nt.links.new(geom.outputs["Position"], grain.inputs["Vector"])
-    mix = nt.nodes.new("ShaderNodeMixRGB")
-    mix.inputs["Fac"].default_value = 0.22
-    nt.links.new(grain.outputs["Fac"], mix.inputs["Fac"])
-    nt.links.new(stripes.outputs["Color"], mix.inputs["Color1"])
-    mix.inputs["Color2"].default_value = (0.14, 0.34, 0.07, 1.0)
-    nt.links.new(mix.outputs["Color"], bsdf.inputs["Base Color"])
-    return mat
-
-
-def _ground_material(plan: OutdoorPlan):
-    """Infinigen terrain shaders: cobble, concrete, dirt, mud. A lawn is thatch plus blades.
-
-    Colour comes from their world-space noise. Height does not: dirt and mud geomods
-    are landscape-scale, and concrete's displacement node is a millimetre of dice.
-    Cobble's geomod is a few centimetres, so the apron uses that one as geometry.
-    """
-    from cwg_infinigen.core.surface import shaderfunc_to_material
-
-    seed = _ground_seed(plan)
-    name = f"CWG_Ground_{plan.ground}_{seed & 0xFFFF:04x}"
-    if plan.ground == "lawn":
-        return _bump_only(_lawn_bed(name))
-
-    def build():
-        if plan.ground == "cobble":
-            from cwg_infinigen.assets.materials.terrain.cobble_stone import shader_cobblestone
-
-            return shaderfunc_to_material(shader_cobblestone, random_seed=seed, name=name)
-        if plan.ground == "concrete":
-            from cwg_infinigen.assets.materials.ceramic.concrete import shader_concrete
-
-            value = 0.42 + 0.22 * plan.ground_tone
-            return shaderfunc_to_material(
-                shader_concrete, name=name, scale=1.6, seed=float(seed % 997),
-                roughness=0.84, crack_amount=0.12, crack_scale=1.4, snake_crack=0.2,
-                base_color_hsv=(0.08, 0.045, value),
-            )
-        if plan.ground == "mud":
-            from cwg_infinigen.assets.materials.terrain.mud import shader_mud
-
-            return shaderfunc_to_material(shader_mud, name=name)
-        from cwg_infinigen.assets.materials.terrain.dirt import shader_dirt
-
-        return shaderfunc_to_material(shader_dirt, random_seed=seed, name=name)
-
-    return _bump_only(_restore_rng(build)(fixed_seed=seed))
-
-
-def _adopt(obj, col):
-    for old in tuple(obj.users_collection):
-        old.objects.unlink(obj)
-    col.objects.link(obj)
-    obj["cwg_role"] = "shell"
-    return obj
-
-
-def _grid(name, span, depth, spacing, z):
-    """A ground apron in front of the wall: x across the facade, y from 0 out to -depth."""
-    import bmesh
-
-    nx = max(2, int(round(span / spacing)))
-    ny = max(2, int(round(depth / spacing)))
-    bm = bmesh.new()
-    bmesh.ops.create_grid(bm, x_segments=nx, y_segments=ny, size=1.0)
-    xs = [v.co.x for v in bm.verts]
-    ys = [v.co.y for v in bm.verts]
-    minx, maxx = min(xs), max(xs)
-    miny, maxy = min(ys), max(ys)
-    sx = span / (maxx - minx)
-    sy = depth / (maxy - miny)
-    for vert in bm.verts:
-        vert.co.x = (vert.co.x - minx) * sx - span * 0.5
-        vert.co.y = (vert.co.y - miny) * sy - depth
-        vert.co.z = z
-    bm.normal_update()
-    if sum(face.normal.z for face in bm.faces) < 0.0:
-        bmesh.ops.reverse_faces(bm, faces=bm.faces)
-        bm.normal_update()
-    mesh = bpy.data.meshes.new(name)
-    bm.to_mesh(mesh)
-    bm.free()
-    mesh.update()
-    return bpy.data.objects.new(name, mesh)
-
-
-def _use_displaced_output(ng):
-    """The stock geometry-node group passes the mesh through. Keep the node that moves it."""
-    outputs = [node for node in ng.nodes if node.bl_idname == "NodeGroupOutput"]
-    chosen = None
-    for node in outputs:
-        sock = node.inputs[0] if node.inputs else None
-        if sock and sock.is_linked and sock.links[0].from_node.bl_idname != "NodeGroupInput":
-            chosen = node
-            break
-    if chosen is None:
-        return
-    for node in outputs:
-        node.is_active_output = node is chosen
-
-
-def _bake_displacement(obj, fn, kwargs, seed):
-    from cwg_infinigen.core import surface
-
-    def build():
-        return surface.add_geomod(obj, fn, apply=False, input_kwargs=kwargs)
-
-    mod = _restore_rng(build)(fixed_seed=seed)
-    _use_displaced_output(mod.node_group)
-    bpy.context.view_layer.update()
-    deps = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(deps)
-    baked = evaluated.to_mesh().copy()
-    evaluated.to_mesh_clear()
-    obj.modifiers.clear()
-    old = obj.data
-    obj.data = baked
-    if old.users == 0:
-        bpy.data.meshes.remove(old)
-    for poly in obj.data.polygons:
-        poly.use_smooth = True
-    obj.data.update()
-    return obj
-
-
-def geo_relief(nw, height=0.02, scale=5.0, detail=4.0):
-    """Centimetre clods. Infinigen's dirt and mud geomods are built for mountains."""
-    from cwg_infinigen.core.nodes.node_wrangler import Nodes
-
-    group_in = nw.new_node(Nodes.GroupInput, expose_input=[("NodeSocketGeometry", "Geometry", None)])
-    position = nw.new_node(Nodes.InputPosition)
-    normal = nw.new_node(Nodes.InputNormal)
-    coarse = nw.new_node(
-        Nodes.NoiseTexture,
-        input_kwargs={"Vector": position, "Scale": scale, "Detail": detail, "Roughness": 0.55},
-    )
-    fine = nw.new_node(
-        Nodes.NoiseTexture,
-        input_kwargs={"Vector": position, "Scale": scale * 7.0, "Detail": 3.0, "Roughness": 0.65},
-    )
-    lifted = nw.new_node(
-        Nodes.Math, input_kwargs={0: coarse.outputs["Fac"], 1: 0.42}, attrs={"operation": "SUBTRACT"}
-    )
-    lifted = nw.new_node(Nodes.Math, input_kwargs={0: lifted, 1: 0.0}, attrs={"operation": "MAXIMUM"})
-    lifted = nw.new_node(
-        Nodes.Math, input_kwargs={0: lifted, 1: height / 0.58}, attrs={"operation": "MULTIPLY"}
-    )
-    grain = nw.new_node(
-        Nodes.Math, input_kwargs={0: fine.outputs["Fac"], 1: 0.5}, attrs={"operation": "SUBTRACT"}
-    )
-    grain = nw.new_node(
-        Nodes.Math, input_kwargs={0: grain, 1: height * 0.18}, attrs={"operation": "MULTIPLY"}
-    )
-    total = nw.new_node(Nodes.Math, input_kwargs={0: lifted, 1: grain}, attrs={"operation": "ADD"})
-    offset = nw.new_node(
-        Nodes.VectorMath, input_kwargs={0: normal, 1: total}, attrs={"operation": "MULTIPLY"}
-    )
-    moved = nw.new_node(
-        Nodes.SetPosition, input_kwargs={"Geometry": group_in, "Offset": offset.outputs["Vector"]}
-    )
-    nw.new_node(Nodes.GroupOutput, input_kwargs={"Geometry": moved})
-
-
-def geo_concrete_ground(nw):
-    """A poured slab: a few millimetres of float, and saw cuts about every 3 m."""
-    from cwg_infinigen.core.nodes.node_wrangler import Nodes
-
-    group_in = nw.new_node(Nodes.GroupInput, expose_input=[("NodeSocketGeometry", "Geometry", None)])
-    position = nw.new_node(Nodes.InputPosition)
-    normal = nw.new_node(Nodes.InputNormal)
-    separated = nw.new_node(Nodes.SeparateXYZ, input_kwargs={"Vector": position})
-    pitch = 3.05
-
-    def nearest(component):
-        shifted = nw.new_node(
-            Nodes.Math, input_kwargs={0: component, 1: 50.0}, attrs={"operation": "ADD"}
-        )
-        divided = nw.new_node(
-            Nodes.Math, input_kwargs={0: shifted, 1: pitch}, attrs={"operation": "DIVIDE"}
-        )
-        fract = nw.new_node(Nodes.Math, input_kwargs={0: divided}, attrs={"operation": "FRACT"})
-        along = nw.new_node(
-            Nodes.Math, input_kwargs={0: fract, 1: pitch}, attrs={"operation": "MULTIPLY"}
-        )
-        other = nw.new_node(
-            Nodes.Math, input_kwargs={0: pitch, 1: along}, attrs={"operation": "SUBTRACT"}
-        )
-        return nw.new_node(Nodes.Math, input_kwargs={0: along, 1: other}, attrs={"operation": "MINIMUM"})
-
-    gap = nw.new_node(
-        Nodes.Math,
-        input_kwargs={0: nearest(separated.outputs["X"]), 1: nearest(separated.outputs["Y"])},
-        attrs={"operation": "MINIMUM"},
-    )
-    groove = nw.new_node(
-        Nodes.MapRange,
-        input_kwargs={"Value": gap, "From Min": 0.0, "From Max": 0.012, "To Min": 0.008, "To Max": 0.0},
-    )
-    waviness = nw.new_node(
-        Nodes.NoiseTexture,
-        input_kwargs={"Vector": position, "Scale": 0.35, "Detail": 2.0, "Roughness": 0.45},
-    )
-    wave = nw.new_node(
-        Nodes.Math, input_kwargs={0: waviness.outputs["Fac"], 1: 0.5}, attrs={"operation": "SUBTRACT"}
-    )
-    wave = nw.new_node(Nodes.Math, input_kwargs={0: wave, 1: 0.006}, attrs={"operation": "MULTIPLY"})
-    grit = nw.new_node(
-        Nodes.NoiseTexture,
-        input_kwargs={"Vector": position, "Scale": 70.0, "Detail": 4.0, "Roughness": 0.7},
-    )
-    grain = nw.new_node(
-        Nodes.Math, input_kwargs={0: grit.outputs["Fac"], 1: 0.5}, attrs={"operation": "SUBTRACT"}
-    )
-    grain = nw.new_node(Nodes.Math, input_kwargs={0: grain, 1: 0.0015}, attrs={"operation": "MULTIPLY"})
-    height = nw.new_node(
-        Nodes.Math, input_kwargs={0: wave, 1: grain}, attrs={"operation": "ADD"}
-    )
-    height = nw.new_node(
-        Nodes.Math, input_kwargs={0: height, 1: groove.outputs["Result"]}, attrs={"operation": "SUBTRACT"}
-    )
-    offset = nw.new_node(
-        Nodes.VectorMath, input_kwargs={0: normal, 1: height}, attrs={"operation": "MULTIPLY"}
-    )
-    moved = nw.new_node(
-        Nodes.SetPosition, input_kwargs={"Geometry": group_in, "Offset": offset.outputs["Vector"]}
-    )
-    nw.new_node(Nodes.GroupOutput, input_kwargs={"Geometry": moved})
-
-
-def _grass_material(name, colors):
-    """Blade colour from Infinigen's lawn palettes, with mowing stripes a metre apart.
-
-    Stripes and clumps are world position, so instanced blades pick up the stripe
-    they stand in instead of sharing one flat green.
-    """
-    mat, bsdf = _principled_material(name, (*colors[1][:3], 1.0), 0.58)
-    bsdf.inputs["Specular IOR Level"].default_value = 0.18
-    nt = mat.node_tree
-    geom = nt.nodes.new("ShaderNodeNewGeometry")
-    separated = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(geom.outputs["Position"], separated.inputs["Vector"])
-    divided = nt.nodes.new("ShaderNodeMath")
-    divided.operation = "DIVIDE"
-    divided.inputs[1].default_value = 1.05
-    nt.links.new(separated.outputs["X"], divided.inputs[0])
-    fract = nt.nodes.new("ShaderNodeMath")
-    fract.operation = "FRACT"
-    nt.links.new(divided.outputs["Value"], fract.inputs[0])
-    stripes = nt.nodes.new("ShaderNodeValToRGB")
-    stripes.color_ramp.elements[0].position = 0.38
-    stripes.color_ramp.elements[0].color = colors[0]
-    stripes.color_ramp.elements[1].position = 0.62
-    stripes.color_ramp.elements[1].color = colors[1]
-    nt.links.new(fract.outputs["Value"], stripes.inputs["Fac"])
-    clumps = nt.nodes.new("ShaderNodeTexNoise")
-    clumps.inputs["Scale"].default_value = 9.0
-    clumps.inputs["Detail"].default_value = 2.0
-    nt.links.new(geom.outputs["Position"], clumps.inputs["Vector"])
-    clump_color = nt.nodes.new("ShaderNodeMixRGB")
-    clump_color.inputs["Fac"].default_value = 0.35
-    nt.links.new(clumps.outputs["Fac"], clump_color.inputs["Fac"])
-    nt.links.new(stripes.outputs["Color"], clump_color.inputs["Color1"])
-    clump_color.inputs["Color2"].default_value = colors[2]
-    uv = nt.nodes.new("ShaderNodeTexCoord")
-    along = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(uv.outputs["UV"], along.inputs["Vector"])
-    tip = nt.nodes.new("ShaderNodeMixRGB")
-    nt.links.new(along.outputs["Y"], tip.inputs["Fac"])
-    nt.links.new(clump_color.outputs["Color"], tip.inputs["Color1"])
-    tip.inputs["Color2"].default_value = colors[3]
-    nt.links.new(tip.outputs["Color"], bsdf.inputs["Base Color"])
-    translucent = nt.nodes.new("ShaderNodeBsdfTranslucent")
-    nt.links.new(tip.outputs["Color"], translucent.inputs["Color"])
-    mix = nt.nodes.new("ShaderNodeMixShader")
-    mix.inputs["Fac"].default_value = 0.28
-    nt.links.new(bsdf.outputs["BSDF"], mix.inputs[1])
-    nt.links.new(translucent.outputs["BSDF"], mix.inputs[2])
-    out = next(node for node in nt.nodes if node.bl_idname == "ShaderNodeOutputMaterial")
-    for link in list(out.inputs["Surface"].links):
-        nt.links.remove(link)
-    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    return mat
-
-
-def _blade(name, height, width, lean):
-    import bmesh
-
-    rows = 6
-    bm = bmesh.new()
-    for i in range(rows):
-        t = i / (rows - 1)
-        taper = 1.0 - 0.78 * t
-        bm.verts.new((-width * 0.5 * taper, -lean * t * t, height * t))
-        bm.verts.new((width * 0.5 * taper, -lean * t * t, height * t))
-    bm.verts.ensure_lookup_table()
-    uv_layer = bm.loops.layers.uv.new("UVMap")
-    for i in range(rows - 1):
-        face = bm.faces.new((
-            bm.verts[i * 2], bm.verts[i * 2 + 1],
-            bm.verts[i * 2 + 3], bm.verts[i * 2 + 2],
-        ))
-        for loop in face.loops:
-            loop[uv_layer].uv = (0.0 if loop.vert.co.x < 0.0 else 1.0, loop.vert.co.z / height)
-    mesh = bpy.data.meshes.new(name)
-    bm.to_mesh(mesh)
-    bm.free()
-    return bpy.data.objects.new(name, mesh)
-
-
-def _rand_float(nodes, lo, hi, seed):
-    node = nodes.new("FunctionNodeRandomValue")
-    node.data_type = "FLOAT"
-    next(sock for sock in node.inputs if sock.name == "Min" and sock.type == "VALUE").default_value = float(lo)
-    next(sock for sock in node.inputs if sock.name == "Max" and sock.type == "VALUE").default_value = float(hi)
-    node.inputs["Seed"].default_value = int(seed) % 100000
-    return next(sock for sock in node.outputs if sock.type == "VALUE" and sock.enabled)
-
-
-def _lawn(col, span, depth, seed):
-    """Instanced bent blades on the apron. A full monocot tuft is a subsurf-9 plant; too heavy to scatter."""
-    dark = (0.045, 0.16, 0.035, 1.0)
-    mid = (0.09, 0.30, 0.06, 1.0)
-    light = (0.16, 0.40, 0.09, 1.0)
-    tip = (0.24, 0.46, 0.11, 1.0)
-    dry = (0.32, 0.28, 0.10, 1.0)
-    green = _grass_material(f"CWG_Grass_{seed & 0xFFFF:04x}", (dark, mid, light, tip))
-    tan = _grass_material(f"CWG_GrassDry_{seed & 0xFFFF:04x}", (dry, dry, (0.36, 0.30, 0.10, 1.0), (0.42, 0.34, 0.12, 1.0)))
-    # Short wide blades carpet the soil. Taller ones break the line where the wall meets the ground.
-    shapes = (
-        (0.032, 0.016, 0.026, 4),
-        (0.048, 0.013, 0.038, 3),
-        (0.07, 0.010, 0.05, 2),
-        (0.10, 0.008, 0.06, 1),
-    )
-    sources = bpy.data.collections.new(f"CWG_GrassSources_{seed & 0xFFFF:04x}")
-    blades = []
-    for index, (height, width, lean, copies) in enumerate(shapes):
-        for copy in range(copies):
-            obj = _blade(f"CWG_Blade_{seed & 0xFFFF:04x}_{index}_{copy}", height, width, lean)
-            obj.data.materials.append(green)
-            sources.objects.link(obj)
-            blades.append(obj)
-    dry_blade = _blade(f"CWG_Blade_{seed & 0xFFFF:04x}_dry", 0.07, 0.008, 0.02)
-    dry_blade.data.materials.append(tan)
-    sources.objects.link(dry_blade)
-
-    emitter = _grid("CWG_Outdoor_Lawn", span, depth, spacing=0.5, z=0.02)
-    _adopt(emitter, col)
-    ng = bpy.data.node_groups.new(f"CWG_Lawn_{seed & 0xFFFF:04x}", "GeometryNodeTree")
-    ng.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    ng.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    nodes, links = ng.nodes, ng.links
-    group_in = nodes.new("NodeGroupInput")
-    group_out = nodes.new("NodeGroupOutput")
-    scatter = nodes.new("GeometryNodeDistributePointsOnFaces")
-    scatter.distribute_method = "RANDOM"
-    scatter.inputs["Density"].default_value = 2600.0
-    scatter.inputs["Seed"].default_value = int(seed) % 100000
-    links.new(group_in.outputs["Geometry"], scatter.inputs["Mesh"])
-    info = nodes.new("GeometryNodeCollectionInfo")
-    info.transform_space = "RELATIVE"
-    info.inputs["Separate Children"].default_value = True
-    info.inputs["Reset Children"].default_value = True
-    info.inputs["Collection"].default_value = sources
-    yaw = _rand_float(nodes, 0.0, math.tau, seed)
-    lean = _rand_float(nodes, -0.45, 0.45, seed + 17)
-    scale = _rand_float(nodes, 0.72, 1.25, seed + 29)
-    euler = nodes.new("ShaderNodeCombineXYZ")
-    links.new(lean, euler.inputs["X"])
-    links.new(yaw, euler.inputs["Z"])
-    rotation = nodes.new("FunctionNodeEulerToRotation")
-    links.new(euler.outputs["Vector"], rotation.inputs["Euler"])
-    sized = nodes.new("ShaderNodeCombineXYZ")
-    links.new(scale, sized.inputs["X"])
-    links.new(scale, sized.inputs["Y"])
-    links.new(scale, sized.inputs["Z"])
-    inst = nodes.new("GeometryNodeInstanceOnPoints")
-    inst.inputs["Pick Instance"].default_value = True
-    links.new(scatter.outputs["Points"], inst.inputs["Points"])
-    links.new(info.outputs["Instances"], inst.inputs["Instance"])
-    links.new(rotation.outputs["Rotation"], inst.inputs["Rotation"])
-    links.new(sized.outputs["Vector"], inst.inputs["Scale"])
-    links.new(inst.outputs["Instances"], group_out.inputs["Geometry"])
-    group_in.location = (-600, 0)
-    group_out.location = (600, 0)
-    mod = emitter.modifiers.new("Lawn", "NODES")
-    mod.node_group = ng
-    mod.show_viewport = True
-    mod.show_render = True
-    return emitter
-
-
-def _ground_surface(col, spec, plan: OutdoorPlan, material):
-    """The part of the ground a facade camera actually sees, with real relief."""
-    seed = _ground_seed(plan)
-    span = spec.width_m + 8.0
-    depth = 6.0
-    kind = "dirt" if plan.ground == "lawn" else plan.ground
-    spacing = {"cobble": 0.02, "concrete": 0.014, "dirt": 0.035, "mud": 0.03}[kind]
-    apron = _grid("CWG_Outdoor_Apron", span, depth, spacing, z=0.02)
-    _adopt(apron, col)
-    apron.data.materials.append(material)
-    if kind == "cobble":
-        from cwg_infinigen.assets.materials.terrain.cobble_stone import geo_cobblestone
-
-        _bake_displacement(apron, geo_cobblestone, {"random_seed": seed}, seed)
-    elif kind == "concrete":
-        _bake_displacement(apron, geo_concrete_ground, {}, seed)
-    elif kind == "mud":
-        _bake_displacement(apron, geo_relief, {"height": 0.035, "scale": 2.4, "detail": 3.0}, seed)
-    elif plan.ground == "lawn":
-        _bake_displacement(apron, geo_relief, {"height": 0.012, "scale": 2.2, "detail": 3.0}, seed)
-    else:
-        _bake_displacement(apron, geo_relief, {"height": 0.055, "scale": 3.6, "detail": 5.0}, seed)
-    if apron.data.materials:
-        apron.data.materials[0] = material
-    else:
-        apron.data.materials.append(material)
-    built = [apron]
-    if plan.ground == "lawn":
-        # Blades only where a facade camera can see them. The thatch continues past that.
-        built.append(_lawn(col, spec.width_m + 3.0, 3.2, seed))
-    return built
-
-
 
 
 # --------------------------------------------------------------------------- geometry
@@ -657,23 +171,46 @@ def facade_extent(plan: OutdoorPlan) -> tuple[float, float]:
     return r.uniform(4.0, 9.0), r.uniform(1.0, 4.0)
 
 
-def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
+def facade_bounds(spec, plan: OutdoorPlan) -> tuple[float, float, float]:
+    """(left x, right x, top z) of the facade the test wall is a panel of.
+
+    A side with the inside corner stops at the test wall's edge, where the
+    corner wall stands.
+    """
+    side, top = facade_extent(plan)
+    left = -spec.width_m * 0.5 - (0.0 if plan.corner == "left" else side)
+    right = spec.width_m * 0.5 + (0.0 if plan.corner == "right" else side)
+    return left, right, spec.height_m + top
+
+
+def build_outdoor(spec, plan: OutdoorPlan, wall=None, seed: int = 0, dicing_rate: float = 0.75) -> list:
     """Ground, the rest of the facade, optional corner, eave and downpipe. Wall front y = 0, normal -Y.
 
     The test wall is one panel of a larger facade: the same material continues
     left, right and above it (the un-injected original, so defects stay on the
     test wall only), which is what a photographed building front looks like.
+    The ground is Infinigen's terrain picker without its crack-like and watery
+    leaves (infinigen2_bridge._TERRAIN_LEAVES), displaced as geometry.
     """
+    from cwg_infinigen.core.util.math import int_hash
+    from syncrack3d.infinigen2_bridge import realize_picker
+    from syncrack3d.materials import enable_true_displacement
+    from syncrack3d.room_shell import _metric_uv_xy
+
     col = _collection(SHELL_COLLECTION)
     w, h, t = spec.width_m, spec.height_m, 0.12
-    ground = _ground_material(plan)
-    built = [_slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), ground, col)]
-    built.extend(_ground_surface(col, spec, plan, ground))
-    side, top = facade_extent(plan)
+    terrain_seed = int_hash((int(seed), "terrain_picker")) % (2**31)
+    ground_mat = realize_picker("terrain", terrain_seed)
+    ground = _slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), ground_mat, col)
+    _metric_uv_xy(ground)
+    enable_true_displacement(ground, dicing_rate, modifier_name="ground_adaptive")
+    ground["cwg_material_generator"] = "infinigen2:terrain"
+    ground["cwg_material_source"] = "infinigen2_procedural"
+    built = [ground]
+    left_x, right_x, facade_top = facade_bounds(spec, plan)
+    top = facade_top - h
     facade = wall.data.materials[0] if wall is not None else \
         _principled_material("CWG_Outdoor_Facade", (0.45, 0.43, 0.40, 1.0), 0.85)[0]
-    left_x = -w * 0.5 - (0.0 if plan.corner == "left" else side)
-    right_x = w * 0.5 + (0.0 if plan.corner == "right" else side)
     frame = tuple(wall.matrix_world.translation) if wall is not None else None
     if plan.corner != "left":
         built.append(_facade_slab("CWG_Outdoor_Facade_L", left_x, -w * 0.5, 0.0, h + top, facade, col, frame))
@@ -681,9 +218,18 @@ def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
         built.append(_facade_slab("CWG_Outdoor_Facade_R", w * 0.5, right_x, 0.0, h + top, facade, col, frame))
     built.append(_facade_slab("CWG_Outdoor_Facade_Top", -w * 0.5, w * 0.5, h, h + top, facade, col, frame))
     if plan.corner:
+        from syncrack3d.material_diversity import _metric_uv
+        from syncrack3d.room_shell import _face_frame
+
         x = (-1 if plan.corner == "left" else 1) * (w * 0.5 + t * 0.5)
-        built.append(_slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, h + top),
-                           (x, -plan.corner_depth_m * 0.5, (h + top) * 0.5), facade, col))
+        corner = _slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, h + top),
+                       (x, -plan.corner_depth_m * 0.5, (h + top) * 0.5), facade, col)
+        # The facade shader is displacement-only: without metric UVs in the
+        # wall's frame and subdivision, this side wall rendered flat.
+        _face_frame(corner, math.pi / 2 if plan.corner == "left" else -math.pi / 2)
+        _metric_uv(corner)
+        enable_true_displacement(corner, dicing_rate, modifier_name="corner_adaptive")
+        built.append(corner)
     h = h + top  # the eave and downpipe belong to the whole facade
     if plan.eave:
         built.append(_slab("CWG_Outdoor_Eave", (right_x - left_x + 0.6, plan.eave_depth_m, 0.15),

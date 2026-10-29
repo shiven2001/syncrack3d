@@ -18,7 +18,7 @@ from cwg_infinigen.assets.utils.decorate import (
     write_attribute,
     write_co,
 )
-from cwg_infinigen.assets.utils.object import join_objects, new_grid
+from cwg_infinigen.assets.utils.object import join_objects, new_bbox, new_grid
 from cwg_infinigen.assets.utils.shapes import dissolve_limited
 from cwg_infinigen.core import surface
 from cwg_infinigen.core.util import blender as butil
@@ -221,17 +221,31 @@ class BedFrameFactory(ChairFactory):
                 return decors
 
     def make_back(self, backs):
+        # The two posts are a flat rectangle. Convex-hulling them and then
+        # solidifying that zero-thickness sheet shears one corner, so the
+        # panel's lower edge becomes a diagonal that cuts through the mattress.
         obj = join_objects([deep_clone_obj(b) for b in backs])
-        with butil.ViewportMode(obj, "EDIT"):
-            bpy.ops.mesh.select_all(action="SELECT")
-            bpy.ops.mesh.convex_hull()
-        butil.modify_mesh(
-            obj,
-            "SOLIDIFY",
-            thickness=np.minimum(self.thickness, self.leg_thickness),
-            offset=0,
-        )
-        with butil.ViewportMode(obj, "EDIT"):
+        co = read_co(obj)
+        lo, hi = co.min(0), co.max(0)
+        butil.delete(obj)
+        thickness = float(np.minimum(self.thickness, self.leg_thickness))
+        extent = hi - lo
+        thin = int(np.argmin(extent))
+        wide = int(np.argmax(extent))
+        lo, hi = lo.copy(), hi.copy()
+        mid = float((lo[thin] + hi[thin]) / 2)
+        lo[thin] = mid - thickness / 2
+        hi[thin] = mid + thickness / 2
+        # The posts are thickened after this panel is built, so a panel that
+        # only spans their centerlines leaves the post ends sticking out.
+        cover = float(self.back_thickness) / 2
+        lo[wide] -= cover
+        hi[wide] += cover
+        for axis in range(3):
+            if hi[axis] - lo[axis] < 1e-4:
+                hi[axis] = lo[axis] + 1e-4
+        box = new_bbox(lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
+        with butil.ViewportMode(box, "EDIT"):
             bpy.ops.mesh.select_all(action="SELECT")
             bpy.ops.mesh.normals_make_consistent(inside=False)
-        return obj
+        return box

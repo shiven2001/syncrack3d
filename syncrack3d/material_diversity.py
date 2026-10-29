@@ -1,4 +1,13 @@
-"""Wall materials: 15 crack-able Infinigen surface categories, drawn uniformly.
+"""Wall materials for the inspection wall and the room's side walls.
+
+The default draw is Infinigen 2's wall picker (``wall_material_rand``), with
+its own weights (``WALL_WEIGHTS``): mostly paint, then wall tile, brick, wood
+planks, concrete and stone. Its crack and flake leaves are left out
+(infinigen2_bridge.py). Floor, ceiling and ground shaders are not wall
+materials; those surfaces use their own pickers (room_shell.py, outdoor.py).
+Each seed rebuilds the chosen shader.
+The older 15 Infinigen 1 categories stay registered for an explicit
+``--material-categories`` request, which draws uniformly from what it names.
 
 Painted plaster and stucco in neutral, colour and mid-tone coats, concrete,
 brick, wall tile, large tile, marble, stone block, cobble, rubble stone and
@@ -48,17 +57,90 @@ CATEGORIES = {
     "cobble_wall": ("stone", [("ceramic", "CobbleWall", 1.0)]),
     "rubble_stone": ("stone", [("ceramic", "RubbleStone", 1.0)]),
     "sandstone": ("stone", [("ceramic", "SandstoneAshlar", 1.0)]),
+    # Vendored Infinigen 2 wall shaders: the leaves of wall_material_rand. The
+    # choices tuple is unused; apply_wall_material rebuilds the procfunc graph
+    # for the wall seed.
+    "paint_wall": ("paint", [("infinigen2", "paint_wall", 1.0)]),
+    "paint_patterned": ("paint", [("infinigen2", "paint_patterned", 1.0)]),
+    "paint_art": ("paint", [("infinigen2", "paint_art", 1.0)]),
+    "wall_wood_planks": ("wood", [("infinigen2", "wall_wood_planks", 1.0)]),
+    "wall_concrete": ("concrete", [("infinigen2", "wall_concrete", 1.0)]),
+    "wall_stone": ("stone", [("infinigen2", "wall_stone", 1.0)]),
+    "wall_gravel_concrete": ("concrete", [("infinigen2", "wall_gravel_concrete", 1.0)]),
+    "wall_granite": ("stone", [("infinigen2", "wall_granite", 1.0)]),
+    "wall_bricks": ("masonry", [("infinigen2", "wall_bricks", 1.0)]),
+    "bricks_paint": ("paint", [("infinigen2", "bricks_paint", 1.0)]),
+    "wall_bricks_pristine": ("masonry", [("infinigen2", "wall_bricks_pristine", 1.0)]),
+    "tile_indoor_wall": ("tile", [("infinigen2", "tile_indoor_wall", 1.0)]),
+    # Not in wall_material_rand: stone block masonry and cobble, which the
+    # Infinigen 1 palette had (stone_block, cobble_wall).
+    "bricks_masonry": ("masonry", [("infinigen2", "bricks_masonry", 1.0)]),
+    "cobble_stone": ("stone", [("infinigen2", "cobble_stone", 1.0)]),
+    # Painted stucco built like Infinigen 2's paint (materials_v2/stucco.py).
+    "stucco_knockdown": ("paint", [("infinigen2", "stucco_knockdown", 1.0)]),
+    "stucco_sand_float": ("paint", [("infinigen2", "stucco_sand_float", 1.0)]),
+    "stucco_skip_trowel": ("paint", [("infinigen2", "stucco_skip_trowel", 1.0)]),
+    "stucco_popcorn": ("paint", [("infinigen2", "stucco_popcorn", 1.0)]),
+    "stucco_orange_peel": ("paint", [("infinigen2", "stucco_orange_peel", 1.0)]),
 }
 PAINTED = ("Plaster", "StuccoPlaster")  # generators that read plaster_paint_params
+
+# Infinigen 2's wall_material_rand as data: (branch weight, layered, {category:
+# leaf weight}). The layered branch puts a splats overlay on its leaf. Left out:
+# paint_flaked and wall_flaked_tile (crack and flake masks). The three branch
+# weights are Infinigen's, so the non-brick branch keeps its share. Added to
+# the brick and tile branch, bare like brick: bricks_masonry and cobble_stone.
+WALL_PICKER = (
+    (3.0, False, {"paint_wall": 17.5, "paint_patterned": 1.0, "paint_art": 0.5, "wall_wood_planks": 1.5,
+                  "wall_concrete": 1.0, "wall_stone": 0.5, "wall_gravel_concrete": 0.5, "wall_granite": 0.5}),
+    (2.0, False, {"wall_bricks": 2.0, "bricks_paint": 1.0, "wall_bricks_pristine": 0.5, "tile_indoor_wall": 3.0,
+                  "bricks_masonry": 1.5, "cobble_stone": 1.0}),
+    (1.0, True, {"paint_wall": 3.0, "wall_wood_planks": 1.5, "wall_concrete": 1.0, "wall_stone": 0.5,
+                 "wall_gravel_concrete": 0.5}),
+    # Not in Infinigen: heavy-texture painted stucco, one branch, five finishes.
+    (1.0, False, {"stucco_knockdown": 1.0, "stucco_sand_float": 1.0, "stucco_skip_trowel": 1.0,
+                  "stucco_popcorn": 1.0, "stucco_orange_peel": 1.0}),
+)
+
+
+def _picker_tables():
+    total = sum(branch for branch, _, _ in WALL_PICKER)
+    weights, layered = {}, {}
+    for branch, is_layered, leaves in WALL_PICKER:
+        leaf_total = sum(leaves.values())
+        for name, leaf in leaves.items():
+            p = branch / total * leaf / leaf_total
+            weights[name] = weights.get(name, 0.0) + p
+            if is_layered:
+                layered[name] = layered.get(name, 0.0) + p
+    return weights, {name: p / weights[name] for name, p in layered.items()}
+
+
+# Category -> probability of the default draw, and category -> probability
+# that the wall gets the splats overlay (the picker's layered branch).
+WALL_WEIGHTS, OVERLAY_FRACTION = _picker_tables()
+WALL_CATEGORIES = tuple(WALL_WEIGHTS)  # the draw's order
+INFINIGEN2_CATEGORY_NAMES = frozenset(WALL_CATEGORIES)
+DEFAULT_CATEGORIES = WALL_CATEGORIES
 
 # Probability, at --clean-wall-scale 1, that a wall of this category carries no cracks.
 CLEAN_FRACTION = {
     "paint_neutral": 0.15, "paint_colour": 0.15, "concrete": 0.35, "brick": 0.6, "tile": 0.6, "marble": 0.6,
     "paint_colour_mid": 0.15, "stone_block": 0.6, "large_tile": 0.6, "stucco_neutral": 0.15,
     "stucco_colour": 0.15, "stucco_colour_mid": 0.15, "cobble_wall": 0.6, "rubble_stone": 0.6, "sandstone": 0.6,
+    "paint_wall": 0.15, "paint_patterned": 0.15, "paint_art": 0.15, "bricks_paint": 0.35,
+    "wall_concrete": 0.35, "wall_gravel_concrete": 0.35,
+    "wall_bricks": 0.6, "wall_bricks_pristine": 0.6, "tile_indoor_wall": 0.6,
+    "bricks_masonry": 0.6, "cobble_stone": 0.6,
+    "stucco_knockdown": 0.15, "stucco_sand_float": 0.15, "stucco_skip_trowel": 0.15,
+    "stucco_popcorn": 0.15, "stucco_orange_peel": 0.15,
+    "wall_stone": 0.6, "wall_granite": 0.6, "wall_wood_planks": 0.6,
 }
 PAINTED_CATEGORIES = ("paint_neutral", "paint_colour", "paint_colour_mid",
-                      "stucco_neutral", "stucco_colour", "stucco_colour_mid")
+                      "stucco_neutral", "stucco_colour", "stucco_colour_mid",
+                      "paint_wall", "paint_patterned", "paint_art", "bricks_paint",
+                      "stucco_knockdown", "stucco_sand_float", "stucco_skip_trowel",
+                      "stucco_popcorn", "stucco_orange_peel")
 
 # Plaster paint parameters (gin: plaster_paint_params). Neutral = Infinigen's
 # defaults; colour = any hue, up to medium saturation, light to mid-dark value.
@@ -85,13 +167,16 @@ def _rng(seed: int, salt: int) -> random.Random:
 
 
 def sample_category(seed: int, forced: str | None = None, allowed=None) -> str:
-    """A forced category, else a uniform draw from `allowed` (default: every category)."""
+    """A forced category, else a uniform draw from `allowed`, else the Infinigen 2 wall picker's weights."""
     for name in ([forced] if forced else []) + list(allowed or []):
         if name not in CATEGORIES:
             raise ValueError(f"unknown material category {name}; choose from {sorted(CATEGORIES)}")
     if forced:
         return forced
-    return _rng(seed, 0x554E4946).choice(tuple(allowed) if allowed else tuple(CATEGORIES))
+    r = _rng(seed, 0x554E4946)
+    if allowed is not None:
+        return r.choice(tuple(allowed))
+    return r.choices(WALL_CATEGORIES, weights=[WALL_WEIGHTS[c] for c in WALL_CATEGORIES], k=1)[0]
 
 
 # How far a wall's displaced relief stands out of its plane, so fixtures and props can
@@ -107,13 +192,38 @@ RELIEF_M = {
     "marble": (0.0086, None), "brick": (0.0135, None),
     "cobble_wall": (0.0339, 1.13), "rubble_stone": (0.0394, 1.12),
     "stone_block": (0.0273, 1.62), "sandstone": (0.0230, 1.34),
+    # Infinigen 2: each wall's own relief is measured at build time (wall_relief).
+    # These are the fallback: the largest 99.9th-percentile height over 8 seeds
+    # (tools/measure_wall_relief.py), plus RELIEF_MARGIN_M. Within a category
+    # it varies a lot: brick from flat to 69 mm, masonry 41-82 mm.
+    "paint_wall": (0.011, None), "paint_patterned": (0.010, None), "paint_art": (0.012, None),
+    "wall_concrete": (0.003, None), "wall_gravel_concrete": (0.009, None),
+    "wall_bricks": (0.072, None), "bricks_paint": (0.028, None), "wall_bricks_pristine": (0.006, None),
+    "tile_indoor_wall": (0.009, None), "bricks_masonry": (0.085, None), "cobble_stone": (0.044, None),
+    "wall_stone": (0.011, None), "wall_granite": (0.024, None), "wall_wood_planks": (0.004, None),
+    "stucco_knockdown": (0.009, None), "stucco_sand_float": (0.006, None), "stucco_skip_trowel": (0.008, None),
+    "stucco_popcorn": (0.010, None), "stucco_orange_peel": (0.006, None),
 }
+# Added to a measured Infinigen 2 relief: crack coating edges stand a little proud.
+RELIEF_MARGIN_M = 0.003
 
 
 def wall_relief(wall, category: str) -> float:
-    """Metres a wall's relief can stand out of its plane: its displacement scale times the
-    category's ratio, capped at the category maximum."""
+    """Metres a wall's relief can stand out of its plane.
+
+    Infinigen 2 walls: measured on the wall's own material (relief.py) plus
+    RELIEF_MARGIN_M, since one category spans flat to several centimetres.
+    Infinigen 1 walls: the displacement scale times the category's ratio,
+    capped at the category maximum.
+    """
     cap, ratio = RELIEF_M[category]
+    if category in INFINIGEN2_CATEGORY_NAMES and wall.material_slots and wall.material_slots[0].material:
+        from syncrack3d.relief import outward_relief
+
+        try:
+            return outward_relief(wall.material_slots[0].material) + RELIEF_MARGIN_M
+        except Exception:  # a failed bake keeps the category's measured maximum
+            return cap
     scales = [n.inputs["Scale"].default_value for slot in wall.material_slots
               if slot.material is not None and slot.material.use_nodes
               for n in slot.material.node_tree.nodes if n.type == "DISPLACEMENT"]
@@ -197,14 +307,18 @@ def _orient_pattern_to_wall(material) -> int:
 
 def apply_wall_material(wall, seed: int, forced: str | None = None, allowed=None) -> tuple[str, str, dict]:
     """Shade `wall` with a sampled material. Returns (generator, finish, record)."""
+    from syncrack3d.materials_v2 import apply_wall_material as apply_materials_v2
+
+    category = sample_category(seed, forced, allowed)
+    if category in INFINIGEN2_CATEGORY_NAMES:
+        return apply_materials_v2(wall, seed, category, OVERLAY_FRACTION.get(category, 0.0))
+
     import importlib
 
     import gin
 
     from cwg_infinigen.core import surface
     from cwg_infinigen.core.constraints.example_solver.room.decorate import _surface_finish
-
-    category = sample_category(seed, forced, allowed)
     _, choices = CATEGORIES[category]
     mod, cls, _w = _rng(seed, 0x47454E5F).choices(choices, weights=[c[2] for c in choices], k=1)[0]
     generator = getattr(importlib.import_module(f"cwg_infinigen.assets.materials.{mod}"), cls)()

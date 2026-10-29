@@ -1,0 +1,72 @@
+from pandas import read_json as _read_json
+
+from procfunc.tracer import autowrap_module as _autowrap
+from procfunc.util.manifest import module_path
+
+from . import color, compositor, func, geo, math, shader, texture
+from .util.bpy_node_info import NodeDataType, NodeGroupType, SocketType
+
+# ruff: noqa: E402
+_autowrap(color, allow_exec=False)
+_autowrap(compositor, allow_exec=False)
+_autowrap(func, allow_exec=False)
+_autowrap(geo, allow_exec=False)
+_autowrap(math, allow_exec=False)
+_autowrap(shader, allow_exec=False)
+_autowrap(texture, allow_exec=False)
+
+from .execute.execute import (
+    as_nodegroup,
+    to_aliases,
+    to_compositor,
+    to_curve_object,
+    to_environment,
+    to_light,
+    to_mesh_object,
+    to_mesh_object_with_attributes,
+    to_objects_multi,
+)
+from .execute.util import NODE_OPERATOR_TABLE
+from .types import (
+    HandleType,
+    ProcNode,
+    Shader,
+    SocketOrVal,
+)
+from .util.node_function import function_to_compute_graph, node_function
+
+NODES_MANIFEST_PATH = module_path() / "nodes" / "manifest.json"
+assert NODES_MANIFEST_PATH.exists(), f"Manifest not found at {NODES_MANIFEST_PATH}"
+NODES_MANIFEST = _read_json(NODES_MANIFEST_PATH)
+
+__all__ = [
+    # Node category submodules
+    "color",
+    "compositor",
+    "func",
+    "geo",
+    "math",
+    "shader",
+    "texture",
+    # Core types
+    "ProcNode",
+    "Shader",
+    "SocketOrVal",
+    "HandleType",
+    "NodeDataType",
+    "NodeGroupType",
+    "SocketType",
+    # Graph execution
+    "as_nodegroup",
+    "to_aliases",
+    "to_compositor",
+    "to_curve_object",
+    "to_environment",
+    "to_light",
+    "to_mesh_object",
+    "to_mesh_object_with_attributes",
+    "to_objects_multi",
+    # User-facing decorator for custom node functions
+    "node_function",
+    "function_to_compute_graph",
+]

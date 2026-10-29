@@ -2,8 +2,7 @@
 
 Real wall cracks concentrate where the wall meets a stiffer or framed element:
 diagonal cracks from the corners of window, door, vent and hatch openings, and
-cracks along the underside of window sills, beside door jambs and
-along trims. Each selected card is moved to such an anchor and turned to run
+cracks along the underside of window sills and beside door jambs. Each selected card is moved to such an anchor and turned to run
 away from the corner or along the edge; its size and seed are kept, so the crack
 shape is the same draw. Cracks along an edge get a near-straight path through
 the card's `cwg_crack_overrides`. Uses its own RNG stream: walls without
@@ -56,10 +55,6 @@ def _anchors(plan, r):
             for sx in (-1, 1):
                 out.append(("door_jamb", (x + sx * (w / 2 + 0.03 + off), z + r.uniform(-0.2, 0.2) * h),
                             90.0 + r.uniform(-3.0, 3.0), "edge"))
-    elif k == "ceiling_trim":
-        out.append(("ceiling_trim", (x + r.uniform(-0.4, 0.4) * w, z - h / 2 - off), r.uniform(-3.0, 3.0), "edge"))
-    elif k == "skirting":
-        out.append(("skirting", (x + r.uniform(-0.4, 0.4) * w, z + h / 2 + off), r.uniform(-3.0, 3.0), "edge"))
     return out
 
 
