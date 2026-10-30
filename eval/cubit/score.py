@@ -9,7 +9,7 @@ without a label file are skipped.
 
 Images are resized to 1/3 (about 1500x1000), where a crack is about 2.5 px,
 close to the training renders. Full-resolution tiled inference is not run.
-Metrics match BD3: centreline P/R/F1 (5 px tolerance, 1.5x upscaling), clDice, crack IoU, plus the share
+Metrics match BD3: centreline P/R/F1 (protocol v2: 5 px, 1.5x upscaling), clDice, crack IoU, plus the share
 of spalling photos with predicted crack area above 0.1% outside the ignore region.
 
     python eval/cubit/score.py --model path/to/checkpoint_dir --out path/to/out
@@ -78,8 +78,8 @@ def main():
     ap.add_argument("--data", type=Path, default=CUBIT)
     ap.add_argument("--model", type=Path, required=True, help="directory containing runs/s*/last.pt")
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px")
-    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (1: none)")
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
+    ap.add_argument("--scale", type=float, default=TEST_SCALE, help="test-time upscaling (v1: 1)")
     args = ap.parse_args()
     if args.data is None:
         ap.error("pass --data path/to/CUBIT-InSeg or set SYNCRACK3D_CUBIT")

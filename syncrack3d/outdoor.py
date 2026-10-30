@@ -1,8 +1,8 @@
-"""Outdoor building environment around the wall (facade-style walls).
+"""Outdoor building environment around the controlled wall (opt-in --environment).
 
 Indoor walls get the room shell (room_shell.py). An outdoor wall becomes a
-building facade instead: open ground in front (Infinigen 2's terrain picker,
-with real displacement), no ceiling, visible sky, sometimes the building's inside corner, an eave
+building facade instead: open ground in front (paving, concrete, gravel, soil,
+grass), no ceiling, visible sky, sometimes the building's inside corner, an eave
 or a downpipe, and weathering on the wall (rain streaks from the top, ground
 splash and dirt at the base, algae patches). Light is outdoor light: direct sun
 at a sampled elevation and direction (hard shadows), overcast sky, the shaded
@@ -26,9 +26,7 @@ from mathutils import Vector
 
 OUTDOOR_SALT = 0x4F555444
 SHELL_COLLECTION = "CWG_SHELL"
-# Drawn and discarded. The ground surface is the terrain picker; this choice
-# stays so the corner, eave and downpipe keep their existing random stream.
-GROUNDS = ("cobble", "concrete", "dirt", "mud", "lawn")
+GROUNDS = ("paving", "concrete", "gravel", "soil", "grass")
 SKIES = ("sun_direct", "overcast", "shade", "golden_hour")
 
 
@@ -79,9 +77,8 @@ def sample_outdoor_plan(seed: int, width_m: float) -> OutdoorPlan:
         elev, azi = 0.0, 0.0
         strength, kelvin, world = 0.0, 6500.0, r.uniform(1.5, 4.0)
     corner = r.choice(("left", "right")) if r.random() < 0.4 else None
-    r.choice(GROUNDS)
     return OutdoorPlan(
-        ground="terrain", ground_tone=r.uniform(0.0, 1.0),
+        ground=r.choice(GROUNDS), ground_tone=r.uniform(0.0, 1.0),
         corner=corner, corner_depth_m=r.uniform(1.5, 4.0),
         eave=r.random() < 0.5, eave_depth_m=r.uniform(0.3, 0.7),
         downpipe_x_m=(r.choice((-1, 1)) * (width_m * 0.5 - r.uniform(0.15, 0.6))) if r.random() < 0.4 else None,
@@ -103,6 +100,55 @@ def _principled_material(name, base, roughness=0.8):
     bsdf.inputs["Base Color"].default_value = base
     bsdf.inputs["Roughness"].default_value = roughness
     return mat, bsdf
+
+
+def _ground_material(plan: OutdoorPlan):
+    """Procedural ground: tone and pattern only; it is context, not a defect host."""
+    t = plan.ground_tone
+    if plan.ground in ("paving", "concrete"):
+        v = 0.25 + 0.3 * t
+        base = (v, v * 0.98, v * 0.94, 1.0)
+    elif plan.ground == "gravel":
+        v = 0.30 + 0.25 * t
+        base = (v, v * 0.96, v * 0.9, 1.0)
+    elif plan.ground == "soil":
+        base = (0.16 + 0.1 * t, 0.11 + 0.07 * t, 0.07 + 0.04 * t, 1.0)
+    else:
+        base = (0.06 + 0.05 * t, 0.12 + 0.08 * t, 0.04 + 0.03 * t, 1.0)
+    mat, bsdf = _principled_material(f"CWG_Ground_{plan.ground}", base, 0.9)
+    nt = mat.node_tree
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = {"paving": 2.0, "concrete": 4.0, "gravel": 60.0, "soil": 8.0, "grass": 30.0}[plan.ground]
+    noise.inputs["Detail"].default_value = 8.0
+    nt.links.new(coord.outputs["Object"], noise.inputs["Vector"])
+    mix = nt.nodes.new("ShaderNodeMixRGB")
+    mix.blend_type = "OVERLAY"
+    mix.inputs["Fac"].default_value = 0.35
+    mix.inputs["Color1"].default_value = base
+    grey = nt.nodes.new("ShaderNodeValToRGB")  # grey variation only: coloured noise read as water
+    nt.links.new(noise.outputs["Fac"], grey.inputs["Fac"])
+    nt.links.new(grey.outputs["Color"], mix.inputs["Color2"])
+    if plan.ground == "paving":  # square slabs with dark joints
+        bricks = nt.nodes.new("ShaderNodeTexBrick")
+        bricks.offset = 0.5
+        bricks.inputs["Scale"].default_value = 1.0
+        bricks.inputs["Row Height"].default_value = 0.4
+        bricks.inputs["Brick Width"].default_value = 0.4
+        bricks.inputs["Mortar Size"].default_value = 0.01
+        nt.links.new(coord.outputs["Object"], bricks.inputs["Vector"])
+        joints = nt.nodes.new("ShaderNodeMixRGB")
+        joints.inputs["Color2"].default_value = (base[0] * 0.4, base[1] * 0.4, base[2] * 0.4, 1.0)
+        nt.links.new(bricks.outputs["Fac"], joints.inputs["Fac"])
+        nt.links.new(mix.outputs["Color"], joints.inputs["Color1"])
+        nt.links.new(joints.outputs["Color"], bsdf.inputs["Base Color"])
+    else:
+        nt.links.new(mix.outputs["Color"], bsdf.inputs["Base Color"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.4
+    nt.links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return mat
 
 
 # --------------------------------------------------------------------------- geometry
@@ -160,10 +206,10 @@ def _facade_slab(name, x0, x1, z0, z1, mat, col, frame=None):
 def facade_extent(plan: OutdoorPlan) -> tuple[float, float]:
     """How far the facade continues sideways (4-9 m) and above the test wall (1-4 m).
 
-    Seeded with an MD5 hash of the plan, not Python's hash(), which is
-    randomised per process for strings (PYTHONHASHSEED): the surrounding facade,
-    the corner and the eave height - and their shadows in wide views - would
-    change from run to run.
+    Seeded with an MD5 hash of the plan. Until v1.8.0 this used Python's hash(),
+    which is randomised per process for strings (PYTHONHASHSEED), so the
+    surrounding facade, the corner and the eave height - and their shadows in
+    wide views - changed from run to run. Test-wall labels were unaffected.
     """
     from cwg_infinigen.core.util.math import int_hash
 
@@ -171,46 +217,21 @@ def facade_extent(plan: OutdoorPlan) -> tuple[float, float]:
     return r.uniform(4.0, 9.0), r.uniform(1.0, 4.0)
 
 
-def facade_bounds(spec, plan: OutdoorPlan) -> tuple[float, float, float]:
-    """(left x, right x, top z) of the facade the test wall is a panel of.
-
-    A side with the inside corner stops at the test wall's edge, where the
-    corner wall stands.
-    """
-    side, top = facade_extent(plan)
-    left = -spec.width_m * 0.5 - (0.0 if plan.corner == "left" else side)
-    right = spec.width_m * 0.5 + (0.0 if plan.corner == "right" else side)
-    return left, right, spec.height_m + top
-
-
-def build_outdoor(spec, plan: OutdoorPlan, wall=None, seed: int = 0, dicing_rate: float = 0.75) -> list:
+def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
     """Ground, the rest of the facade, optional corner, eave and downpipe. Wall front y = 0, normal -Y.
 
     The test wall is one panel of a larger facade: the same material continues
     left, right and above it (the un-injected original, so defects stay on the
     test wall only), which is what a photographed building front looks like.
-    The ground is Infinigen's terrain picker without its crack-like and watery
-    leaves (infinigen2_bridge._TERRAIN_LEAVES), displaced as geometry.
     """
-    from cwg_infinigen.core.util.math import int_hash
-    from syncrack3d.infinigen2_bridge import realize_picker
-    from syncrack3d.materials import enable_true_displacement
-    from syncrack3d.room_shell import _metric_uv_xy
-
     col = _collection(SHELL_COLLECTION)
     w, h, t = spec.width_m, spec.height_m, 0.12
-    terrain_seed = int_hash((int(seed), "terrain_picker")) % (2**31)
-    ground_mat = realize_picker("terrain", terrain_seed)
-    ground = _slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), ground_mat, col)
-    _metric_uv_xy(ground)
-    enable_true_displacement(ground, dicing_rate, modifier_name="ground_adaptive")
-    ground["cwg_material_generator"] = "infinigen2:terrain"
-    ground["cwg_material_source"] = "infinigen2_procedural"
-    built = [ground]
-    left_x, right_x, facade_top = facade_bounds(spec, plan)
-    top = facade_top - h
+    built = [_slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), _ground_material(plan), col)]
+    side, top = facade_extent(plan)
     facade = wall.data.materials[0] if wall is not None else \
         _principled_material("CWG_Outdoor_Facade", (0.45, 0.43, 0.40, 1.0), 0.85)[0]
+    left_x = -w * 0.5 - (0.0 if plan.corner == "left" else side)
+    right_x = w * 0.5 + (0.0 if plan.corner == "right" else side)
     frame = tuple(wall.matrix_world.translation) if wall is not None else None
     if plan.corner != "left":
         built.append(_facade_slab("CWG_Outdoor_Facade_L", left_x, -w * 0.5, 0.0, h + top, facade, col, frame))
@@ -218,31 +239,24 @@ def build_outdoor(spec, plan: OutdoorPlan, wall=None, seed: int = 0, dicing_rate
         built.append(_facade_slab("CWG_Outdoor_Facade_R", w * 0.5, right_x, 0.0, h + top, facade, col, frame))
     built.append(_facade_slab("CWG_Outdoor_Facade_Top", -w * 0.5, w * 0.5, h, h + top, facade, col, frame))
     if plan.corner:
-        from syncrack3d.material_diversity import _metric_uv
-        from syncrack3d.room_shell import _face_frame
-
         x = (-1 if plan.corner == "left" else 1) * (w * 0.5 + t * 0.5)
-        corner = _slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, h + top),
-                       (x, -plan.corner_depth_m * 0.5, (h + top) * 0.5), facade, col)
-        # The facade shader is displacement-only: without metric UVs in the
-        # wall's frame and subdivision, this side wall rendered flat.
-        _face_frame(corner, math.pi / 2 if plan.corner == "left" else -math.pi / 2)
-        _metric_uv(corner)
-        enable_true_displacement(corner, dicing_rate, modifier_name="corner_adaptive")
-        built.append(corner)
+        built.append(_slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, h + top),
+                           (x, -plan.corner_depth_m * 0.5, (h + top) * 0.5), facade, col))
     h = h + top  # the eave and downpipe belong to the whole facade
     if plan.eave:
         built.append(_slab("CWG_Outdoor_Eave", (right_x - left_x + 0.6, plan.eave_depth_m, 0.15),
                            ((left_x + right_x) * 0.5, -plan.eave_depth_m * 0.5, h + 0.075),
                            _principled_material("CWG_Outdoor_Eave_Mat", (0.2, 0.19, 0.18, 1.0), 0.7)[0], col))
     if plan.downpipe_x_m is not None:
-        from cwg_infinigen.core.util.math import int_hash
-        from syncrack3d.structures import add_downpipe
-
-        for pipe in add_downpipe(col, "CWG_Outdoor_Downpipe", plan.downpipe_x_m, 0.02, h,
-                                 int_hash(("downpipe", repr(float(plan.downpipe_x_m))))):
-            pipe["cwg_role"] = "prop"
-            built.append(pipe)
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.045, depth=h + 0.1, location=(plan.downpipe_x_m, -0.09, (h + 0.1) * 0.5))
+        pipe = bpy.context.object
+        pipe.name = "CWG_Outdoor_Downpipe"
+        pipe.data.materials.append(_principled_material("CWG_Downpipe_Mat", (0.35, 0.35, 0.36, 1.0), 0.45)[0])
+        pipe["cwg_role"] = "prop"
+        for old in tuple(pipe.users_collection):
+            old.objects.unlink(pipe)
+        col.objects.link(pipe)
+        built.append(pipe)
     return built
 
 

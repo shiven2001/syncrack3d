@@ -252,10 +252,10 @@ def _host_normals_point_outward(host: bpy.types.Object) -> bool:
     # A controlled solid wall is not a room volume: its visible outward face
     # points TOWARD the occupant. Allow the host owner to declare this explicitly
     # instead of interpreting the solid panel's centre as the room centre.
-    explicit_sign = host.get("syncrack_displacement_sign")
+    explicit_sign = host.get("syndefect_displacement_sign")
     if explicit_sign is not None:
         if explicit_sign not in (-1, 1):
-            raise ValueError("syncrack_displacement_sign must be -1 or +1")
+            raise ValueError("syndefect_displacement_sign must be -1 or +1")
         return explicit_sign == -1
     mw = host.matrix_world
     name = host.name
@@ -381,11 +381,18 @@ def _inject_crack(
     crack_grime_focus=2.2,
     crack_width_scale=1.0,
     crack_profile="legacy",
+    crack_network_fraction=0.0,
+    crack_network_spacing=(0.02, 0.06),
     crack_network_grime=(0.15, 0.60),
+    crack_network_edge="organic",
     crack_network_extent=1.4,
     crack_weathering_fraction=0.0,
+    crack_jitter_scale=1.0,
     crack_depth_scale=1.0,
-    crack_path_mode="angular",
+    crack_fit_path=False,
+    crack_label_mode="profile",
+    crack_branch_mode="original",
+    crack_path_mode="original",
     layered_fraction=0.0,
     crack_render="geometry",
 ):
@@ -404,19 +411,25 @@ def _inject_crack(
     from cwg_infinigen.assets.defect_fields import adapt_crack_branches, adapt_crack_morphology, adapt_crack_path
 
     from cwg_infinigen.assets.defect_fields import sample_crack_network
-    network = crack_profile == "network"
+    from cwg_infinigen.core.util.math import int_hash
+    if not 0 <= crack_network_fraction <= 1:
+        raise ValueError("network fraction must be 0..1")
+    network_rng = np.random.default_rng(int_hash((int(seed), "network_selection_v1")))
+    network = crack_profile == "network" or network_rng.random() < crack_network_fraction
     half = min(extent, 0.42) * 0.42
     if network:
         # Network field size relative to the card; the card, its placement and
         # the close-up framing are unchanged. Draws nothing.
         half *= float(crack_network_extent)
-    p = (sample_crack_network(seed, half, grime_range=crack_network_grime) if network else
+    p = (sample_crack_network(seed, half, crack_network_spacing, crack_network_grime, crack_network_edge) if network else
          sample_crack_morphology(seed, half=half, profile=crack_profile))
-    # A crack path is fitted inside its card so a small card cannot clip it into islands.
-    p = adapt_crack_morphology(p, width_scale=crack_width_scale, depth_scale=crack_depth_scale, fit_path=not network)
+    p = adapt_crack_morphology(
+        p, width_scale=crack_width_scale, jitter_scale=crack_jitter_scale,
+        depth_scale=crack_depth_scale, fit_path=crack_fit_path and not network,
+    )
     if not network:
         p = adapt_crack_path(p, seed, crack_path_mode)
-        p = adapt_crack_branches(p)
+        p = adapt_crack_branches(p, crack_branch_mode)
     uv, _tex = _uv_socket(nt, *frame)
     geo = {}
     prof = build_crack_field(nt, uv, p, out=geo)
@@ -543,12 +556,14 @@ def _inject_crack(
     if not network and crack_weathering_fraction > 0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked:
         weathering = _crack_weathering(nt, state, frame, geo, p, seed, float(crack_weathering_fraction),
                                        bsdf.inputs["Base Color"])
-    # prof is normalized groove depth, NOT binary surface coverage: thresholding
-    # it at .5 would label only the deepest half of a V-channel. Each shader
-    # sample labels the channel footprint (support); Cycles averaging supplies
-    # pixel antialias coverage. The .02 floor excludes the vanishing border
-    # fade, in field units, not px.
-    label = _math(nt, "GREATER_THAN", prof, .02)
+    if crack_label_mode not in ("profile", "support"):
+        raise ValueError("crack_label_mode must be profile or support")
+    # prof is normalized groove depth, NOT binary surface coverage. Passing it
+    # straight to an AOV and thresholding at .5 labels only the deepest half of
+    # a V-channel. For the explicit support policy, each shader sample labels
+    # the channel footprint; Cycles averaging supplies pixel antialias coverage.
+    # The .02 floor excludes the vanishing border fade, in field units, not px.
+    label = prof if crack_label_mode == "profile" else _math(nt, "GREATER_THAN", prof, .02)
     if chips is not None:
         label = _math(nt, "MAXIMUM", label, chips, clamp=True)  # edge chips are part of the crack
     if crack_render == "pbr":
@@ -586,16 +601,16 @@ def _inject_crack(
         "network": p.get("network"),
         "grime_strength_effective": strength,
         "width_scale": float(crack_width_scale),
-        "jitter_scale": 1.0,
+        "jitter_scale": float(crack_jitter_scale),
         "depth_scale": float(crack_depth_scale),
-        "fit_path": not network,
-        "branch_mode": "cellular" if network else "local_curved",
+        "fit_path": bool(crack_fit_path and not network),
+        "branch_mode": "cellular" if network else crack_branch_mode,
         "branch_specs": p["fork_specs"],
         "path_mode": "cellular" if network else crack_path_mode,
         "path_knots_m": p.get("path_knots"),
-        "label_mode": "support",
+        "label_mode": crack_label_mode,
         "render": crack_render,
-        "label_support_profile_floor": .02,
+        "label_support_profile_floor": .02 if crack_label_mode == "support" else None,
         "lip_width_m": round(float(p.get("w_lip", 0.0)), 6),
         "lip_height_m": round(float(p.get("h_lip", 0.0)), 6),
         "n_forks": len(p.get("fork_specs") or ()),
@@ -684,7 +699,7 @@ def inject_defect(
     The plane is not modified; the caller decides whether to delete it.
     """
     if kind not in _INJECTORS:
-        plane["syncrack_injection_error"] = "unsupported_kind"
+        plane["syndefect_injection_error"] = "unsupported_kind"
         return False
     frame_w = _plane_frame(plane)
     angle = plane.get("cwg_crack_angle_deg")
@@ -700,11 +715,11 @@ def inject_defect(
         frame_w = (origin, across, run)
     if frame_w is None:
         logger.warning("defect %s has no usable faces; skipping", plane.name)
-        plane["syncrack_injection_error"] = "invalid_plane_frame"
+        plane["syndefect_injection_error"] = "invalid_plane_frame"
         return False
     state = _host_injection(host)
     if state is None:
-        plane["syncrack_injection_error"] = "host_has_no_usable_material"
+        plane["syndefect_injection_error"] = "host_has_no_usable_material"
         return False
     extent = max(plane.dimensions.x, plane.dimensions.y, plane.dimensions.z)
     # Per-card overrides of the bound crack settings, e.g. a straight path for a
@@ -719,14 +734,14 @@ def inject_defect(
         logger.warning(
             "failed to inject %s %s into %s: %s", kind, plane.name, host.name, exc
         )
-        plane["syncrack_injection_error"] = f"injection_exception:{type(exc).__name__}"
+        plane["syndefect_injection_error"] = f"injection_exception:{type(exc).__name__}"
         return False
     logger.debug("injected %s (%s, seed %d) into %s", kind, style, seed, host.name)
-    plane["syncrack_style"] = str(style)
+    plane["syndefect_style"] = str(style)
     if metrics:
-        plane["syncrack_morphology"] = json.dumps(metrics)
-    if "syncrack_injection_error" in plane:
-        del plane["syncrack_injection_error"]
+        plane["syndefect_morphology"] = json.dumps(metrics)
+    if "syndefect_injection_error" in plane:
+        del plane["syndefect_injection_error"]
     return True
 
 
@@ -949,7 +964,7 @@ def _stored_morphology(plane) -> dict | None:
     claim about defect size has to rest on, and the ones a measurement-error
     metric would be scored against.
     """
-    raw = plane.get("syncrack_morphology")
+    raw = plane.get("syndefect_morphology")
     if not raw:
         return None
     try:
@@ -1026,7 +1041,7 @@ def validate_defect_support(
     parallel.  Normal sign is reported separately because old room meshes do
     not consistently orient their winding toward the room interior.
     """
-    surface = plane.get("syncrack_surface")
+    surface = plane.get("syndefect_surface")
     expected_suffix = _SURFACE_SUFFIX.get(surface)
     reasons = []
     if (
@@ -1123,7 +1138,7 @@ def resolve_host(plane, state, host_by_name):
     Prefers the solver relation that put it there; falls back to the nearest
     host, which is what the plane factories do for their colour lookup.
     """
-    surface = plane.get("syncrack_surface")
+    surface = plane.get("syndefect_surface")
     order = {
         "ceiling": (".ceiling", ".wall", ".floor"),
         "floor": (".floor", ".wall", ".ceiling"),
@@ -1144,7 +1159,7 @@ def resolve_host(plane, state, host_by_name):
                     stem = room_name.split(".")[0]
                     for suffix in suffixes:
                         if stem + suffix in host_by_name:
-                            plane["syncrack_host_resolution"] = "solver_relation"
+                            plane["syndefect_host_resolution"] = "solver_relation"
                             return host_by_name[stem + suffix]
             break
 
@@ -1156,7 +1171,7 @@ def resolve_host(plane, state, host_by_name):
         if best is None or d2 < best:
             best, nearest = d2, host
     if nearest is not None:
-        plane["syncrack_host_resolution"] = "nearest_fallback"
+        plane["syndefect_host_resolution"] = "nearest_fallback"
     return nearest
 
 
@@ -1174,11 +1189,11 @@ def _retarget_orphaned_defect_cameras(dropped_names, survivors) -> int:
     pool = [p for p in survivors if p.name not in dropped_names]
     moved = 0
     for rig in bpy.data.objects:
-        target_name = rig.get("syncrack_target")
+        target_name = rig.get("syndefect_target")
         if target_name is None or target_name not in dropped_names:
             continue
         if not pool:
-            rig["syncrack_orphaned"] = True
+            rig["syndefect_orphaned"] = True
             logger.warning(
                 "%s framed %s, which was dropped, and no injected defect is "
                 "available to re-aim it at",
@@ -1194,15 +1209,15 @@ def _retarget_orphaned_defect_cameras(dropped_names, survivors) -> int:
             continue
         centre, t_u, t_v = frame
         normal = t_u.cross(t_v).normalized()
-        offset = float(rig.get("syncrack_distance", 0.9))
+        offset = float(rig.get("syndefect_distance", 0.9))
         if (rig.matrix_world.translation - centre).dot(normal) < 0:
             normal = -normal
         rig.location = centre + normal * offset
         rig.rotation_euler = (
             (centre - rig.location).normalized().to_track_quat("-Z", "Y").to_euler()
         )
-        rig["syncrack_target"] = replacement.name
-        rig["syncrack_retargeted_from"] = target_name
+        rig["syndefect_target"] = replacement.name
+        rig["syndefect_retargeted_from"] = target_name
         moved += 1
     if moved:
         logger.info("re-aimed %d defect camera(s) off dropped defects", moved)
@@ -1213,11 +1228,11 @@ def _mark_orphaned_defect_cameras(dropped_names) -> int:
     """Keep dropped-target views as explicit negatives without moving cameras."""
     marked = 0
     for rig in bpy.data.objects:
-        target_name = rig.get("syncrack_target")
+        target_name = rig.get("syndefect_target")
         if target_name not in dropped_names:
             continue
-        rig["syncrack_orphaned"] = True
-        rig["syncrack_orphan_reason"] = "target_not_retained"
+        rig["syndefect_orphaned"] = True
+        rig["syndefect_orphan_reason"] = "target_not_retained"
         marked += 1
     if marked:
         logger.info("marked %d dropped-target camera rig(s) as negative views", marked)
@@ -1227,14 +1242,14 @@ def _mark_orphaned_defect_cameras(dropped_names) -> int:
 def _qa_camera_records(plane_name: str) -> list[dict]:
     views = []
     for rig in sorted(bpy.data.objects, key=lambda obj: obj.name):
-        if rig.get("syncrack_target") != plane_name:
+        if rig.get("syndefect_target") != plane_name:
             continue
         views.append(
             {
                 "rig": rig.name,
-                "pose_valid": bool(rig.get("syncrack_pose_valid", False)),
-                "pose_reason": rig.get("syncrack_pose_reason"),
-                "target_point": list(rig.get("syncrack_target_point", [])),
+                "pose_valid": bool(rig.get("syndefect_pose_valid", False)),
+                "pose_reason": rig.get("syndefect_pose_reason"),
+                "target_point": list(rig.get("syndefect_target_point", [])),
             }
         )
     return views
@@ -1242,13 +1257,13 @@ def _qa_camera_records(plane_name: str) -> list[dict]:
 
 def _set_disposition(plane, status: str, reason: str | None = None) -> None:
     """Stamp a render-safe disposition onto a solver placeholder."""
-    plane["syncrack_status"] = status
+    plane["syndefect_status"] = status
     if reason:
-        plane["syncrack_status_reason"] = reason
+        plane["syndefect_status_reason"] = reason
     if status != "retained":
         plane.hide_render = True
         plane.hide_viewport = True
-        plane["syncrack_dropped"] = True
+        plane["syndefect_dropped"] = True
 
 
 def _record_instance(
@@ -1269,12 +1284,12 @@ def _record_instance(
     """
     from cwg_infinigen.core.util.math import int_hash
 
-    plane["syncrack_instance_id"] = int(instance_id)
-    plane["syncrack_render_path"] = render_path
+    plane["syndefect_instance_id"] = int(instance_id)
+    plane["syndefect_render_path"] = render_path
     _set_disposition(plane, status, reason)
     # Only the blister factories set this themselves; stamp it for every kind so
     # render-time tooling does not have to re-derive it from material names.
-    plane["syncrack_kind"] = kind
+    plane["syndefect_kind"] = kind
 
     class_id, aov_name = DEFECT_AOV_CLASSES[KIND_PREFIX[kind]]
     frame = _plane_frame(plane)
@@ -1290,12 +1305,12 @@ def _record_instance(
         "factory": plane.name.split("(")[0],
         "object": plane.name,
         "seed": int(int_hash(plane.name)),
-        "style": plane.get("syncrack_style"),
+        "style": plane.get("syndefect_style"),
         "host_object": host.name if host else None,
-        "host_surface": plane.get("syncrack_surface"),
+        "host_surface": plane.get("syndefect_surface"),
         "host_material": None,
         "host_finish": classify_host_finish(host) if host else None,
-        "host_resolution": plane.get("syncrack_host_resolution"),
+        "host_resolution": plane.get("syndefect_host_resolution"),
         "extent_m": [round(float(v), 5) for v in plane.dimensions],
         "morphology": _stored_morphology(plane),
         "support_validation": support,
@@ -1381,7 +1396,7 @@ def write_defect_manifest(path, scene_id=None, scene_seed=None) -> int:
     # rule sees one scene as many, then scatters near-duplicate frames of the
     # same room across train, val and test.
     payload = {
-        "schema": "syncrack3d/defect_instances/2",
+        "schema": "syndefect3d/defect_instances/2",
         "scene_id": str(scene_id) if scene_id is not None else None,
         "scene_seed": int(scene_seed) if scene_seed is not None else None,
         "instance_aov": DEFECT_INSTANCE_AOV,
@@ -1497,7 +1512,7 @@ def run_injection(
             continue
         if (
             not allow_nearest_host_fallback
-            and plane.get("syncrack_host_resolution") != "solver_relation"
+            and plane.get("syndefect_host_resolution") != "solver_relation"
         ):
             reason = "unresolved_intended_host_relation"
             _record_instance(
@@ -1506,11 +1521,11 @@ def run_injection(
             dropped.append(plane)
             fatal_errors.append(f"{plane.name}:{reason}")
             continue
-        surface = plane.get("syncrack_surface")
+        surface = plane.get("syndefect_surface")
         compatible, finish, substrate_note = substrate_compatibility(
             kind, surface, host
         )
-        plane["syncrack_host_finish"] = finish
+        plane["syndefect_host_finish"] = finish
         if enforce_substrates and not compatible:
             _record_instance(
                 plane,
@@ -1658,7 +1673,7 @@ def run_injection(
                     )
                 else:
                     reason = str(
-                        plane.get("syncrack_injection_error", "injection_failed")
+                        plane.get("syndefect_injection_error", "injection_failed")
                     )
                     _record_instance(
                         plane,
@@ -1702,8 +1717,8 @@ def run_injection(
         for plane in consumed:
             plane.hide_render = True
             plane.hide_viewport = not preview_planes_in_viewport
-            plane["syncrack_injected"] = True
-            plane["syncrack_viewport_proxy"] = bool(preview_planes_in_viewport)
+            plane["syndefect_injected"] = True
+            plane["syndefect_viewport_proxy"] = bool(preview_planes_in_viewport)
 
     total = finalize_injections(dicing_rate=dicing_rate)
     logger.info(

@@ -1,4 +1,5 @@
-# Copyright (C) 2025, SynCrack3D.
+# Copyright (C) 2025, SynDefect3D.
+# This source code is licensed under the BSD 3-Clause license found in the LICENSE file in the root directory of this source tree.
 
 """Check an exported pack against the G1 instance contract.
 

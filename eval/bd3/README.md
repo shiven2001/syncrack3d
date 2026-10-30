@@ -18,4 +18,4 @@ python eval/bd3/predict.py --model path/to/checkpoint_dir   # writes <model>/pre
 python eval/bd3/score.py --pred path/to/checkpoint_dir/pred_v2/s0
 ```
 
-Minor-crack metrics are pooled centreline F1 at 5 px (`--tolerance` changes it), clDice and crack IoU (`eval/metrics.py`). A plain photo is a false alarm when predicted crack pixels exceed 0.1% of the image.
+Minor-crack metrics are pooled centreline F1 at 5 px (protocol v2; `--tolerance 3` gives the v1 numbers), clDice and crack IoU (`eval/metrics.py`). A plain photo is a false alarm when predicted crack pixels exceed 0.1% of the image.

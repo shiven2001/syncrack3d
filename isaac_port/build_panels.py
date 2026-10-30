@@ -1,4 +1,4 @@
-"""Build rig panel assets (USD + ground truth) from SynCrack3D view patches.
+"""Build rig panel assets (USD + ground truth) from SynDefect3D view patches.
 
     OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim/python \
         scripts/build_panels.py --spec scripts/panels_v1.json --out assets/panels_v2
@@ -6,8 +6,8 @@
 Only crack and paint-peel panels are built (rig/panels.py SCOPE_CLASSES); a
 panel whose source region contains any blister coverage is refused.
 
-Inputs are the patch maps produced by the Isaac port check
-(`isaac_port`): per patch `<cam>_height_mm.npy` (true displaced
+Inputs are the patch maps produced by the SynDefect3D Isaac port check
+(syndefect3d/isaac_port_check): per patch `<cam>_height_mm.npy` (true displaced
 relief from Cycles' Position pass, +50 mm offset, 0 = no wall), `_color.npy`,
 `_roughness.npy`, `_normal.png` (tangent-space bump), and class coverage
 `_DefectCrack/_DefectPaintPeel/_DefectPaintBubble.npy`; optional overhanging peel

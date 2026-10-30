@@ -1,6 +1,6 @@
 """Score crack predictions on the frozen BD3 crack-only set in this folder.
 
-487 minor_crack photos: pooled centreline F1 (5 px tolerance), clDice and crack IoU.
+487 minor_crack photos: pooled centreline F1 (protocol v2: 5 px), clDice and crack IoU.
 355 plain photos: false-alarm rate. A plain photo is an alarm when predicted
 crack pixels exceed 0.1% of the image. Peeling photos are not in this set.
 
@@ -91,7 +91,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pred", required=True, help="directory of <id>.png class maps; crack is 1")
     ap.add_argument("--out", help="optional JSON path")
-    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px")
+    ap.add_argument("--tolerance", type=int, default=TOLERANCE_PX, help="centreline tolerance in px (v1: 3)")
     args = ap.parse_args()
     out = score(args.pred, args.tolerance)
     text = json.dumps(out, indent=2)

@@ -261,7 +261,7 @@ def nodegroup_concrete(nw: NodeWrangler):
 
     hue_saturation_value_1 = nw.new_node(
         "ShaderNodeHueSaturation",
-        input_kwargs={"Value": 0.4200, "Color": group_input_1.outputs["Base Color"]},
+        input_kwargs={"Value": 0.6000, "Color": group_input_1.outputs["Base Color"]},
     )
 
     multiply_4 = nw.new_node(
@@ -308,7 +308,7 @@ def nodegroup_concrete(nw: NodeWrangler):
 
     hue_saturation_value = nw.new_node(
         "ShaderNodeHueSaturation",
-        input_kwargs={"Value": 0.6800, "Color": group_input_1.outputs["Base Color"]},
+        input_kwargs={"Value": 1.4000, "Color": group_input_1.outputs["Base Color"]},
     )
 
     mix_1 = nw.new_node(
@@ -342,7 +342,7 @@ def nodegroup_concrete(nw: NodeWrangler):
 
     hue_saturation_value_3 = nw.new_node(
         "ShaderNodeHueSaturation",
-        input_kwargs={"Value": 0.3000, "Color": group_input_1.outputs["Base Color"]},
+        input_kwargs={"Value": 0.2000, "Color": group_input_1.outputs["Base Color"]},
     )
 
     mix_6 = nw.new_node(
@@ -387,39 +387,10 @@ def nodegroup_concrete(nw: NodeWrangler):
         },
         attrs={"noise_dimensions": "4D"},
     )
-    # Large weathered blotches, then fine grit. The light end stays grey.
-    blotch_scale = nw.new_node(
-        Nodes.Math,
-        input_kwargs={0: group_input_1.outputs["Scale"], 1: 2.4},
-        attrs={"operation": "MULTIPLY"},
-    )
-    blotch = nw.new_node(
-        Nodes.NoiseTexture,
-        input_kwargs={
-            "Vector": texture_coordinate.outputs["Object"],
-            "W": group_input_1.outputs["Seed"],
-            "Scale": blotch_scale,
-            "Detail": 3.0,
-        },
-        attrs={"noise_dimensions": "4D"},
-    )
-    # Noise Fac sits near 0.5. Stretch that band so the weathered patches
-    # actually go darker instead of a faint wash.
-    blotch_span = nw.new_node(
-        Nodes.MapRange,
-        input_kwargs={"Value": blotch.outputs["Fac"], 1: 0.40, 2: 0.60, 3: 0.0, 4: 1.0},
-        attrs={"clamp": True},
-    )
-    open_patch = nw.new_node(
-        Nodes.Math,
-        input_kwargs={0: 1.0, 1: blotch_span.outputs["Result"]},
-        attrs={"operation": "SUBTRACT"},
-    )
     shade = nw.scalar_add(
-        0.50,
-        nw.scalar_multiply(open_patch, 0.32),
-        nw.scalar_multiply(fine.outputs["Fac"], 0.08),
-        nw.scalar_multiply(grit.outputs["Fac"], 0.04),
+        0.82,
+        nw.scalar_multiply(fine.outputs["Fac"], 0.24),
+        nw.scalar_multiply(grit.outputs["Fac"], 0.14),
     )
     color = nw.new_node(
         Nodes.MixRGB,

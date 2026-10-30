@@ -236,11 +236,10 @@ def dry_sand_hsv():
 
 
 def concrete_hsv():
-    # Mid grey. The old upper end (0.9) plus the shader's value lift came out white.
     return (
         uniform(0.0, 1.0),
-        uniform(0.02, 0.08),
-        uniform(0.30, 0.44),
+        uniform(0.02, 0.12),
+        uniform(0.3, 0.9),
     )
 
 

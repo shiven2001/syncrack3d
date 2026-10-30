@@ -7,7 +7,7 @@ apartment pipeline sampled that only incidentally, through room layout; here it
 is swept on purpose.
 
 Incidence is measured from the wall normal, the same convention as
-``syncrack_light_incidence_deg`` in placement/camera.py: 0 degrees is head-on
+``syndefect_light_incidence_deg`` in placement/camera.py: 0 degrees is head-on
 and flattens a dome, 90 degrees is grazing and rakes across relief. Pipeline
 measurements put a blister at 3.1% Weber contrast at 45 degrees against 37.8% at
 grazing, so a dataset that samples only one end of that range teaches the
@@ -81,8 +81,7 @@ _HARD_MIX_WEIGHTS = {
     "lamp_mixed": 0.09, "flash": 0.08,
     "sun_raking": 0.18, "bare_bulb": 0.14, "torch_raking": 0.18,
 }
-# fixed: one soft key light with constant settings on every indoor wall (lighting ablation).
-LIGHT_PROFILES = ("default", "hard_mix", "fixed")
+LIGHT_PROFILES = ("default", "hard_mix")
 
 
 @dataclass(frozen=True)
@@ -194,14 +193,11 @@ def sample_lighting_plan(
 ) -> LightingPlan:
     """One dominant regime, optionally with a weaker second source.
 
-    profile="hard_mix" adds sun, bare-bulb and raking-torch sources and can aim
-    the rig at `target`; "fixed" draws nothing and returns the same rig for
-    every wall of a size.
+    profile="hard_mix" (opt-in) adds sun, bare-bulb and raking-torch sources and
+    can aim the rig at `target`; "default" draws exactly as before.
     """
     if profile == "hard_mix":
         return _sample_hard_mix(rng, width_m, height_m, target)
-    if profile == "fixed":
-        return _fixed_plan(width_m, height_m)
     if profile != "default":
         raise ValueError(f"unknown light profile {profile!r}")
     regime = rng.choices(LIGHT_REGIMES, weights=_REGIME_WEIGHTS, k=1)[0]
@@ -273,20 +269,6 @@ def sample_lighting_plan(
     )
 
 
-def _fixed_plan(width_m, height_m) -> LightingPlan:
-    """A soft ceiling-diffuse key at 35 degrees incidence from above, 4000 K, no fill."""
-    span = max(width_m, height_m)
-    incidence, azimuth = 35.0, 90.0
-    key = LightSpec(
-        role="key", regime="ceiling_diffuse", kelvin=4000.0, power_w=120.0 * (span / 3.0) ** 2, size_m=1.5,
-        incidence_deg=incidence, azimuth_deg=azimuth,
-        # close enough to stay below the ceiling of a closed room
-        location=_placement(width_m, height_m, incidence, azimuth,
-                            min(2.2, (height_m * 0.5 - 0.15) / math.sin(math.radians(incidence)))),
-    )
-    return LightingPlan(regime="fixed", world_strength=0.2, lights=(key,))
-
-
 def _blackbody_light(name, spec: LightSpec, collection, target):
     bpy.ops.object.light_add(type=spec.light_type, location=spec.location)
     light = bpy.context.object
@@ -328,9 +310,8 @@ def _blackbody_light(name, spec: LightSpec, collection, target):
 
 
 def apply_lighting(plan: LightingPlan, height_m: float, collection) -> list:
-    """Replace scene lights with the sampled rig. Fixture lamps stay."""
-    for obj in [o for o in bpy.data.objects if o.type == "LIGHT"
-                and o.get("cwg_role") != "fixture_light"]:
+    """Replace any existing lights with the sampled rig."""
+    for obj in [o for o in bpy.data.objects if o.type == "LIGHT"]:
         bpy.data.objects.remove(obj, do_unlink=True)
 
     centre = (0.0, 0.0, height_m * 0.5)

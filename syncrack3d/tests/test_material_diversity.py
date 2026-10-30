@@ -1,4 +1,4 @@
-"""Wall materials: uniform draw over legacy categories, subsets, clean-wall policy."""
+"""CWGv5 diverse-material sampling: determinism, physics rules, clean walls."""
 
 from collections import Counter
 from types import SimpleNamespace
@@ -8,63 +8,41 @@ import pytest
 from syncrack3d import material_diversity as md
 
 
-def test_default_draw_follows_infinigen_wall_picker():
+def test_category_sampling_is_seed_deterministic_and_covers_all():
     assert [md.sample_category(s) for s in range(50)] == [md.sample_category(s) for s in range(50)]
-    counts = Counter(md.sample_category(s) for s in range(20000))
-    assert set(counts) == set(md.DEFAULT_CATEGORIES)
-    assert set(md.DEFAULT_CATEGORIES) == md.INFINIGEN2_CATEGORY_NAMES
-    assert abs(sum(md.WALL_WEIGHTS.values()) - 1.0) < 1e-9
-    for name in md.DEFAULT_CATEGORIES:
-        assert abs(counts[name] / 20000 - md.WALL_WEIGHTS[name]) < 0.01, name
-    assert max(md.WALL_WEIGHTS, key=md.WALL_WEIGHTS.get) == "paint_wall"
-    # Overlays only on the picker's layerable leaves; never on brick, tile or granite.
-    assert set(md.OVERLAY_FRACTION) == {"paint_wall", "wall_wood_planks", "wall_concrete",
-                                        "wall_stone", "wall_gravel_concrete"}
-    assert "paint_neutral" in md.CATEGORIES and "paint_neutral" not in counts
-    assert "wood" not in md.CATEGORIES and "irregular_stone" not in md.CATEGORIES
+    counts = Counter(md.sample_category(s) for s in range(4000))
+    # Weight-0 categories are forced-only (--material-category); random draws skip them.
+    assert set(counts) == {n for n, (w, _, _) in md.CATEGORIES.items() if w > 0}
+    for name, (weight, _, _) in md.CATEGORIES.items():
+        assert abs(counts[name] / 4000 - weight) < 0.03
 
 
-def test_wall_draw_has_no_crack_or_non_wall_shaders():
-    # Crack and flake masks would be unlabelled cracks; floor, ground, fabric
-    # and object shaders are not walls.
-    for name in ("paint_flaked", "wall_flaked_tile", "ground_cracked", "sand", "soil", "dirt", "mud", "ice",
-                 "tile_indoor_ground", "tile_outdoor_ground", "carpet", "fabric", "leather", "plastic",
-                 "glass_colored", "metal_hammered", "terrazzo"):
-        assert name not in md.CATEGORIES, name
-
-
-def test_forced_subset_and_unknown_categories():
+def test_forced_category_and_unknown_category():
     assert md.sample_category(7, "tile") == "tile"
-    assert {md.sample_category(s, allowed=["brick", "marble"]) for s in range(200)} == {"brick", "marble"}
-    for bad in (dict(forced="lava"), dict(allowed=["brick", "wood"])):
-        with pytest.raises(ValueError):
-            md.sample_category(7, **bad)
-    assert md.sample_category(0, "paint_wall") == "paint_wall"
+    with pytest.raises(ValueError):
+        md.sample_category(7, "carpet")
 
 
-def test_clean_walls():
-    # Default: every wall cracked.
-    assert not any(md.is_clean_wall(s, name) for s in range(200) for name in md.CATEGORIES)
-    clean_paint = sum(md.is_clean_wall(s, "paint_colour", scale=1.0) for s in range(3000)) / 3000
+def test_wood_and_irregular_stone_never_crack():
+    for name in ("wood", "irregular_stone"):
+        assert all(md.is_clean_wall(s, name, scale=sc) for s in range(200) for sc in (0.0, 1.0, 5.0))
+
+
+def test_stone_block_and_large_tile_crack_only_when_forced():
+    # Plain at the default scale, so the v1.2.0 negatives regenerate unchanged;
+    # cracked in --clean-wall-scale 0 batches, as in v1.3.0.
+    for name in ("stone_block", "large_tile"):
+        assert all(md.is_clean_wall(s, name) for s in range(120000, 120332))
+        assert not any(md.is_clean_wall(s, name, scale=0.0) for s in range(176030, 176046))
+    clean_paint = sum(md.is_clean_wall(s, "paint_colour") for s in range(2000)) / 2000
     assert abs(clean_paint - md.CLEAN_FRACTION["paint_colour"]) < 0.03
-    clean_block = sum(md.is_clean_wall(s, "stone_block", scale=1.0) for s in range(3000)) / 3000
-    assert abs(clean_block - 0.6) < 0.04
-    # The uniform policy compares against the same per-wall draw.
-    for s in range(300):
-        assert md.is_clean_wall(s, "brick", uniform=0.6) == md.is_clean_wall(s, "tile", scale=1.0)
-    assert all(md.is_clean_wall(s, "brick", uniform=1.0) for s in range(50))
+    assert not any(md.is_clean_wall(s, "tile", scale=0.0) for s in range(200))
 
 
 def test_only_paint_categories_use_plaster_and_are_coated():
-    for name, (finish, choices) in md.CATEGORIES.items():
-        if name in md.INFINIGEN2_CATEGORY_NAMES:
-            continue  # I2 paint finishes are coated without legacy Plaster gin params
+    for name, (_, finish, choices) in md.CATEGORIES.items():
         uses_plaster = any(cls in md.PAINTED for _, cls, _ in choices)
         assert uses_plaster == (finish == "paint"), name
-    legacy_paint = {n for n, (f, _) in md.CATEGORIES.items()
-                    if f == "paint" and n not in md.INFINIGEN2_CATEGORY_NAMES}
-    assert legacy_paint <= set(md.PAINTED_CATEGORIES)
-    assert md.INFINIGEN2_CATEGORY_NAMES & set(md.PAINTED_CATEGORIES)
     assert md.PAINT_PARAMS["paint_neutral"]["colored_prob"] == 0.0
     assert md.PAINT_PARAMS["paint_colour"]["hue_max"] - md.PAINT_PARAMS["paint_colour"]["hue_min"] == 1.0
 

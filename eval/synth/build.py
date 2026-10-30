@@ -1,24 +1,23 @@
-"""Build a frozen SynCrack3D synthetic evaluation set.
+"""Build the frozen SynCrack3D synthetic evaluation set.
 
     python eval/synth/build.py --out OUT [--blender-py PY] [--only legacy major ...]
 
-One held-out set from the generator's default configuration, covering every
-crack style plus crack-free hard negatives. Each style gets its own subset by
-forcing --crack-style-mix, so all styles have enough walls to report
-separately; every wall keeps its fixtures, room or facade context and props.
-Seeds start at 810000, clear of every training seed range. Each subset is
+One held-out set from the v2 generator (the `unified` recipe: 15 crack-able
+materials drawn uniformly, one clean-wall table), covering every crack style plus
+crack-free hard negatives. Each style gets its own subset by forcing
+--crack-style-mix, so all styles have enough walls to report separately; the
+clean-wall table still leaves about 40% of walls plain, which supplies the
+crack-free close-ups each subset's alarm rate is measured on. Seeds start at
+810000; every training wall so far used seeds below 200000. Each subset is
 exported with labels and checked with the label contract. Steps resume.
 
   legacy     indoor walls, legacy cracks
   major      indoor walls, broad open and branched cracks
-  network    indoor paint/stucco walls with crack networks
+  network    indoor paint/stucco walls with crack networks beside indoor fixtures
   facade     outdoor facades, facade fixtures, junction cracks, rain-wash staining
-  negatives  crack-free walls of every style (indoor and outdoor), with their
-             fixtures, close-ups of plain wall and context views
-
-The set reported as evalset v2 (outputs/syncrack3d_evalset_v2) was built with
-this script at commit 76bfbd4, an earlier generator configuration; build a new
-set into a new OUT to evaluate the current one.
+  negatives  crack-free walls, indoor and outdoor, with fixture views (doors,
+             sockets, vents, cables, pipes, windows, gutters, ...) and plain
+             close-ups
 
 OUT/manifest.json records the code commit, the exact commands, and per view:
 subset, seed, wall material, environment, crack pixels and SHA-256 of image and
@@ -37,11 +36,13 @@ import cv2
 
 APP = Path(__file__).resolve().parents[2]
 SUBSETS = {
-    "legacy": ("810000-810049", ["--crack-style-mix", "legacy=1"]),
-    "major": ("811000-811039", ["--crack-style-mix", "major=1"]),
-    "network": ("812000-812049", ["--crack-style-mix", "network=1"]),
-    "facade": ("813000-813039", ["--crack-style-mix", "facade=1"]),
-    "negatives": ("814000-814039", ["--clean-wall-uniform", "1"]),
+    "legacy": ("unified", "810000-810049", ["--crack-style-mix", "legacy=1"]),
+    "major": ("unified", "811000-811039", ["--crack-style-mix", "major=1"]),
+    "network": ("unified", "812000-812049", ["--crack-style-mix", "network=1"]),
+    "facade": ("unified", "813000-813039", ["--crack-style-mix", "facade=1"]),
+    "negatives": ("unified", "814000-814039", ["--crack-style-mix", "off", "--environment", "mixed",
+                                               "--structures", "auto", "--structure-views", "2",
+                                               "--structure-clean-fraction", "1"]),
 }
 
 ap = argparse.ArgumentParser()
@@ -86,13 +87,13 @@ commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=APP, capture_output=Tr
 dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=APP,
                             capture_output=True, text=True).stdout.strip())
 commands = {}
-for name, (seeds, extra) in SUBSETS.items():
+for name, (recipe, seeds, extra) in SUBSETS.items():
     if args.only and name not in args.only:
         continue
     root = args.out / name
     root.mkdir(exist_ok=True)
     log = root / "build.log"
-    build = [args.blender_py, "syncrack3d/build_dataset.py", "--seeds", seeds,
+    build = [args.blender_py, "syncrack3d/build_dataset.py", "--recipe", recipe, "--seeds", seeds,
              "--output", str(root / "walls"), *extra, "--keep-going", "--resume"]
     export = [args.blender_py, "tools/prepare_defect_annotated_dataset.py", "-i", str(root / "walls" / "frames"),
               "-o", str(root / "pack"), "--aov-masks", "auto", "--instance-masks", "auto", "--with-bboxes",
@@ -146,8 +147,8 @@ for name in SUBSETS:
                                                     for m in {x["material"] for x in v}}.items())))
 old = json.loads((args.out / "manifest.json").read_text()) if (args.out / "manifest.json").exists() else {}
 manifest = dict(
-    name="SynCrack3D synthetic evaluation set", version="SynCrack3D v1.17.0 defaults", code_commit=commit, code_dirty=dirty,
-    subsets={k: dict(seeds=s, extra_flags=e) for k, (s, e) in SUBSETS.items()},
+    name="SynCrack3D synthetic evaluation set", version="v2 generator (unified recipe)", code_commit=commit, code_dirty=dirty,
+    subsets={k: dict(recipe=r, seeds=s, extra_flags=e) for k, (r, s, e) in SUBSETS.items()},
     commands={**old.get("commands", {}), **commands},
     mask_encoding="masks/*.png: 60 = crack, 0 = background; ignore_masks/*.png > 0 = ignore unless crack",
     summary=summary, excluded=excluded, views=views)

@@ -1,4 +1,4 @@
-"""Straight path mode (junction cracks along sills and trims): near-straight run, sparse forks, no global RNG use."""
+"""Straight path mode: near-straight run, sparse forks, no global RNG use."""
 import numpy as np
 from cwg_infinigen.assets.defect_fields import (
     adapt_crack_branches, adapt_crack_morphology, adapt_crack_path, sample_crack_morphology)
@@ -27,4 +27,4 @@ def test_straight_run_and_forks():
             assert max(xs) - min(xs) < .2 * p['half_u']
             assert len(p['fork_specs']) <= 1
             assert p['jag_amp'] <= .006 * p['half_u']
-            adapt_crack_branches(p)  # fitted parent leaves room for branches
+            adapt_crack_branches(p, 'local_curved')  # fitted parent leaves room for branches

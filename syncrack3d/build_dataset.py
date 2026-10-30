@@ -1,28 +1,14 @@
 #!/usr/bin/env python3
-"""SynCrack3D dataset driver. One seed is one wall, built in seven steps:
+"""SynCrack3D dataset driver: build, inject, light, pose, render.
 
-1. wall and material: a 15-category palette drawn uniformly (material_diversity);
-   the wall draws a crack style (styles.py) that sets its crack morphology and
-   setting (indoor room or outdoor facade);
-2. context: an indoor room shell (Infinigen 2 floor and ceiling pickers; side
-   walls always in the wall's own finish) or
-   an outdoor facade whose ground is the Infinigen 2 terrain picker without its
-   crack-like and watery leaves. Every surface is displaced as geometry;
-3. fixtures: planned on their own stream and built (switched sockets, doors,
-   trims, services; windows with sills and downpipes outdoors);
-4. crack tokens around the fixtures (none under a large assembly, some beside a
-   service run), a share snapped to fixture corners and edges;
-5. crack injection into the wall material (displaced relief, coating edges, labels);
-6. lighting and cameras (close-ups per crack plus context views; a camera jammed
-   against an object is dropped);
-7. one room's props (furniture against the wall, loose items on the floor), clear of
-   cameras, lights and fixtures; then render RGB and crack AOVs.
+One seed produces one wall, a sampled lighting regime, a few props, several
+phone-like cameras, and one rendered frame per camera with crack AOVs beside
+it. SynCrack3D places cracks only. Paint peeling and blistering stay in
+``controlled_wall_generator`` and ``infinigen``.
 
     python syncrack3d/build_dataset.py --seeds 0-49 --output out/walls
 
-Run it with the same Python that has bpy installed. Defaults are the SynCrack3D
-v1.18.0 configuration; the remaining options are run controls and ablation
-switches.
+Run it with the same Python that has bpy installed.
 """
 
 from __future__ import annotations
@@ -56,30 +42,37 @@ from syncrack3d.defects import (  # noqa: E402
 from syncrack3d.framing import sample_exposure_evs  # noqa: E402
 from syncrack3d.geometry import build_scene  # noqa: E402
 from syncrack3d.materials import enable_true_displacement  # noqa: E402
+from syncrack3d.infinigen_materials import (  # noqa: E402
+    apply_infinigen_wall_material,
+)
 from syncrack3d.lighting import (  # noqa: E402
     LIGHT_PROFILES,
     apply_lighting,
     sample_lighting_plan,
 )
 from syncrack3d.junctions import snap_to_junctions  # noqa: E402
-from syncrack3d.styles import DEFAULT_MIX, parse_style_mix, wall_style  # noqa: E402
+from syncrack3d.recipes import RECIPES, parse_style_mix, recipe_argv, wall_style  # noqa: E402
 from syncrack3d.structures import (  # noqa: E402
+    PROFILES as STRUCTURE_PROFILES,
+    KINDS as STRUCTURE_KINDS,
     build_structures,
     crack_regions,
     sample_structure_plan,
+    structure_camera_targets,
+    structure_clean_wall,
 )
 from syncrack3d.occlusion import _world_bounds as prop_bounds  # noqa: E402
-from syncrack3d.occlusion import sample_props  # noqa: E402
+from syncrack3d.occlusion import sample_props, settle_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
     apply_weathering,
     build_outdoor,
-    facade_bounds,
+    environment_for,
     outdoor_lighting,
+    remove_indoor_props,
     sample_outdoor_plan,
 )
 from syncrack3d.room_shell import (  # noqa: E402
-    apply_floor_ceiling,
     apply_matched_finish,
     build_room_shell,
     sample_shell_plan,
@@ -93,14 +86,13 @@ from syncrack3d.scene_setup import (  # noqa: E402
     CAPTURE_COLLECTION,
     configure_capture_scene,
 )
-from syncrack3d.spec import sample_scene_spec  # noqa: E402
+from syncrack3d.spec import SUBSTRATES, sample_scene_spec  # noqa: E402
+from syncrack3d.paint_profiles import PAINT_PROFILES, adapt_paint_material  # noqa: E402
 from syncrack3d.material_diversity import (  # noqa: E402
     CATEGORIES as MATERIAL_CATEGORIES,
-    DEFAULT_CATEGORIES,
-    apply_wall_material,
+    apply_diverse_wall_material,
     is_clean_wall,
     virtual_targets,
-    wall_relief,
 )
 
 logger = logging.getLogger("syncrack3d")
@@ -154,14 +146,26 @@ def clear_scene():
 
 
 def build_one(seed: int, args, out_root: Path) -> dict:
-    """Build (and render) one wall. `args` already carries the wall's crack style."""
     t_start, t_render = time.perf_counter(), None
     shell_finish = {"finish": "plain"} if args.shell_finish == "plain" else None
     scene_dir = out_root / f"seed_{seed:05d}"
     frames_dir = out_root / "frames" / f"seed_{seed:05d}"
     scene_dir.mkdir(parents=True, exist_ok=True)
 
-    spec = sample_scene_spec(seed, module="flat", substrate="paint")
+    spec = sample_scene_spec(seed, module="flat", substrate=args.substrate)
+    if args.paint_profile != "baseline":
+        if args.wall_materials != "controlled" or args.surface_detail:
+            raise ValueError("--paint-profile requires controlled materials without --surface-detail")
+        spec = replace(spec, material=adapt_paint_material(spec.material, seed, args.paint_profile))
+    if args.surface_detail and args.wall_materials != "controlled":
+        raise ValueError("--surface-detail requires --wall-materials controlled")
+    if args.surface_detail and spec.material.finish == "paint":
+        # Independent draw: do not change placement, lighting, or camera RNG.
+        fine = random.Random(seed ^ 0x53555246).uniform(250, 650)
+        spec = replace(spec, material=replace(
+            spec.material, texture_scale=fine,
+            color_variation=spec.material.color_variation * 2,
+        ))
     random.seed(seed)
     np.random.seed(seed % (2**32))
     rng = random.Random(seed)
@@ -169,27 +173,43 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     clear_scene()
     build = build_scene(spec)
     wall = build.hosts[0]
-    # The camera-facing plane is at y=0, with geometric normal -Y. Positive
-    # height must move toward cameras at negative Y; no sign flip.
-    wall["syncrack_displacement_sign"] = 1
+    if args.wall_normal_mode == "explicit":
+        # CWG's camera-facing plane is at y=0, with geometric normal -Y.
+        # Positive height must move toward cameras at negative Y; no sign flip.
+        wall["syndefect_displacement_sign"] = 1
+    # Shade the wall with Infinigen's own material, not the base generator's
+    # stand-in. This is the surface apartment defects are injected into, so it
+    # is the only choice under which the two datasets differ in one variable
+    # rather than two - and injection reads the host shader, so a simpler one
+    # silently takes different branches.
+    material_record, clean_wall = None, False
+    if args.wall_materials in ("infinigen", "diverse", "unified"):
+        # Both material paths draw through numpy's global RNG, and its state here
+        # depended on which seeds ran earlier in the same process (seed 106003
+        # alone vs after 106002 gave a different Plaster colour, relief and
+        # displacement). Cause: the material helpers import Infinigen's room
+        # decorator lazily, and that first import draws from numpy, so only a
+        # process's first wall saw the extra draws. Import first, then reseed,
+        # so the wall is a function of its own seed only.
+        import cwg_infinigen.core.constraints.example_solver.room.decorate  # noqa: F401
+        from cwg_infinigen.core import surface  # noqa: F401
+        from cwg_infinigen.core.util.math import int_hash
 
-    # 1. Wall material. The material helpers import Infinigen's room decorator
-    # lazily, and that first import draws from numpy, so only a process's first
-    # wall saw the extra draws. Import first, then reseed, so the wall is a
-    # function of its own seed only.
-    import cwg_infinigen.core.constraints.example_solver.room.decorate  # noqa: F401
-    from cwg_infinigen.core import surface  # noqa: F401
-    from cwg_infinigen.core.util.math import int_hash
-
-    np.random.seed(int_hash((seed, "cwg_wall_material")) % (2**32))
-    generator_name, surface_finish, material_record = apply_wall_material(
-        wall, seed, args.material_category, args.material_categories)
-    clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale,
-                               uniform=args.clean_wall_uniform)
-
-    # 2. Context.
+        np.random.seed(int_hash((seed, "cwg_wall_material")) % (2**32))
+    if args.wall_materials == "infinigen":
+        generator_name, surface_finish = apply_infinigen_wall_material(wall, rng)
+    elif args.wall_materials in ("diverse", "unified"):
+        # CWGv5: wide substrate/colour palette; non-paint walls mostly defect-free
+        generator_name, surface_finish, material_record = apply_diverse_wall_material(
+            wall, seed, args.material_category, palette=args.wall_materials
+        )
+        clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale,
+                                   palette=args.wall_materials, uniform=args.clean_wall_uniform)
+    else:
+        generator_name, surface_finish = "controlled", spec.material.finish
+    clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
     shell_plan = sample_shell_plan(rng)  # drawn for every wall: keeps the shared RNG stream
-    environment = args.environment
+    environment = environment_for(seed, args.environment)
     outdoor_plan = sample_outdoor_plan(seed, spec.width_m) if environment == "outdoor" else None
     if outdoor_plan is None and args.structures != "off":
         # Fixture views reach wall boundaries; close the room so sockets and
@@ -198,44 +218,104 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     if outdoor_plan is None:
         shell = build_room_shell(spec, shell_plan)
         if args.shell_finish == "matched":
-            shell_finish = apply_matched_finish(shell, wall, seed, args.dicing_rate)
-        else:
-            shell_finish.update(apply_floor_ceiling(shell, seed, args.dicing_rate))
+            shell_finish = apply_matched_finish(shell, wall, seed)
     else:
-        build_outdoor(spec, outdoor_plan, wall, seed, args.dicing_rate)
+        build_outdoor(spec, outdoor_plan, wall)
     configure_capture_scene(spec, build.root)
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
-    # 3. Fixtures, on their own stream and blind to cracks, built now.
-    structure_plans = sample_structure_plan(seed, spec, args.structures, environment)
-    relief = round(wall_relief(wall, material_record["category"]), 5)
-    extent = facade_bounds(spec, outdoor_plan) if outdoor_plan is not None else None
-    structures = build_structures(structure_plans, relief, spec.height_m, spec.width_m, extent=extent,
-                                  wall=wall, palette_seed=seed)
-    skirting = bpy.data.objects.get("CWG_Skirting")
-    if skirting is not None:  # the base wall's own board, when no fixture plan replaced it
-        skirting.location.y -= relief
-    keepout, near = crack_regions(structure_plans)
+    def light_scene():
+        """Indoor lighting rig, or the outdoor sun and sky (with facade weathering)."""
+        lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
+        if args.light_profile != "default" and not args.relight_per_view:
+            # Independent stream: walls, defects and cameras stay as in the default run.
+            lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
+                                            profile=args.light_profile)
+        apply_lighting(lighting, spec.height_m, capture_collection)
+        weathering = {}
+        if outdoor_plan is not None:
+            # one sun (or overcast sky) per wall, visible sky; the indoor plan above
+            # was still drawn so the shared RNG stream is unchanged
+            lighting = outdoor_lighting(outdoor_plan, spec)
+            apply_lighting(lighting, spec.height_m, capture_collection)
+            apply_sky(outdoor_plan)
+            weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
+        return lighting, weathering
 
-    # 4. Crack tokens around the fixtures, then a share snapped to their corners and edges.
+    def pose_cameras(structures):
+        poses = sample_camera_poses(
+            rng,
+            spec,
+            # a clean wall has no defects to frame: close-ups of plain wall instead
+            virtual_targets(seed, spec) if clean_wall and not placements else placements,
+            capture_collection,
+            closeups_per_defect=args.closeups_per_defect,
+            context_view_fraction=args.context_view_fraction,
+            frame_fill_range=tuple(args.closeup_fill),
+            max_yaw_deg=args.closeup_max_yaw,
+            max_pitch_deg=args.closeup_max_pitch,
+            preserve_closeup_scale=args.preserve_closeup_scale,
+            aim_jitter=args.closeup_aim_jitter,
+        )
+        if structures and args.structure_views:
+            structure_rng = random.Random(seed ^ 0x53544341)
+            targets = list(structures)
+            structure_rng.shuffle(targets)
+            poses.extend(sample_camera_poses(
+                structure_rng, spec, structure_camera_targets(targets, args.structure_views),
+                capture_collection, closeups_per_defect=1, frame_fill_range=(.45, .75),
+                index_offset=len(poses), closeup_role="structure", include_context=False,
+                max_yaw_deg=min(args.closeup_max_yaw, 25), max_pitch_deg=min(args.closeup_max_pitch, 20),
+            ))
+        return poses
+
+    fixtures_first = args.layout_order == "fixtures-first"
+    layout_record = {"order": args.layout_order}
     plan = sample_defect_plan(
         rng,
         total_range=(0, 0) if clean_wall else (args.min_defects, args.max_defects),
         substrate_finish=surface_finish,
         size_range_m=tuple(args.defect_size_range),
-    )
-    if args.crack_profile == "network":
-        # Network patches reach crack_network_extent x the token size; spaced only
-        # 0.30 m apart they overlapped and blended instance ids where they met.
-        plan = replace(plan, min_separation_m=max(plan.min_separation_m,
-                                                  args.crack_network_extent * plan.size_range_m[1]))
-    placements = build_defects(spec, wall, rng, plan, keepout=keepout, near=near,
-                               near_fraction=args.crack_near_service_fraction)
-    layout_record = {"order": "fixtures-first", "keepout_regions": len(keepout), "service_runs": len(near),
-                     "tokens_requested": sum(plan.counts.values()), "tokens_placed": len(placements)}
+    ) if not fixtures_first else None
+    if fixtures_first:
+        # 3. Fixtures first, on their own stream and blind to cracks, built now.
+        structure_plans = sample_structure_plan(seed, spec, (), args.structures, environment, args.structure_kinds)
+        structures = build_structures(structure_plans)
+        keepout, near = crack_regions(structure_plans)
+        # 4. Crack tokens around the fixtures: none under a large assembly, some
+        # beside a service run; then a share snapped to fixture corners and edges.
+        plan = sample_defect_plan(
+            rng,
+            total_range=(0, 0) if clean_wall else (args.min_defects, args.max_defects),
+            substrate_finish=surface_finish,
+            size_range_m=tuple(args.defect_size_range),
+        )
+        if args.crack_profile == "network":
+            # Network patches reach crack_network_extent x the token size; spaced only
+            # 0.30 m apart they overlapped and blended instance ids where they met.
+            plan = replace(plan, min_separation_m=max(plan.min_separation_m,
+                                                      args.crack_network_extent * plan.size_range_m[1]))
+        placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
+                                   axis_snap=args.crack_axis_snap, keepout=keepout, near=near,
+                                   near_fraction=args.crack_near_service_fraction)
+        layout_record.update(keepout_regions=len(keepout), service_runs=len(near),
+                             tokens_requested=sum(plan.counts.values()), tokens_placed=len(placements))
+    else:
+        placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
+                                   axis_snap=args.crack_axis_snap)
+        props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                             floor_depth_m=shell_plan.depth_m, measured=args.prop_placement == "measured")
+        lighting, weathering = light_scene()
+        # Structures are planned before injection (own RNG stream, so nothing else
+        # moves) so junction cracks can be snapped to their edges.
+        structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment,
+                                                args.structure_kinds)
+    if args.crack_orientation == "random":
+        # The spin already drawn for each card becomes its crack direction; no new draws.
+        for p in placements:
+            bpy.data.objects[p.object_name]["cwg_crack_angle_deg"] = float(p.spin_deg % 180.0)
     placements, junctions = snap_to_junctions(placements, structure_plans, spec, seed, args.crack_junction_fraction)
 
-    # 5. Injection.
     manifest_path = scene_dir / "defect_instances.json"
     import gin
     import cwg_infinigen.assets.defect_injection  # noqa: F401
@@ -246,11 +326,19 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
         gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
+        gin.bind_parameter("_inject_crack.crack_network_fraction", args.crack_network_fraction)
+        gin.bind_parameter("_inject_crack.crack_network_spacing", tuple(args.crack_network_spacing))
         gin.bind_parameter("_inject_crack.crack_network_grime", tuple(args.crack_network_grime))
+        gin.bind_parameter("_inject_crack.crack_network_edge", args.crack_network_edge)
         gin.bind_parameter("_inject_crack.crack_network_extent", args.crack_network_extent)
         gin.bind_parameter("_inject_crack.crack_weathering_fraction", args.crack_weathering_fraction)
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
+        gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
+        gin.bind_parameter("_inject_crack.crack_fit_path", args.crack_fit_path)
+        gin.bind_parameter("_inject_crack.crack_label_mode", args.crack_label_mode)
+        gin.bind_parameter("_inject_crack.crack_branch_mode", args.crack_branch_mode)
+        gin.bind_parameter("_inject_crack.crack_path_mode", args.crack_path_mode)
     injected = inject_defects(
         placements,
         wall,
@@ -264,62 +352,35 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # displacement, or the clean negatives stay bump-only.
     enable_true_displacement(wall, args.dicing_rate)
 
-    # 6. Lighting and cameras.
-    lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
-    if args.light_profile != "default" and not args.relight_per_view:
-        # Independent stream: walls, defects and cameras stay as in the default run.
-        lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
-                                        profile=args.light_profile)
-    apply_lighting(lighting, spec.height_m, capture_collection)
-    weathering = {}
-    if outdoor_plan is not None:
-        # One sun (or overcast sky) per wall, visible sky; the indoor plan above
-        # was still drawn so the shared RNG stream is unchanged.
-        lighting = outdoor_lighting(outdoor_plan, spec)
-        apply_lighting(lighting, spec.height_m, capture_collection)
-        apply_sky(outdoor_plan)
-        weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
-    poses = sample_camera_poses(
-        rng,
-        spec,
-        # a clean wall has no defects to frame: close-ups of plain wall instead
-        virtual_targets(seed, spec) if clean_wall and not placements else placements,
-        capture_collection,
-        closeups_per_defect=args.closeups_per_defect,
-        context_view_fraction=args.context_view_fraction,
-        frame_fill_range=tuple(args.closeup_fill),
-        max_yaw_deg=args.closeup_max_yaw,
-        max_pitch_deg=args.closeup_max_pitch,
-        preserve_closeup_scale=True,
-        aim_jitter=args.closeup_aim_jitter,
-    )
-    poses, blocked = drop_blocked_cameras(poses, wall)
-    layout_record["cameras_dropped"] = blocked
-
-    # 7. Props last, one room's furniture around the cameras, lights, fixtures and
-    # skirting. None outdoors. Views then jammed against a prop are dropped too.
-    props, prop_room = [], None
-    if outdoor_plan is None:
-        def around(obj, r):
-            at = np.array(obj.matrix_world.translation)
-            return at - r, at + r
-
-        obstacles = [around(bpy.data.objects[p.object_name], 0.15) for p in poses]
-        obstacles += [around(o, 0.15) for o in bpy.data.objects if o.type == "LIGHT"]
-        obstacles += [b for o in bpy.data.objects
-                      if (o.get("cwg_role") == "structure" or o.get("cwg_hard_negative") == "skirting")
-                      and o.type in ("MESH", "CURVE") and (b := prop_bounds(o)) is not None]
-        prop_room, props = sample_props(rng, spec, placements, rooms=None, count_range=(0, args.max_props),
-                                        relief_m=relief,
-                                        floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
-        if props:
-            poses, blocked = drop_blocked_cameras(poses, wall)
-            layout_record["cameras_dropped"] += blocked
+    if fixtures_first:
+        # 6. Lighting and cameras; a camera jammed against an object is dropped.
+        lighting, weathering = light_scene()
+        poses, blocked = drop_blocked_cameras(pose_cameras(structures), wall)
+        layout_record["cameras_dropped"] = blocked
+        # 7. Props last, around the cameras and the fixture meshes. None outdoors.
+        props = []
+        if outdoor_plan is None:
+            obstacles = [(np.array(bpy.data.objects[p.object_name].matrix_world.translation) - 0.2,
+                          np.array(bpy.data.objects[p.object_name].matrix_world.translation) + 0.2) for p in poses]
+            obstacles += [b for o in bpy.data.objects if o.get("cwg_role") == "structure" and o.type in ("MESH", "CURVE")
+                          and (b := prop_bounds(o)) is not None]
+            props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                                 floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
+    else:
+        structures = build_structures(structure_plans)
+        poses = pose_cameras(structures)
+        if outdoor_plan is not None:
+            remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
+        elif args.prop_placement == "measured":
+            # fixtures and cameras are placed after the props: clear props of both
+            props = settle_props(props, floor_depth_m=shell_plan.depth_m)
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
-    # Partial white balance keeps a coloured wall coloured.
-    _awb_rng = random.Random(int(seed) ^ 0x415742)
-    awb_strengths = [round(_awb_rng.uniform(*args.awb_strength), 3) for _ in poses]
+    # Partial white balance keeps a coloured wall coloured (opt-in; default full).
+    awb_strengths = None
+    if args.awb_strength is not None:
+        _awb_rng = random.Random(int(seed) ^ 0x415742)
+        awb_strengths = [round(_awb_rng.uniform(*args.awb_strength), 3) for _ in poses]
     configure_cycles(
         resolution=args.resolution,
         samples=args.samples,
@@ -328,19 +389,17 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     )
     aov_names = setup_passes()
 
-    # The record keeps the v1.17.0 schema plus prop_room; fixed settings are written as constants.
     record = {
-        "schema": "syncrack3d/cwg_scene/1",
+        "schema": "syndefect3d/cwg_scene/1",
         "seed": seed,
         "spec": spec.to_dict(),
         "defects_placed": [p.to_dict() for p in placements],
         "defects_injected": injected,
         "props": [p.to_dict() for p in props],
-        "prop_room": prop_room,
-        "wall_relief_m": relief,
         "structures": structures,
         "junctions": junctions,
-        "structure_settings": {"profile": args.structures, "views": 0, "kinds": None, "clean_fraction": 0.0},
+        "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
+                               "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
         "shell_finish": shell_finish,
         "layout": layout_record,
@@ -348,7 +407,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
         "weathering": weathering,
         "wall_material": {
-            "source": "unified",
+            "source": args.wall_materials,
             "generator": generator_name,
             "surface_finish": surface_finish,
             "diverse": material_record,
@@ -365,41 +424,41 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "closeup_fill": args.closeup_fill,
             "max_yaw_deg": args.closeup_max_yaw,
             "max_pitch_deg": args.closeup_max_pitch,
-            "preserve_closeup_scale": True,
+            "preserve_closeup_scale": args.preserve_closeup_scale,
             "aim_jitter": args.closeup_aim_jitter,
         },
         "crack_field_settings": {
             "profile": args.crack_profile,
-            "network_fraction": 0.0,
-            "network_spacing_m": [.02, .06],
+            "network_fraction": args.crack_network_fraction,
+            "network_spacing_m": args.crack_network_spacing,
             "network_grime": args.crack_network_grime,
-            "network_edge": "organic",
+            "network_edge": args.crack_network_edge,
             "network_extent": args.crack_network_extent,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
             "render": args.crack_render,
-            "jitter_scale": 1.0,
+            "jitter_scale": args.crack_jitter_scale,
         },
-        "legacy_defect_names": False,
+        "legacy_defect_names": args.legacy_defect_names,
         "aov_names": list(aov_names),
         "resolution": [args.resolution, args.resolution],
         "samples": args.samples,
         "appearance_controls": {
-            "crack_label_mode": "support",
-            "crack_branch_mode": "local_curved",
-            "crack_path_mode": "angular",
-            "recipe": "unified",
-            "layout_order": "fixtures-first",
-            "crack_style": args.crack_style,
-            "prop_placement": "loose",
-            "crack_orientation": "vertical",
+            "crack_label_mode": args.crack_label_mode,
+            "crack_branch_mode": args.crack_branch_mode,
+            "crack_path_mode": args.crack_path_mode,
+            "recipe": args.recipe,
+            "layout_order": args.layout_order,
+            "crack_style": getattr(args, "crack_style", None),
+            "prop_placement": args.prop_placement,
+            "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
             "crack_weathering_fraction": args.crack_weathering_fraction,
-            "crack_axis_snap": 0.0,
-            "paint_profile": "baseline",
-            "wall_normal_mode": "explicit",
-            "surface_detail": False, "camera_isp": args.camera_isp,
-            "crack_depth_scale": args.crack_depth_scale, "crack_fit_path": True,
+            "crack_axis_snap": args.crack_axis_snap,
+            "paint_profile": args.paint_profile,
+            "wall_normal_mode": args.wall_normal_mode,
+            "surface_detail": args.surface_detail, "camera_isp": args.camera_isp,
+            "crack_depth_scale": args.crack_depth_scale, "crack_fit_path": args.crack_fit_path,
         },
     }
 
@@ -453,85 +512,176 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    run = parser.add_argument_group("run")
-    run.add_argument("--seeds", default="0-9", help="e.g. 0-49 or 1,4,9")
-    run.add_argument("--output", required=True)
-    run.add_argument("--resolution", type=int, default=640)
-    run.add_argument("--samples", type=int, default=64)
-    run.add_argument("--dicing-rate", type=float, default=.75, help="displacement dicing rate in pixels")
-    run.add_argument("--no-denoise", action="store_true")
-    run.add_argument("--no-render", action="store_true", help="build scenes only")
-    run.add_argument("--save-blend", action="store_true")
-    run.add_argument("--keep-going", action="store_true", help="log and continue when one seed fails")
-    run.add_argument("--resume", action="store_true", help="skip seeds whose scene.json exists (it is written last)")
-
-    data = parser.add_argument_group("data design and ablations")
-    data.add_argument("--crack-style-mix", default=DEFAULT_MIX,
-                      help="per-wall crack styles with weights (styles.py), e.g. legacy=1 for one style")
-    data.add_argument("--material-categories", nargs="+", choices=list(MATERIAL_CATEGORIES), metavar="CATEGORY",
-                      help="draw the wall material uniformly from these categories (default: Infinigen 2's "
-                           "wall picker weights over " + ", ".join(DEFAULT_CATEGORIES) + "); also: "
-                           + ", ".join(c for c in MATERIAL_CATEGORIES if c not in DEFAULT_CATEGORIES))
-    data.add_argument("--clean-wall-scale", type=float, default=0.0,
-                      help="multiplier on the per-category crack-free wall rates (0: every wall cracked)")
-    data.add_argument("--clean-wall-uniform", type=float, default=None,
-                      help="one crack-free probability for every material instead of the per-category "
-                           "table (same per-wall draw); 1 renders every wall crack-free")
-    data.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
-                      help="real displacement, bump/normal map only (PBR decal), or colour only")
-    data.add_argument("--crack-layered-fraction", type=float, default=0.7,
-                      help="share of coated-host cracks with an edge: paint film lips/chips, or a broken "
-                           "stucco coat. Brick, stone, concrete and tile stay a groove (0 disables)")
-    data.add_argument("--crack-near-service-fraction", type=float, default=0.3,
-                      help="share of crack tokens tried beside a cable/pipe/trunking run")
-    data.add_argument("--no-fixtures", action="store_true",
-                      help="no wall fixtures; indoor rooms then keep the sampled open shell")
-    data.add_argument("--shell-finish", choices=("plain", "matched"), default="matched",
-                      help="indoor context: plain flat colours, or side walls in the test wall's finish "
-                           "(70%%, else both in one other wall category) and an Infinigen floor material")
-    data.add_argument("--max-props", type=int, default=3,
-                      help="props per indoor wall (0 disables)")
-    data.add_argument("--light-profile", choices=LIGHT_PROFILES, default="default",
-                      help="default: sampled indoor regimes; hard_mix adds sun, bare-bulb and raking-torch "
-                           "sources; fixed: one constant soft key light indoors (outdoor walls keep their sun)")
-    data.add_argument("--relight-per-view", action="store_true",
-                      help="sample a new light rig per view, aimed where the camera looks (needs hard_mix)")
-    data.add_argument("--exposure-ev-range", type=float, nargs=2, default=(.4, 1.3), metavar=("MIN", "MAX"),
-                      help="sensor exposure compensation per view (-3..3 EV)")
-    data.add_argument("--awb-strength", type=float, nargs=2, default=(0.0, .5), metavar=("MIN", "MAX"),
-                      help="per-camera grey-world white-balance strength (0..1)")
-    data.add_argument("--camera-isp", action="store_true", help="phone-like ISP on the rendered frames")
-    data.add_argument("--closeups-per-defect", type=int, default=2)
-    data.add_argument("--closeup-fill", type=float, nargs=2, default=(.6, 1.5), metavar=("MIN", "MAX"),
-                      help="requested card-width fraction of the frame (not mask area)")
-    data.add_argument("--closeup-max-yaw", type=float, default=38.0)
-    data.add_argument("--closeup-max-pitch", type=float, default=26.0)
-    data.add_argument("--closeup-aim-jitter", type=float, default=.3,
-                      help="shift close-up aim by up to this many frame widths (0-0.5)")
-    data.add_argument("--context-view-fraction", type=float, default=0.25)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--seeds", default="0-9", help="e.g. 0-49 or 1,4,9")
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--substrate", default="random", choices=("random",) + SUBSTRATES)
+    parser.add_argument(
+        "--wall-materials",
+        default="infinigen",
+        choices=("infinigen", "controlled", "diverse", "unified"),
+        help=(
+            "Which shader the wall carries. 'infinigen' uses the same "
+            "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
+            "so a controlled-wall dataset is comparable against the apartment "
+            "one; 'controlled' keeps the base generator's deterministic stand-in; "
+            "'diverse' is the v1.x palette; 'unified' (v2) draws the 15 crack-able "
+            "categories uniformly with one clean-wall table, no wood or irregular stone."
+        ),
+    )
+    parser.add_argument("--material-category", default=None, choices=sorted(MATERIAL_CATEGORIES),
+                        help="with --wall-materials diverse: force one category (QA)")
+    parser.add_argument("--clean-wall-scale", type=float, default=1.0,
+                        help="with --wall-materials diverse: multiplier on per-category defect-free rates")
+    parser.add_argument("--awb-strength", type=float, nargs=2, default=None, metavar=("MIN", "MAX"),
+                        help="per-camera grey-world AWB strength (0..1); default full correction")
+    parser.add_argument("--resolution", type=int, default=1280)
+    parser.add_argument("--samples", type=int, default=256)
+    parser.add_argument("--wall-normal-mode", choices=("legacy", "explicit"), default="legacy")
+    parser.add_argument("--surface-detail", action="store_true")
+    parser.add_argument("--paint-profile", choices=PAINT_PROFILES, default="baseline")
+    parser.add_argument("--camera-isp", action="store_true")
+    parser.add_argument("--crack-depth-scale", type=float, default=1.0)
+    parser.add_argument("--crack-fit-path", action="store_true")
+    parser.add_argument("--crack-label-mode", choices=("profile", "support"), default="profile")
+    parser.add_argument("--crack-branch-mode", choices=("original", "bounded_curved", "local_curved"), default="original")
+    parser.add_argument("--crack-path-mode", choices=("original", "meander", "angular", "straight"), default="original")
+    parser.add_argument("--crack-axis-snap", type=float, default=0.0,
+                        help="share of cracks turned to run along a wall axis (+-2 deg), like joint cracks")
+    parser.add_argument("--defect-size-range", type=float, nargs=2, default=(.10, .45))
+    parser.add_argument("--environment", choices=("indoor", "outdoor", "mixed"), default="indoor",
+                        help="indoor room, outdoor building facade (ground, sky, sun, weathering), or half each")
+    parser.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
+                        help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
+    parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
+                        help="share of coated-host cracks with an edge: paint film lips/chips, or a broken stucco coat. Brick, stone, concrete and tile stay a groove (0 disables)")
+    parser.add_argument("--light-profile", choices=LIGHT_PROFILES, default="default",
+                        help="hard_mix adds sun, bare-bulb and raking-torch sources (opt-in)")
+    parser.add_argument("--relight-per-view", action="store_true",
+                        help="sample a new light rig per view, aimed where the camera looks")
+    parser.add_argument("--dicing-rate", type=float, default=2.0)
+    parser.add_argument("--min-defects", type=int, default=3)
+    parser.add_argument("--max-defects", type=int, default=6)
+    parser.add_argument("--max-props", type=int, default=3)
+    parser.add_argument("--prop-placement", choices=("measured", "hint"), default="measured",
+                        help="measured: place props by their real bounds, clear of wall, floor, fixtures and "
+                             "cameras; hint: the v1.0-v1.8 placement, which let props clip into the wall")
+    parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
+                        help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
+    parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,
+                        help="force a subset for QA; requires --structures enabled")
+    parser.add_argument("--structure-views", type=int, default=2,
+                        help="additional views aimed at structural details (0 disables)")
+    parser.add_argument("--structure-clean-fraction", type=float, default=0.0,
+                        help="fraction of structure-enabled scenes forced defect-free (0..1)")
+    parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed", "network"), default="legacy",
+                        help="legacy mix, broad cracks, 50%% of each, or hairline cellular networks")
+    parser.add_argument("--crack-network-fraction", type=float, default=0.0,
+                        help="replace this fraction of legacy/major/mixed instances with crazing (0..1)")
+    parser.add_argument("--crack-network-spacing", type=float, nargs=2, default=(.02, .06),
+                        metavar=("MIN", "MAX"), help="network cell spacing range in metres")
+    parser.add_argument("--crack-network-grime", type=float, nargs=2, default=(.15, .60), metavar=("MIN", "MAX"),
+                        help="network channel staining, as a share of crack grime strength (0..1)")
+    parser.add_argument("--crack-network-edge", choices=("square", "organic"), default="organic",
+                        help="network patch outline: organic (v1.7.0) or square, which reproduces v1.4.0-v1.5.0")
+    parser.add_argument("--crack-orientation", choices=("vertical", "random"), default="vertical",
+                        help="vertical: every crack runs along the wall's vertical with lateral wander (all releases "
+                             "to v1.7.0); random: each crack runs at its card's spin angle")
+    parser.add_argument("--crack-junction-fraction", type=float, default=0.0,
+                        help="share of cracks moved to structure edges: opening corners, sill/ledge undersides, jambs, trims (needs --structures)")
+    parser.add_argument("--crack-weathering-fraction", type=float, default=0.0,
+                        help="share of non-network cracks with rain-wash dirt or efflorescence streaks below them (wall colour only)")
+    parser.add_argument("--crack-network-extent", type=float, default=1.4,
+                        help="network field size relative to its card (.5-2); 1.4 keeps organic crack length near a square patch. Cards and cameras are unchanged. Use 1 with --crack-network-edge square to reproduce v1.4.0-v1.5.0")
+    parser.add_argument("--crack-width-scale", type=float, default=1.3,
+                        help="physical crack width multiplier (.25-4), also changes AOV")
+    parser.add_argument("--crack-jitter-scale", type=float, default=1.0,
+                        help="high-frequency path roughness multiplier (0-2)")
+    parser.add_argument("--closeups-per-defect", type=int, default=1)
+    parser.add_argument("--exposure-ev-range", type=float, nargs=2, default=None,
+                        metavar=("MIN", "MAX"), help="sensor exposure compensation per view (-3..3 EV); default unchanged")
+    parser.add_argument("--closeup-fill", type=float, nargs=2, default=(0.25, 0.80),
+                        metavar=("MIN", "MAX"), help="requested card-width fraction (not mask area)")
+    parser.add_argument("--closeup-max-yaw", type=float, default=38.0)
+    parser.add_argument("--closeup-max-pitch", type=float, default=26.0)
+    parser.add_argument("--preserve-closeup-scale", action="store_true",
+                        help="use longer lenses when minimum standoff would shrink the defect")
+    parser.add_argument("--context-view-fraction", type=float, default=0.25)
+    parser.add_argument("--closeup-aim-jitter", type=float, default=0.0,
+                        help="shift close-up aim by up to this many frame widths (0-0.5)")
+    parser.add_argument("--legacy-defect-names", action="store_true",
+                        help="v1 card names: every scene reuses the same defect shapes")
+    parser.add_argument("--no-denoise", action="store_true")
+    parser.add_argument("--no-render", action="store_true", help="build scenes only")
+    parser.add_argument("--save-blend", action="store_true")
+    parser.add_argument("--keep-going", action="store_true",
+                        help="log and continue when one seed fails")
+    parser.add_argument("--resume", action="store_true",
+                        help="skip seeds whose scene.json exists (it is written last)")
+    parser.add_argument("--layout-order", choices=("legacy", "fixtures-first"), default="legacy",
+                        help="legacy: crack tokens, props, lights, fixture plan, injection, fixture meshes, "
+                             "cameras (v1.x). fixtures-first: fixtures (planned and built), cracks around "
+                             "them, injection, lights, cameras (blocked views dropped), props around cameras "
+                             "and fixtures")
+    parser.add_argument("--crack-near-service-fraction", type=float, default=0.3,
+                        help="fixtures-first: share of crack tokens tried beside a cable/pipe/trunking run")
+    parser.add_argument("--shell-finish", choices=("plain", "matched"), default="plain",
+                        help="indoor context: plain flat colours, or side walls in the test wall's finish "
+                             "(70%%, else a different paint) and an Infinigen floor material")
+    parser.add_argument("--clean-wall-uniform", type=float, default=None,
+                        help="one clean-wall probability for every material instead of the per-category "
+                             "table (same per-wall draw); 1 renders every wall crack-free")
+    parser.add_argument("--crack-style-mix", default=None,
+                        help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10,facade=.10 "
+                             "(recipes.STYLES); a wall's style overrides the flags that define it; "
+                             "'off' disables it, e.g. to override the unified recipe")
+    parser.add_argument("--recipe", choices=sorted(RECIPES),
+                        help="start from a release recipe (syncrack3d/recipes.py); explicit flags override it")
     argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else sys.argv[1:]
-    args = parser.parse_args(argv)
-    try:
-        parse_style_mix(args.crack_style_mix)
-    except ValueError as exc:
-        parser.error(str(exc))
+    args = parser.parse_args(recipe_argv(argv))
+    if args.structure_kinds and args.structures == "off":
+        parser.error("--structure-kinds requires --structures enabled")
+    if not 0 <= args.structure_clean_fraction <= 1:
+        parser.error("structure clean fraction must be 0..1")
+    if args.structure_views < 0:
+        parser.error("structure views must be nonnegative")
     if args.clean_wall_uniform is not None and not 0 <= args.clean_wall_uniform <= 1:
         parser.error("--clean-wall-uniform must be 0..1")
-    if not 0 <= args.crack_layered_fraction <= 1 or not 0 <= args.crack_near_service_fraction <= 1:
-        parser.error("--crack-layered-fraction and --crack-near-service-fraction must be 0..1")
+    if args.crack_style_mix not in (None, "off"):
+        try:
+            parse_style_mix(args.crack_style_mix)
+        except ValueError as exc:
+            parser.error(str(exc))
+    if not 0 <= args.crack_layered_fraction <= 1:
+        parser.error("--crack-layered-fraction must be 0-1")
     if args.relight_per_view and args.light_profile == "default":
         parser.error("--relight-per-view needs --light-profile hard_mix")
+    if not .05 <= args.defect_size_range[0] <= args.defect_size_range[1] <= 1.0:
+        parser.error("defect sizes require .05 <= MIN <= MAX <= 1 metre")
     if not 0 < args.closeup_fill[0] <= args.closeup_fill[1] <= 2:
         parser.error("--closeup-fill requires 0 < MIN <= MAX <= 2 (above 1 overfills the frame)")
     if not 0 <= args.closeup_aim_jitter <= 0.5:
         parser.error("--closeup-aim-jitter must be in [0, 0.5]")
     if not 0 <= args.closeup_max_yaw < 90 or not 0 <= args.closeup_max_pitch < 90:
         parser.error("camera angles must lie in [0, 90) degrees")
-    if not -3 <= args.exposure_ev_range[0] <= args.exposure_ev_range[1] <= 3:
+    if not 0 <= args.crack_network_fraction <= 1:
+        parser.error("crack network fraction must be 0..1")
+    if not 0 < args.crack_network_spacing[0] <= args.crack_network_spacing[1] < float("inf"):
+        parser.error("crack network spacing must be positive and ordered")
+    if not 0 <= args.crack_network_grime[0] <= args.crack_network_grime[1] <= 1:
+        parser.error("crack network grime must be ordered within 0..1")
+    if not 0 <= args.crack_junction_fraction <= 1 or not 0 <= args.crack_weathering_fraction <= 1:
+        parser.error("crack junction and weathering fractions must be 0..1")
+    if not .5 <= args.crack_network_extent <= 2:
+        parser.error("crack network extent must be .5..2")
+    if not .25 <= args.crack_width_scale <= 4 or not 0 <= args.crack_jitter_scale <= 2:
+        parser.error("crack width scale must be .25..4; jitter scale must be 0..2")
+    if not .05 <= args.crack_depth_scale <= 2:
+        parser.error("crack depth scale must be .05..2")
+    if args.crack_branch_mode != "original" and not args.crack_fit_path:
+        parser.error("curved branches require --crack-fit-path")
+    if args.exposure_ev_range is not None and not -3 <= args.exposure_ev_range[0] <= args.exposure_ev_range[1] <= 3:
         parser.error("exposure range requires -3 <= MIN <= MAX <= 3")
-    if not 0 <= args.awb_strength[0] <= args.awb_strength[1] <= 1:
-        parser.error("white-balance strength requires 0 <= MIN <= MAX <= 1")
 
     logging.basicConfig(
         level=logging.INFO, format="[%(levelname)s] %(name)s | %(message)s"
@@ -546,7 +696,8 @@ def main():
             skipped += 1
             continue
         try:
-            record = build_one(seed, wall_style(seed, args)[1], out_root)
+            wall_args = wall_style(seed, args)[1] if args.crack_style_mix not in (None, "off") else args
+            record = build_one(seed, wall_args, out_root)
         except Exception:
             failed += 1
             logger.error("seed %d failed:\n%s", seed, traceback.format_exc())

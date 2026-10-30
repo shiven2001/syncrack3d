@@ -62,9 +62,15 @@ def test_network_grime_range_only_rescales_staining():
         sample_crack_network(0, .14, grime_range=(.6, .2))
 
 
-def test_network_edge_is_seeded_and_bounded():
+def test_organic_edge_keeps_square_draws():
     for seed in range(30):
-        p = sample_crack_network(seed, .14)
-        assert p == sample_crack_network(seed, .14)
-        e = p['network']['edge']
+        square = sample_crack_network(seed, .14)
+        organic = sample_crack_network(seed, .14, edge='organic')
+        assert 'edge' not in square['network']
+        assert organic == sample_crack_network(seed, .14, edge='organic')
+        assert {k: v for k, v in organic['network'].items() if k != 'edge'} == square['network']
+        assert {k: v for k, v in organic.items() if k != 'network'} == {k: v for k, v in square.items() if k != 'network'}
+        e = organic['network']['edge']
         assert 0 < e['inner'] < e['outer'] <= .95 and all(.75 <= a <= 1 for a in e['aspect'])
+    with pytest.raises(ValueError):
+        sample_crack_network(0, .14, edge='round')

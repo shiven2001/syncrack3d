@@ -1,6 +1,6 @@
 """Export a whole SynCrack3D room for Isaac Sim (Blender stage).
 
-    python isaac_port/export_room.py scene_dir out_dir [--px-per-m 1600] [--prop-res 1024] [--wall-only]
+    python isaac_port/export_room.py scene_dir out_dir [--px-per-m 1600] [--prop-res 1024]
 
 scene_dir holds build_dataset.py --save-blend output (scene.blend, scene.json,
 defect_instances.json). Unlike port_wall.py, which bakes one patch per close-up,
@@ -17,9 +17,6 @@ Writes to out_dir:
   room.usdc      everything else - floor, ceiling, side returns, fixtures, props
                  and lights - with procedural materials baked to textures/
 compose_room.py (Isaac Sim python) then builds the displaced wall and scene.usda.
-
---wall-only stops after wall/ (plus scene.json, defect_instances.json and
-export.json): close-up panels are cropped from the test wall and need no room.
 """
 import json
 import shutil
@@ -31,9 +28,6 @@ import numpy as np
 
 argv = sys.argv[1:]
 opts = {"--px-per-m": 1600.0, "--prop-res": 1024, "--max-px": 8192}
-wall_only = "--wall-only" in argv
-if wall_only:
-    argv.remove("--wall-only")
 for k in list(opts):
     if k in argv:
         i = argv.index(k); opts[k] = type(opts[k])(argv[i + 1]); del argv[i:i + 2]
@@ -83,6 +77,7 @@ mat = wall.data.materials[0]
 nt = mat.node_tree
 mout = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputMaterial" and n.is_active_output)
 disp_out = mout.inputs["Displacement"].links[0].from_socket
+bsdf = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled")
 surface_link = mout.inputs["Surface"].links[0].from_socket
 
 
@@ -93,28 +88,6 @@ def source(sock, tree):
     node = tree.nodes.new("ShaderNodeRGB" if sock.type == "RGBA" else "ShaderNodeValue")
     node.outputs[0].default_value = sock.default_value
     return node.outputs[0]
-
-
-def bsdf_inputs():
-    """Base colour and roughness feeding the wall's Principled BSDF. Some host materials
-    (e.g. concrete) keep the BSDF inside the node group that drives Surface; those
-    inputs are then exposed as extra group outputs so the bake can read them."""
-    bsdf = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
-    if bsdf is not None:
-        return source(bsdf.inputs["Base Color"], nt), source(bsdf.inputs["Roughness"], nt)
-    group = surface_link.node
-    assert group.bl_idname == "ShaderNodeGroup", f"no Principled BSDF behind {group.bl_idname}"
-    gt = group.node_tree
-    inner = [n for n in gt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"]
-    assert len(inner) == 1, f"{gt.name}: {len(inner)} Principled BSDFs"
-    gout = next(n for n in gt.nodes if n.bl_idname == "NodeGroupOutput" and n.is_active_output)
-    out = []
-    for key, kind in (("Base Color", "NodeSocketColor"), ("Roughness", "NodeSocketFloat")):
-        name = f"bake_{key.lower().replace(' ', '_')}"
-        gt.interface.new_socket(name, in_out="OUTPUT", socket_type=kind)
-        gt.links.new(source(inner[0].inputs[key], gt), gout.inputs[name])
-        out.append(group.outputs[name])
-    return out
 
 
 def math_node(op, a, b):
@@ -148,12 +121,11 @@ if spaces == {"OBJECT"}:
 geo = nt.nodes.new("ShaderNodeNewGeometry")
 dot = nt.nodes.new("ShaderNodeVectorMath"); dot.operation = "DOT_PRODUCT"
 nt.links.new(vec, dot.inputs[0]); nt.links.new(geo.outputs["Normal"], dot.inputs[1])
-base_color, roughness = bsdf_inputs()
 passes = {
     # +50 keeps the emission positive; removed again below
     "height_mm": math_node("ADD", math_node("MULTIPLY", dot.outputs["Value"], 1000.0), 50.0),
-    "color": base_color,
-    "roughness": roughness,
+    "color": source(bsdf.inputs["Base Color"], nt),
+    "roughness": source(bsdf.inputs["Roughness"], nt),
 }
 crack_aov = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputAOV" and n.aov_name == "DefectCrack"), None)
 if crack_aov is not None and crack_aov.inputs["Value"].is_linked:
@@ -202,17 +174,6 @@ np.save(out / "wall" / "crack.npy", (maps["crack"][..., 0] if "crack" in maps el
           "height_mm is displacement along the outward normal (cracks negative)",
     hit_fraction=round(float(hit.mean()), 5)), indent=1))
 print(f"wall baked: {nx} x {nz} px ({1000 / ppm:.2f} mm/px), hit {hit.mean():.4f}", flush=True)
-
-
-def finish(**extra):
-    shutil.copy(scene_dir / "scene.json", out / "scene.json")
-    shutil.copy(scene_dir / "defect_instances.json", out / "defect_instances.json")
-    (out / "export.json").write_text(json.dumps(dict(source=str(scene_dir), wall_px_per_m=ppm, **extra), indent=1))
-
-
-if wall_only:
-    finish(wall_only=True)
-    sys.exit(0)
 
 # ---------------------------------------------------------------- the rest of the room
 # No cameras (nothing may be posed at a crack), no hidden crack cards, and the
@@ -325,5 +286,8 @@ bpy.ops.wm.usd_export(
     export_textures=False, relative_paths=True, export_uvmaps=True, rename_uvmaps=True, export_normals=True,
     evaluation_mode="RENDER", root_prim_path="/Room", export_custom_properties=True,
     convert_world_material=False, triangulate_meshes=False)
-finish(baked_props=baked, prop_res=opts["--prop-res"])
+shutil.copy(scene_dir / "scene.json", out / "scene.json")
+shutil.copy(scene_dir / "defect_instances.json", out / "defect_instances.json")
+(out / "export.json").write_text(json.dumps(dict(source=str(scene_dir), baked_props=baked,
+                                                 wall_px_per_m=ppm, prop_res=opts["--prop-res"]), indent=1))
 print("exported", out / "room.usdc", flush=True)
