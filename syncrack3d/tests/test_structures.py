@@ -250,3 +250,60 @@ def test_boundary_fixture_cameras_stay_above_floor_and_below_ceiling():
             assert -spec.width_m*.5+.07999 <= c.location[0] <= spec.width_m*.5-.07999
     finally:
         clear_scene()
+
+
+def test_fixtures_stand_on_the_wall_relief():
+    bpy = pytest.importorskip("bpy")
+    from dataclasses import replace
+
+    from syncrack3d.build_dataset import clear_scene
+    from syncrack3d.occlusion import _world_bounds
+    spec = sample_scene_spec(191000)
+    plans = [replace(sample_structure_plan(191000, spec, include_kinds=[kind])[0], index=i)
+             for i, kind in enumerate(KINDS)]
+    backs = []
+    for relief in (0.0, 0.034):
+        clear_scene()
+        records = build_structures(plans, relief)
+        backs.append({r['kind']: _world_bounds(bpy.data.objects[r['object_name']])[1][1] for r in records
+                      if _world_bounds(bpy.data.objects[r['object_name']]) is not None})
+    for kind, back in backs[0].items():
+        assert backs[1][kind] == pytest.approx(back - 0.034, abs=1e-5), kind
+        if back <= 1e-5:  # a window sill is built 1 cm into the wall on purpose
+            assert backs[1][kind] <= -0.034 + 1e-5, kind  # nothing sunk into the relief
+
+
+def test_clear_spacing_keeps_fixtures_apart():
+    from syncrack3d.structures import FIXTURE_GAP_M, TRIM_KINDS, _overlaps, built_extent
+    for seed in range(200):
+        spec = sample_scene_spec(seed)
+        for profile, env in (("auto", "indoor"), ("auto", "outdoor"), ("all", "indoor")):
+            old = sample_structure_plan(seed, spec, (), profile, env)
+            assert old == sample_structure_plan(seed, spec, (), profile, env, clear=False)
+            plans = sample_structure_plan(seed, spec, (), profile, env, clear=True)
+            boxes = [(p.kind, built_extent(p.kind, p.u_m, p.v_m, p.width_m, p.height_m)) for p in plans
+                     if p.kind != "panel_seam"]
+            for i, (a, ea) in enumerate(boxes):
+                for b, eb in boxes[:i]:
+                    if a in TRIM_KINDS and b in (*TRIM_KINDS, "door"):
+                        continue  # trims meet each other and run under a door's cut
+                    assert not _overlaps(ea, eb, FIXTURE_GAP_M - 1e-9), (seed, profile, a, b)
+
+
+def test_built_extent_covers_the_built_geometry():
+    bpy = pytest.importorskip("bpy")
+    from dataclasses import replace
+
+    from syncrack3d.build_dataset import clear_scene
+    from syncrack3d.occlusion import _world_bounds
+    from syncrack3d.structures import built_extent
+    for seed in (191000, 191001, 191002):
+        spec = sample_scene_spec(seed)
+        plans = [replace(sample_structure_plan(seed, spec, include_kinds=[kind])[0], index=i)
+                 for i, kind in enumerate(KINDS) if kind not in ("skirting", "door", "panel_seam")]
+        clear_scene()
+        for r in build_structures(plans):
+            lo, hi = _world_bounds(bpy.data.objects[r['object_name']])
+            u0, u1, v0, v1 = built_extent(r['kind'], r['u_m'], r['v_m'], r['width_m'], r['height_m'])
+            assert u0 - 1e-3 <= lo[0] and hi[0] <= u1 + 1e-3, (r['kind'], lo[0], hi[0], u0, u1)
+            assert v0 - 1e-3 <= lo[2] and hi[2] <= v1 + 1e-3, (r['kind'], lo[2], hi[2], v0, v1)

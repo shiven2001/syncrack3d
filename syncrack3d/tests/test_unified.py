@@ -55,7 +55,11 @@ def test_bad_mix_is_rejected():
     assert "--layout-order fixtures-first" in RECIPES["unified"]
     assert "--layout-order" not in RECIPES["unified_v1.16"]
     assert "--prop-placement loose" in RECIPES["unified"]
+    assert "--fixture-mount relief" in RECIPES["unified"]
+    assert "--fixture-spacing clear" in RECIPES["unified"]
     assert "--prop-placement" not in RECIPES["unified_v1.17"]
+    assert "--fixture-mount" not in RECIPES["unified_v1.18"] and "--fixture-spacing" not in RECIPES["unified_v1.18"]
+    assert "--prop-placement loose" in RECIPES["unified_v1.18"]
 
 
 def test_fixtures_first_puts_fixtures_on_every_indoor_wall():

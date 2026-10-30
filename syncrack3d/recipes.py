@@ -26,7 +26,13 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            walls carry the test wall's finish and the floor an Infinigen floor
            material (--shell-finish matched, 2026-10-24 study). From v1.17 it
            uses --layout-order fixtures-first, and every indoor wall gets
-           fixtures (closed room), whatever its crack style.
+           fixtures (closed room), whatever its crack style. From v1.18 props
+           are loose (--prop-placement loose). From v1.19 fixtures and the
+           skirting stand on stone/brick relief instead of sinking into it
+           (--fixture-mount relief) and clear of each other (--fixture-spacing
+           clear).
+  unified_v1.17, unified_v1.18  the unified recipe as of that version, to
+           rebuild those walls exactly
 
 The four release recipes rebuild the v1.x training walls; use unified for new
 data.
@@ -81,7 +87,9 @@ RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-m
 # v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
 RECIPES["unified_v1.17"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-first"
 # v1.18: loose props, anywhere on the floor in front of the wall.
-RECIPES["unified"] = RECIPES["unified_v1.17"] + " --prop-placement loose"
+RECIPES["unified_v1.18"] = RECIPES["unified_v1.17"] + " --prop-placement loose"
+# v1.19: fixtures mounted on the wall's relief and kept clear of each other.
+RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief --fixture-spacing clear"
 
 
 def parse_style_mix(text):

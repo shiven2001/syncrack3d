@@ -42,7 +42,49 @@ def structure_clean_wall(seed, profile, fraction):
     return profile != "off" and random.Random(seed ^ SALT ^ 0x434C).random() < fraction
 
 
-def sample_structure_plan(seed, spec, placements=(), profile="auto", environment="indoor", include_kinds=None):
+TRIM_KINDS = ("skirting", "ceiling_trim", "gutter")
+VERTICAL_RUNS = ("downpipe", "wall_cable", "conduit")
+FIXTURE_GAP_M = .03
+
+
+def built_extent(kind, u, v, w, h):
+    """(u_lo, u_hi, v_lo, v_hi) on the wall covered by an assembly as
+    build_structures makes it, hardware included (a window's sill and lintel,
+    a conduit's elbow and brackets, a cable's sag and loose loop)."""
+    if kind == "cable":
+        return u - w * .5 - .03, u + w * .5 + .03, v - .31, v + .25
+    if kind == "wall_cable":
+        return u - .04, u + .045, v - h * .5, v + h * .5
+    if kind == "conduit":
+        return u - w * .5, u + w * .5 + .04, max(.04, v - h * .5) - .03, v + h * .5 + .01
+    if kind == "downpipe":
+        return u - .085, u + .085, max(.04, v - h * .5), v + h * .5
+    if kind == "utility_box":
+        return u - w * .5, u + w * .5, v - h * .5, v + h * .5 + .25
+    if kind == "window":
+        return u - w * .5 - .10, u + w * .5 + .10, v - h * .5 - .07, v + h * .5 + .12
+    if kind in ("vent", "exterior_vent", "access_panel", "service_hatch"):
+        return u - w * .5 - .02, u + w * .5 + .02, v - h * .5, v + h * .5 + .015
+    if kind == "plumbing":
+        return u - .14, u + .21, v - h * .5, v + h * .5
+    if kind == "gutter":
+        return u - w * .5 - .006, u + w * .5 + .006, v - h * .5 - .025, v + h * .5
+    if kind == "ledge":
+        return u - w * .5, u + w * .5, v - h * .5 - .01, v + h * .5
+    return u - w * .5, u + w * .5, v - h * .5, v + h * .5
+
+
+def _overlaps(a, b, gap):
+    return a[0] < b[1] + gap and b[0] < a[1] + gap and a[2] < b[3] + gap and b[2] < a[3] + gap
+
+
+def sample_structure_plan(seed, spec, placements=(), profile="auto", environment="indoor", include_kinds=None,
+                          clear=False):
+    """Plan the wall's fixtures. clear: no two fixtures' built extents come
+    within FIXTURE_GAP_M of each other (a pipe never runs through a window),
+    and vertical runs stop at the skirting and ceiling trims instead of
+    passing through them; a fixture that finds no room is dropped. Panel
+    seams are flush joints and stay exempt. Off, the v1.x plans are unchanged."""
     if profile not in PROFILES:
         raise ValueError(f"unknown structure profile: {profile}")
     if profile == "off":
@@ -66,6 +108,10 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     # Floor-anchored doors and boundary trims reserve their footprints first.
     kinds.sort(key=lambda k: 0 if k == "door" else 1 if k in ("skirting", "ceiling_trim", "gutter") else 2)
     plans = []
+    # clear: built extents of everything placed so far, and the base wall's own
+    # skirting, which a door cuts instead.
+    obstacles = []
+    base = [(-spec.width_m * .5, spec.width_m * .5, 0., .085)] if getattr(spec, "skirting", False) else []
     for i, kind in enumerate(kinds):
         w, h = {
             "cable": (spec.width_m * .85, .5),
@@ -87,6 +133,13 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
         if kind in ("utility_box", "window", "ledge"):
             w *= r.uniform(.8, 1.15)
             h *= r.uniform(.8, 1.15)
+        if clear and kind in VERTICAL_RUNS:
+            # Run between the trims: from the skirting's top to under a ceiling trim or gutter.
+            floor = max([q.v_m + q.height_m * .5 + FIXTURE_GAP_M for q in plans if q.kind == "skirting"]
+                        + ([.085 + FIXTURE_GAP_M] if getattr(spec, "skirting", False) else [0.]))
+            ceiling = min([q.v_m - q.height_m * .5 - .025 - FIXTURE_GAP_M for q in plans if q.kind in TRIM_KINDS[1:]]
+                          + [spec.height_m])
+            h = min(h, ceiling - floor)
         # Half the thin services pass near a defect. Large assemblies keep
         # defect centres clear, while their frame edges can partially occlude.
         for attempt in range(60):
@@ -115,10 +168,12 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
                 continue
             if kind == "cable" and not placements:
                 z = r.uniform(spec.height_m * .55, spec.height_m - .3)
-            if kind in ("downpipe", "wall_cable", "conduit") and any(
-                    q.kind in ("downpipe", "wall_cable", "conduit") and
-                    abs(x - q.u_m) < (w + q.width_m) * .5 + .06 for q in plans):
-                continue
+            if clear and kind in VERTICAL_RUNS:
+                z = min(max(z, floor + h * .5), ceiling - h * .5)
+            if clear and kind not in TRIM_KINDS:
+                box = built_extent(kind, x, z, w, h)
+                if any(_overlaps(box, other, FIXTURE_GAP_M) for other in obstacles + ([] if kind == "door" else base)):
+                    continue
             if kind not in LARGE_KINDS:
                 break
             if any(abs(x - p.u_m) < w * .5 + .06 and abs(z - p.v_m) < h * .5 + .06 for p in placements):
@@ -131,10 +186,14 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
         else:
             continue  # no physically plausible space: report only built plans
         plans.append(StructurePlan(i, kind, x, z, w, h, r.randrange(2**31)))
+        if kind != "panel_seam":
+            obstacles.append(built_extent(kind, x, z, w, h))
     return plans
 
 
-def build_structures(plans):
+def build_structures(plans, relief_m=0.0):
+    """Build the planned fixtures. Each assembly stands `relief_m` out from the
+    wall plane, on the wall's displaced relief rather than sunk into it."""
     import bpy
     from syncrack3d.geometry import _collection, _box
     from syncrack3d.materials import make_solid_material
@@ -360,6 +419,7 @@ def build_structures(plans):
             box('opaque_diffuser', (w-.025, .07, h-.035), (x, -.055, z), diffuser)
             for dz in (-h*.36, 0, h*.36):
                 box('guard', (w, .015, .012), (x, -.098, z+dz), metal)
+        root.location.y -= relief_m
         root['cwg_role'] = 'structure'
         root['cwg_hard_negative'] = p.kind
         records.append(dict(**p.to_dict(), object_name=root.name,

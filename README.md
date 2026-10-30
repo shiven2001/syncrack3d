@@ -492,6 +492,34 @@ Screen against v1.17.0 on the same 250 walls (seeds 910000-910249), U-Net R34,
 (seed sd .02), CUBIT .857 -> .858, BuildCrack .681 -> .679 (seed range up to
 .12). Neutral within seed noise; kept because it looks like real rooms.
 
+## v1.19.0 fixtures on the relief and clear of each other
+
+`--recipe unified_v1.18` rebuilds v1.18.0.
+
+`--fixture-mount relief` (in `--recipe unified`; fixtures-first only)
+stands every fixture and the skirting out from the wall plane by the wall's
+own displaced relief, so stone and brick no longer poke through them; before
+this a cable or conduit on a cobble wall was half-buried in the stones. The
+window sill still reaches 1 cm into the wall, as built. Screen against loose
+props alone (v1.18.0) on the same 250 walls and protocol: BD3 .882 -> .873 (seed sd
+.03), CUBIT .858 -> .865, BuildCrack .679 -> .666 (seed range up to .12).
+Neutral within seed noise; kept because it removes a visible clipping
+artefact.
+
+`--fixture-spacing clear` (also in `--recipe unified`) keeps fixtures apart.
+Before it, only large assemblies avoided each other: thin runs were placed
+blind, and 54 of the 250 screen walls had a clash such as trunking through a
+window, plumbing or conduit under a sill, a cable across trunking, or a
+conduit through the skirting. Now no fixture comes within 3 cm of another's
+built extent (`built_extent`: a window's sill and lintel, a conduit's elbow,
+a cable's sag and loop; a test checks it covers the built geometry), vertical
+runs stop at the skirting and ceiling trim, and a fixture with no room is
+dropped. Panel seams are flush joints and stay exempt. 176 of the 250 walls
+keep their plan exactly. Screen against the relief mount on the same walls and
+protocol: BD3 .873 -> .877 (seed sd .01), CUBIT .865 -> .863, BuildCrack .666
+-> .647. Neutral within seed noise, though BuildCrack has drifted .679 -> .647
+over the two fixture changes; a 1,000-wall check before release settles it.
+
 ## v1.10.0 whole rooms for embodied inspection
 
 Close-up training cameras are aimed at the cracks, so a policy trained on
@@ -538,7 +566,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.18.0)
+## Generate new data: the unified recipe (v1.19.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -552,7 +580,8 @@ tagged:
 | v1.15.0 | `089fbf2` | matched-finish study |
 | v1.16.0 | `9617872` | matched finishes are the unified default |
 | v1.17.0 | `85a666c` | fixtures first, on every indoor wall (`--recipe unified_v1.17`) |
-| v1.18.0 | tag `v1.18.0` | loose props: anywhere on the floor 2 cm past the wall relief to 0.9 m out, any turn, hiding at most half of a crack (`--prop-placement loose`) |
+| v1.18.0 | `4c698ea` | loose props: anywhere on the floor 2 cm past the wall relief to 0.9 m out, any turn, hiding at most half of a crack (`--prop-placement loose`; `--recipe unified_v1.18`) |
+| v1.19.0 | tag `v1.19.0` | fixtures and skirting stand on the wall relief (`--fixture-mount relief`) and clear of each other (`--fixture-spacing clear`) |
 
 The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
