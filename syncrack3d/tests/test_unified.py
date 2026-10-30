@@ -54,6 +54,8 @@ def test_bad_mix_is_rejected():
     assert "--clean-wall-scale 0" in RECIPES["unified"] and "--shell-finish matched" in RECIPES["unified"]
     assert "--layout-order fixtures-first" in RECIPES["unified"]
     assert "--layout-order" not in RECIPES["unified_v1.16"]
+    assert "--prop-placement loose" in RECIPES["unified"]
+    assert "--prop-placement" not in RECIPES["unified_v1.17"]
 
 
 def test_fixtures_first_puts_fixtures_on_every_indoor_wall():

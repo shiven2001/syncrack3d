@@ -104,6 +104,34 @@ PAINT_PARAMS = {
 }
 
 
+# How far a wall's displaced relief stands out of its plane, so loose props stand
+# clear of it rather than sinking into it. Measured on 10 rendered walls per category
+# (99.99th percentile of the surface position, cracks included; v1.18): (largest relief
+# in metres, relief / displacement-node scale or None when the material bakes height
+# into its texture). Both include a 10-15% margin.
+_PLASTER, _STUCCO = (0.0048, 0.99), (0.0062, None)
+RELIEF_M = {
+    "paint_neutral": _PLASTER, "paint_colour": _PLASTER, "paint_colour_mid": _PLASTER,
+    "stucco_neutral": _STUCCO, "stucco_colour": _STUCCO, "stucco_colour_mid": _STUCCO,
+    "concrete": (0.001, None), "tile": (0.001, None), "large_tile": (0.0031, None),
+    "marble": (0.0086, None), "brick": (0.0135, None),
+    "cobble_wall": (0.0339, 1.13), "rubble_stone": (0.0394, 1.12),
+    "stone_block": (0.0273, 1.62), "sandstone": (0.0230, 1.34),
+    # never cracked under the unified palette, so not measured: the nearest category's bound
+    "wood": (0.004, None), "irregular_stone": (0.0394, None),
+}
+
+
+def wall_relief(wall, category: str) -> float:
+    """Metres a wall's relief can stand out of its plane: the displacement scale
+    times the category's ratio, capped at the category maximum."""
+    cap, ratio = RELIEF_M[category]
+    scales = [n.inputs["Scale"].default_value for slot in wall.material_slots
+              if slot.material is not None and slot.material.use_nodes
+              for n in slot.material.node_tree.nodes if n.type == "DISPLACEMENT"]
+    return cap if ratio is None or not scales else min(cap, max(scales) * ratio)
+
+
 def _rng(seed: int, salt: int) -> random.Random:
     return random.Random((int(seed) * 1_000_003) ^ salt)
 

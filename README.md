@@ -474,6 +474,24 @@ No model was retrained, so there is no new checkpoint and no measured change
 in benchmark scores. The scored checkpoint stays
 `outputs/domain_transfer/syncrack3d_facade2_bd3_v1/`.
 
+## v1.18.0 loose props
+
+`--prop-placement loose` (in `--recipe unified`; needs `--layout-order
+fixtures-first`) lets a prop stand anywhere on the floor in front of the
+wall: its back 2 cm past the wall's displaced relief out to 0.9 m, turned any
+way, redrawn up to 40 times. It must clear the wall, floor, ceiling, side
+returns, fixtures, skirting, cameras (0.15 m), lights and other props, and may
+hide at most half of any crack token face-on; otherwise it is dropped. Views
+then jammed against a prop are dropped too. The catalogue and the one prop per
+wall are unchanged, and nothing random is drawn after the props, so a wall
+without a prop renders exactly as in v1.17.0. `--recipe unified_v1.17`
+rebuilds v1.17.0.
+
+Screen against v1.17.0 on the same 250 walls (seeds 910000-910249), U-Net R34,
+4,000 steps, five seeds each, zero-shot, mean centreline F1: BD3 .875 -> .882
+(seed sd .02), CUBIT .857 -> .858, BuildCrack .681 -> .679 (seed range up to
+.12). Neutral within seed noise; kept because it looks like real rooms.
+
 ## v1.10.0 whole rooms for embodied inspection
 
 Close-up training cameras are aimed at the cracks, so a policy trained on
@@ -520,9 +538,9 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.16.0)
+## Generate new data: the unified recipe (v1.18.0)
 
-For new data use one recipe for everything. The six commits that built it are
+For new data use one recipe for everything. The commits that built it are
 tagged:
 
 | version | commit | what it adds |
@@ -533,6 +551,8 @@ tagged:
 | v1.14.0 | `3b2d31e` | every wall cracked; matched indoor finishes, opt-in; per-wall timing |
 | v1.15.0 | `089fbf2` | matched-finish study |
 | v1.16.0 | `9617872` | matched finishes are the unified default |
+| v1.17.0 | `85a666c` | fixtures first, on every indoor wall (`--recipe unified_v1.17`) |
+| v1.18.0 | tag `v1.18.0` | loose props: anywhere on the floor 2 cm past the wall relief to 0.9 m out, any turn, hiding at most half of a crack (`--prop-placement loose`) |
 
 The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.

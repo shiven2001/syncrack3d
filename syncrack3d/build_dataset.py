@@ -93,6 +93,7 @@ from syncrack3d.material_diversity import (  # noqa: E402
     apply_diverse_wall_material,
     is_clean_wall,
     virtual_targets,
+    wall_relief,
 )
 
 logger = logging.getLogger("syncrack3d")
@@ -270,6 +271,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         return poses
 
     fixtures_first = args.layout_order == "fixtures-first"
+    if args.prop_placement == "loose" and not fixtures_first:
+        raise SystemExit("--prop-placement loose places props last: it needs --layout-order fixtures-first")
     layout_record = {"order": args.layout_order}
     plan = sample_defect_plan(
         rng,
@@ -360,12 +363,35 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         # 7. Props last, around the cameras and the fixture meshes. None outdoors.
         props = []
         if outdoor_plan is None:
-            obstacles = [(np.array(bpy.data.objects[p.object_name].matrix_world.translation) - 0.2,
-                          np.array(bpy.data.objects[p.object_name].matrix_world.translation) + 0.2) for p in poses]
-            obstacles += [b for o in bpy.data.objects if o.get("cwg_role") == "structure" and o.type in ("MESH", "CURVE")
-                          and (b := prop_bounds(o)) is not None]
-            props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
-                                 floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
+            if args.prop_placement == "loose":
+                # Anywhere on the floor, so clear of the lights and skirting too, and
+                # of the wall's own relief; views then jammed against a prop are dropped.
+                def around(obj, r):
+                    at = np.array(obj.matrix_world.translation)
+                    return at - r, at + r
+
+                obstacles = [around(bpy.data.objects[p.object_name], 0.15) for p in poses]
+                obstacles += [around(o, 0.15) for o in bpy.data.objects if o.type == "LIGHT"]
+                obstacles += [b for o in bpy.data.objects
+                              if (o.get("cwg_role") == "structure" or o.get("cwg_hard_negative") == "skirting")
+                              and o.type in ("MESH", "CURVE") and (b := prop_bounds(o)) is not None]
+                relief = round(wall_relief(wall, material_record["category"]), 5) if material_record else 0.0
+                layout_record["wall_relief_m"] = relief
+                props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                                     floor_depth_m=shell_plan.depth_m, obstacles=obstacles,
+                                     loose=True, relief_m=relief)
+                if props:
+                    poses, blocked = drop_blocked_cameras(poses, wall)
+                    layout_record["cameras_dropped"] += blocked
+            else:
+                obstacles = [(np.array(bpy.data.objects[p.object_name].matrix_world.translation) - 0.2,
+                              np.array(bpy.data.objects[p.object_name].matrix_world.translation) + 0.2)
+                             for p in poses]
+                obstacles += [b for o in bpy.data.objects
+                              if o.get("cwg_role") == "structure" and o.type in ("MESH", "CURVE")
+                              and (b := prop_bounds(o)) is not None]
+                props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
+                                     floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
     else:
         structures = build_structures(structure_plans)
         poses = pose_cameras(structures)
@@ -563,9 +589,11 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
-    parser.add_argument("--prop-placement", choices=("measured", "hint"), default="measured",
+    parser.add_argument("--prop-placement", choices=("measured", "hint", "loose"), default="measured",
                         help="measured: place props by their real bounds, clear of wall, floor, fixtures and "
-                             "cameras; hint: the v1.0-v1.8 placement, which let props clip into the wall")
+                             "cameras; hint: the v1.0-v1.8 placement, which let props clip into the wall; "
+                             "loose (with --layout-order fixtures-first): anywhere on the floor 2 cm past the "
+                             "wall relief to 0.9 m out, any turn, hiding at most half of a crack")
     parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
                         help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
     parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,

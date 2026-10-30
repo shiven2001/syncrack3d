@@ -79,7 +79,9 @@ UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
 RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
                             + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
 # v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
-RECIPES["unified"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-first"
+RECIPES["unified_v1.17"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-first"
+# v1.18: loose props, anywhere on the floor in front of the wall.
+RECIPES["unified"] = RECIPES["unified_v1.17"] + " --prop-placement loose"
 
 
 def parse_style_mix(text):

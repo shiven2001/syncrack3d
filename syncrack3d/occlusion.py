@@ -22,6 +22,11 @@ Factories are resolved lazily and individually. ``infinigen.assets.objects``
 cannot be imported as a package here - it pulls a circular chain through
 table_decorations - so each prop names its own submodule and a failure to import
 one is skipped rather than fatal.
+
+``loose=True`` (--prop-placement loose) lets a prop stand anywhere on the floor
+in front of the wall, from `WALL_GAP_M` past the wall's displaced relief out to
+`MAX_STANDOFF_M`, turned any way, clear of everything already there; it may hide
+at most `MAX_COVER` of any crack token, seen face-on.
 """
 
 from __future__ import annotations
@@ -73,6 +78,12 @@ def _load(module_name: str, class_name: str):
 
 
 FLOOR_COVERINGS = frozenset({"RugFactory"})
+WALL_GAP_M = 0.02  # nearest a loose prop stands to the wall, beyond its displaced relief
+# Furthest a loose prop's back stands from the wall: the cameras stand about 0.4-2 m out,
+# so a prop further back is behind them or fills the view.
+MAX_STANDOFF_M = 0.9
+MAX_COVER = 0.5  # largest share of a crack token's face a loose prop may hide
+U_TRIES = 40
 
 
 def _world_bounds(obj):
@@ -203,6 +214,85 @@ def _place_measured(obj, rug, u, standoff, half_w, floor_depth_m, side_gap_m, pl
     return True
 
 
+def _cover(box, defect) -> float:
+    """Share of a crack token's face-on square that a prop's x-z extent hides."""
+    half = defect.size_m * 0.5
+    dx = min(box[1][0], defect.u_m + half) - max(box[0][0], defect.u_m - half)
+    dz = min(box[1][2], defect.v_m + half) - max(box[0][2], defect.v_m - half)
+    return max(0.0, dx) * max(0.0, dz) / max(1e-9, (2 * half) ** 2)
+
+
+class _Room:
+    """The free space in front of the wall and everything already in it (loose placement)."""
+
+    def __init__(self, spec, floor_depth_m, ceiling_m, side_gap_m, obstacles, defects, relief_m=0.0):
+        self.relief = relief_m  # displaced wall relief standing out of the plane
+        self.half_w = spec.width_m * 0.5 - side_gap_m
+        self.depth = math.inf if floor_depth_m is None else floor_depth_m - side_gap_m
+        self.ceiling = (getattr(spec, "height_m", math.inf) if ceiling_m is None else ceiling_m) - side_gap_m
+        self.gap = side_gap_m
+        self.obstacles = list(obstacles)
+        self.defects = list(defects)
+        self.placed = []  # ((lo, hi), rug) of every prop placed so far
+
+    def blockers(self, box, rug):
+        # furniture may stand on a rug
+        return [b for b in (*self.obstacles, *(b for b, r in self.placed if r == rug))
+                if _overlap(box, b, self.gap)]
+
+    def fits(self, box, rug) -> bool:
+        lo, hi = box
+        return (lo[0] >= -self.half_w and hi[0] <= self.half_w and lo[1] >= -self.depth and lo[2] >= -1e-6
+                and hi[2] <= self.ceiling
+                and all(_cover(box, d) <= MAX_COVER for d in self.defects)
+                and not self.blockers(box, rug))
+
+
+def _place_loose(obj, rng, room, rug) -> bool:
+    """Turn a spawned prop and move it to a clear spot on the floor by its measured bounds; False if none."""
+    near = WALL_GAP_M + room.relief
+    for _ in range(U_TRIES):
+        # a new turn each try: a long prop at an angle often fits where it would not square on
+        obj.rotation_euler = (0.0, 0.0, rng.uniform(0.0, 2.0 * math.pi))
+        bpy.context.view_layer.update()
+        bounds = _world_bounds(obj)
+        if bounds is None:
+            return False
+        if rug:
+            # Infinigen sizes rugs to a whole room (3-7 m): fit the floor in front.
+            extent = bounds[1] - bounds[0]
+            fit = min(1.0, 0.98 * 2 * room.half_w / extent[0], 0.98 * (room.depth - near) / extent[1])
+            if fit < 1.0:
+                obj.scale = (obj.scale[0] * fit, obj.scale[1] * fit, obj.scale[2])
+                bpy.context.view_layer.update()
+                bounds = _world_bounds(obj)
+        lo0, hi0 = bounds
+        size = hi0 - lo0
+        if size[0] > 2 * room.half_w:
+            continue
+        u = rng.uniform(-room.half_w + size[0] / 2, room.half_w - size[0] / 2)
+        y = -rng.uniform(near, max(near, min(MAX_STANDOFF_M, room.depth - size[1])))
+        # back face at y, centred on u, bottom on the floor
+        shift = np.array([u - (lo0[0] + hi0[0]) / 2, y - hi0[1], -lo0[2]])
+        lo, hi = lo0 + shift, hi0 + shift
+        # Step out from the wall past whatever is in the way (skirting, a fixture,
+        # another prop); a spot that would need more than MAX_STANDOFF_M is redrawn.
+        for _ in range(len(room.obstacles) + len(room.placed) + 1):
+            hits = room.blockers((lo, hi), rug)
+            if not hits:
+                break
+            step = min(b[0][1] for b in hits) - room.gap - hi[1]
+            if step >= 0 or hi[1] + step < -MAX_STANDOFF_M:
+                break
+            lo, hi, shift = lo + [0, step, 0], hi + [0, step, 0], shift + [0, step, 0]
+        if room.fits((lo, hi), rug):
+            obj.location = tuple(float(a + d) for a, d in zip(obj.location, shift))
+            bpy.context.view_layer.update()
+            room.placed.append(((lo, hi), rug))
+            return True
+    return False
+
+
 def sample_props(
     rng: random.Random,
     spec,
@@ -215,6 +305,8 @@ def sample_props(
     side_gap_m: float = 0.02,
     measured: bool = True,
     obstacles=(),
+    loose: bool = False,
+    relief_m: float = 0.0,
 ) -> list[PropPlacement]:
     """Place a few props in front of the wall.
 
@@ -225,6 +317,10 @@ def sample_props(
     steps out from the wall past them, like past another prop, or is dropped. `measured=False` keeps the v1.0-v1.8 placement by
     the catalogue footprint, which let props clip; it exists to rebuild those
     releases exactly.
+
+    `loose=True` places by `_place_loose` instead: anywhere in front of the
+    wall, `relief_m` added to the wall gap; `standoff_range_m` and
+    `min_defect_clearance_m` are not used, `MAX_COVER` bounds the occlusion.
 
     `min_defect_clearance_m` keeps a prop from sitting directly on top of a
     defect in plan. Partial occlusion is wanted; a prop centred on the defect
@@ -241,6 +337,7 @@ def sample_props(
     results: list[PropPlacement] = []
     placed: list = []
     half_w = spec.width_m * 0.5
+    room = _Room(spec, floor_depth_m, None, side_gap_m, obstacles, placements, relief_m) if loose else None
 
     for index in range(count):
         module_name, class_name, footprint, _on_floor = rng.choice(_PROP_CATALOG)
@@ -248,15 +345,16 @@ def sample_props(
         if factory_cls is None:
             continue
 
-        for _attempt in range(30):
-            u = rng.uniform(-half_w + 0.2, half_w - 0.2)
-            if all(
-                abs(u - p.u_m) >= min_defect_clearance_m + footprint * 0.5
-                for p in placements
-            ):
-                break
-        else:
-            continue
+        if not loose:
+            for _attempt in range(30):
+                u = rng.uniform(-half_w + 0.2, half_w - 0.2)
+                if all(
+                    abs(u - p.u_m) >= min_defect_clearance_m + footprint * 0.5
+                    for p in placements
+                ):
+                    break
+            else:
+                continue
 
         factory_seed = rng.randrange(1, 2**31)
         try:
@@ -265,6 +363,21 @@ def sample_props(
             # One prop failing to build is not worth losing the scene over.
             continue
         obj.parent = None
+
+        if loose:
+            obj.name = f"CWG_Prop_{index:02d}_{class_name}"
+            obj["cwg_role"] = "prop"
+            for old in tuple(obj.users_collection):
+                old.objects.unlink(obj)
+            collection.objects.link(obj)
+            if not _place_loose(obj, rng, room, class_name in FLOOR_COVERINGS):
+                _delete(obj)
+                continue
+            results.append(PropPlacement(
+                index=index, factory=class_name, factory_seed=factory_seed,
+                location=tuple(round(float(v), 5) for v in obj.location),
+                yaw_deg=round(math.degrees(obj.rotation_euler.z), 2), object_name=obj.name))
+            continue
 
         standoff = rng.uniform(*standoff_range_m)
         # Everything stands on the floor. Small items used to be lifted to a
