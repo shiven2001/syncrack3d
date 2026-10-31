@@ -96,8 +96,3 @@ def test_loose_props_hide_at_most_half_of_a_crack(monkeypatch):
     for p in props:
         assert occlusion._cover(_bounds(p), crack) <= occlusion.MAX_COVER + 1e-9
 
-
-def test_loose_rug_is_shrunk_to_the_floor(monkeypatch):
-    p, = _loose(monkeypatch, [("RugFactory", (5.0, 5.0, 0.01), (0.0, 0.0, 0.0))], 0, 1)
-    lo, hi = _bounds(p)
-    assert hi[1] <= -occlusion.WALL_GAP_M + 1e-6 and lo[1] >= -DEPTH and -W / 2 <= lo[0] and hi[0] <= W / 2

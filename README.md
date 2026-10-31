@@ -827,12 +827,12 @@ Props now stand loose on the floor, the only placement:
 - turned any way, back face from 2 cm past the wall relief out to 0.9 m;
 - on the floor, between the side returns and under the ceiling;
 - stepped out from the wall past other props, fixtures, skirting, lights and
-  cameras (furniture may stand on a rug);
+  cameras;
 - dropped if they would hide more than half of a crack token face-on, or if
   no spot fits.
 
-Room-sized rugs are shrunk to fit the floor. A camera left inside a prop is
-dropped. Rebuilding a wall from before v1.18 moves any prop that is in view.
+A camera left inside a prop is dropped. Rebuilding a wall from before v1.18
+moves any prop that is in view.
 
 ## Generate, export, check
 

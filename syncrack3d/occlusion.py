@@ -45,8 +45,7 @@ _PROP_CATALOG = (
     ("cwg_infinigen.assets.objects.shelves.cell_shelf", "CellShelfFactory", 0.9, True),
     ("cwg_infinigen.assets.objects.shelves.large_shelf", "LargeShelfFactory", 1.1, True),
     ("cwg_infinigen.assets.objects.lamp", "FloorLampFactory", 0.4, True),
-    ("cwg_infinigen.assets.objects.tables.table_top", "TableTopFactory", 1.0, True),
-    ("cwg_infinigen.assets.objects.elements.rug", "RugFactory", 1.6, True),
+    ("cwg_infinigen.assets.objects.tables.dining_table", "TableDiningFactory", 1.8, True),
     ("cwg_infinigen.assets.objects.tableware.bottle", "BottleFactory", 0.12, False),
     ("cwg_infinigen.assets.objects.tableware.food_box", "FoodBoxFactory", 0.2, False),
 )
@@ -77,8 +76,7 @@ def _load(module_name: str, class_name: str):
         return None
 
 
-FLOOR_COVERINGS = frozenset({"RugFactory"})
-WALL_GAP_M = 0.02  # nearest a loose prop stands to the wall, beyond its displaced relief
+WALL_GAP_M = 0.02  # nearest a prop stands to the wall, beyond its displaced relief
 # Furthest a loose prop's back stands from the wall: the cameras stand about 0.4-2 m out,
 # so a prop further back is behind them or fills the view.
 MAX_STANDOFF_M = 0.9
@@ -141,22 +139,20 @@ class _Room:
         self.gap = side_gap_m
         self.obstacles = list(obstacles)
         self.defects = list(defects)
-        self.placed = []  # ((lo, hi), rug) of every prop placed so far
+        self.placed = []  # (lo, hi) of every prop placed so far
 
-    def blockers(self, box, rug):
-        # furniture may stand on a rug
-        return [b for b in (*self.obstacles, *(b for b, r in self.placed if r == rug))
-                if _overlap(box, b, self.gap)]
+    def blockers(self, box):
+        return [b for b in (*self.obstacles, *self.placed) if _overlap(box, b, self.gap)]
 
-    def fits(self, box, rug) -> bool:
+    def fits(self, box) -> bool:
         lo, hi = box
         return (lo[0] >= -self.half_w and hi[0] <= self.half_w and lo[1] >= -self.depth and lo[2] >= -1e-6
                 and hi[2] <= self.ceiling
                 and all(_cover(box, d) <= MAX_COVER for d in self.defects)
-                and not self.blockers(box, rug))
+                and not self.blockers(box))
 
 
-def _place_loose(obj, rng, room, rug) -> bool:
+def _place_loose(obj, rng, room) -> bool:
     """Turn a spawned prop and move it to a clear spot on the floor by its measured bounds; False if none."""
     near = WALL_GAP_M + room.relief
     for _ in range(U_TRIES):
@@ -166,14 +162,6 @@ def _place_loose(obj, rng, room, rug) -> bool:
         bounds = _world_bounds(obj)
         if bounds is None:
             return False
-        if rug:
-            # Infinigen sizes rugs to a whole room (3-7 m): fit the floor in front.
-            extent = bounds[1] - bounds[0]
-            fit = min(1.0, 0.98 * 2 * room.half_w / extent[0], 0.98 * (room.depth - near) / extent[1])
-            if fit < 1.0:
-                obj.scale = (obj.scale[0] * fit, obj.scale[1] * fit, obj.scale[2])
-                bpy.context.view_layer.update()
-                bounds = _world_bounds(obj)
         lo0, hi0 = bounds
         size = hi0 - lo0
         if size[0] > 2 * room.half_w:
@@ -186,17 +174,17 @@ def _place_loose(obj, rng, room, rug) -> bool:
         # Step out from the wall past whatever is in the way (skirting, a fixture,
         # another prop); a spot that would need more than MAX_STANDOFF_M is redrawn.
         for _ in range(len(room.obstacles) + len(room.placed) + 1):
-            hits = room.blockers((lo, hi), rug)
+            hits = room.blockers((lo, hi))
             if not hits:
                 break
             step = min(b[0][1] for b in hits) - room.gap - hi[1]
             if step >= 0 or hi[1] + step < -MAX_STANDOFF_M:
                 break
             lo, hi, shift = lo + [0, step, 0], hi + [0, step, 0], shift + [0, step, 0]
-        if room.fits((lo, hi), rug):
+        if room.fits((lo, hi)):
             obj.location = tuple(float(a + d) for a, d in zip(obj.location, shift))
             bpy.context.view_layer.update()
-            room.placed.append(((lo, hi), rug))
+            room.placed.append((lo, hi))
             return True
     return False
 
@@ -248,7 +236,7 @@ def sample_props(
         for old in tuple(obj.users_collection):
             old.objects.unlink(obj)
         collection.objects.link(obj)
-        if not _place_loose(obj, rng, room, class_name in FLOOR_COVERINGS):
+        if not _place_loose(obj, rng, room):
             _delete(obj)
             continue
         results.append(PropPlacement(
