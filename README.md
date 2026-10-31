@@ -822,21 +822,17 @@ other and fixtures, and food boxes sank up to 13 cm into the floor. Five
 props, mostly shelves, held a camera inside them, so those views showed the
 inside of a shelf.
 
-Props now:
+Props now stand loose on the floor, the only placement:
 
-- rest on the floor, with the sampled standoff as the true gap to the wall;
-- stay between the side returns and on the floor;
-- step out from the wall past other props and fixtures (furniture may stand
-  on a rug).
+- turned any way, back face from 2 cm past the wall relief out to 0.9 m;
+- on the floor, between the side returns and under the ceiling;
+- stepped out from the wall past other props, fixtures, skirting, lights and
+  cameras (furniture may stand on a rug);
+- dropped if they would hide more than half of a crack token face-on, or if
+  no spot fits.
 
-Room-sized rugs are shrunk to fit the floor. A prop that cannot fit, or that
-would contain a camera, is dropped. On the same 40 walls 52 props remain and
-none clip. Nothing else changes: walls, cracks, cameras, lights and labels are
-identical, and the RNG stream is untouched.
-
-Every recipe with props (`legacy`, `major`, `network`) therefore renders the
-v1.0-v1.8 walls with props moved. To rebuild those release images pixel for
-pixel, add `--prop-placement hint`.
+Room-sized rugs are shrunk to fit the floor. A camera left inside a prop is
+dropped. Rebuilding a wall from before v1.18 moves any prop that is in view.
 
 ## Generate, export, check
 

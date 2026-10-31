@@ -62,14 +62,13 @@ from syncrack3d.structures import (  # noqa: E402
     structure_clean_wall,
 )
 from syncrack3d.occlusion import _world_bounds as prop_bounds  # noqa: E402
-from syncrack3d.occlusion import sample_props, settle_props  # noqa: E402
+from syncrack3d.occlusion import sample_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
     apply_weathering,
     build_outdoor,
     environment_for,
     outdoor_lighting,
-    remove_indoor_props,
     sample_outdoor_plan,
 )
 from syncrack3d.room_shell import (  # noqa: E402
@@ -271,8 +270,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         return poses
 
     fixtures_first = args.layout_order == "fixtures-first"
-    if args.prop_placement == "loose" and not fixtures_first:
-        raise SystemExit("--prop-placement loose places props last: it needs --layout-order fixtures-first")
     layout_record = {"order": args.layout_order}
     plan = sample_defect_plan(
         rng,
@@ -316,8 +313,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     else:
         placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
                                    axis_snap=args.crack_axis_snap)
-        props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
-                             floor_depth_m=shell_plan.depth_m, measured=args.prop_placement == "measured")
         lighting, weathering = light_scene()
         # Structures are planned before injection (own RNG stream, so nothing else
         # moves) so junction cracks can be snapped to their edges.
@@ -365,51 +360,42 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     # displacement, or the clean negatives stay bump-only.
     enable_true_displacement(wall, args.dicing_rate)
 
+    def place_foreground_props(poses):
+        """Props last: anywhere on the floor, clear of fixtures, lights and cameras."""
+        if outdoor_plan is not None:
+            return [], poses, 0
+
+        def around(obj, radius):
+            at = np.array(obj.matrix_world.translation)
+            return at - radius, at + radius
+
+        obstacles = [around(bpy.data.objects[p.object_name], 0.15) for p in poses]
+        obstacles += [around(o, 0.15) for o in bpy.data.objects if o.type == "LIGHT"]
+        obstacles += [b for o in bpy.data.objects
+                      if (o.get("cwg_role") == "structure" or o.get("cwg_hard_negative") == "skirting")
+                      and o.type in ("MESH", "CURVE") and (b := prop_bounds(o)) is not None]
+        relief = round(wall_relief(wall, material_record["category"]), 5) if material_record else 0.0
+        layout_record["wall_relief_m"] = relief
+        placed = sample_props(
+            rng, spec, placements, count_range=(0, args.max_props),
+            floor_depth_m=shell_plan.depth_m, obstacles=obstacles, relief_m=relief)
+        extra = 0
+        if placed:
+            poses, extra = drop_blocked_cameras(poses, wall)
+        return placed, poses, extra
+
     if fixtures_first:
-        # 6. Lighting and cameras; a camera jammed against an object is dropped.
+        # Lighting and cameras; a camera jammed against an object is dropped.
+        # Props come last, around the cameras and the fixture meshes. None outdoors.
         lighting, weathering = light_scene()
         poses, blocked = drop_blocked_cameras(pose_cameras(structures), wall)
-        layout_record["cameras_dropped"] = blocked
-        # 7. Props last, around the cameras and the fixture meshes. None outdoors.
-        props = []
-        if outdoor_plan is None:
-            if args.prop_placement == "loose":
-                # Anywhere on the floor, so clear of the lights and skirting too, and
-                # of the wall's own relief; views then jammed against a prop are dropped.
-                def around(obj, r):
-                    at = np.array(obj.matrix_world.translation)
-                    return at - r, at + r
-
-                obstacles = [around(bpy.data.objects[p.object_name], 0.15) for p in poses]
-                obstacles += [around(o, 0.15) for o in bpy.data.objects if o.type == "LIGHT"]
-                obstacles += [b for o in bpy.data.objects
-                              if (o.get("cwg_role") == "structure" or o.get("cwg_hard_negative") == "skirting")
-                              and o.type in ("MESH", "CURVE") and (b := prop_bounds(o)) is not None]
-                relief = round(wall_relief(wall, material_record["category"]), 5) if material_record else 0.0
-                layout_record["wall_relief_m"] = relief
-                props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
-                                     floor_depth_m=shell_plan.depth_m, obstacles=obstacles,
-                                     loose=True, relief_m=relief)
-                if props:
-                    poses, blocked = drop_blocked_cameras(poses, wall)
-                    layout_record["cameras_dropped"] += blocked
-            else:
-                obstacles = [(np.array(bpy.data.objects[p.object_name].matrix_world.translation) - 0.2,
-                              np.array(bpy.data.objects[p.object_name].matrix_world.translation) + 0.2)
-                             for p in poses]
-                obstacles += [b for o in bpy.data.objects
-                              if o.get("cwg_role") == "structure" and o.type in ("MESH", "CURVE")
-                              and (b := prop_bounds(o)) is not None]
-                props = sample_props(rng, spec, placements, count_range=(0, args.max_props),
-                                     floor_depth_m=shell_plan.depth_m, obstacles=obstacles)
+        props, poses, more = place_foreground_props(poses)
+        layout_record["cameras_dropped"] = blocked + more
     else:
         structures = build_structures(structure_plans)
         poses = pose_cameras(structures)
-        if outdoor_plan is not None:
-            remove_indoor_props()  # sampled for the RNG stream, but furniture is not outdoors
-        elif args.prop_placement == "measured":
-            # fixtures and cameras are placed after the props: clear props of both
-            props = settle_props(props, floor_depth_m=shell_plan.depth_m)
+        props, poses, blocked = place_foreground_props(poses)
+        layout_record["cameras_dropped"] = blocked
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
     # Partial white balance keeps a coloured wall coloured (opt-in; default full).
@@ -486,7 +472,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "recipe": args.recipe,
             "layout_order": args.layout_order,
             "crack_style": getattr(args, "crack_style", None),
-            "prop_placement": args.prop_placement,
+            "prop_placement": "loose",
             "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
             "crack_weathering_fraction": args.crack_weathering_fraction,
@@ -599,11 +585,6 @@ def main():
     parser.add_argument("--min-defects", type=int, default=3)
     parser.add_argument("--max-defects", type=int, default=6)
     parser.add_argument("--max-props", type=int, default=3)
-    parser.add_argument("--prop-placement", choices=("measured", "hint", "loose"), default="measured",
-                        help="measured: place props by their real bounds, clear of wall, floor, fixtures and "
-                             "cameras; hint: the v1.0-v1.8 placement, which let props clip into the wall; "
-                             "loose (with --layout-order fixtures-first): anywhere on the floor 2 cm past the "
-                             "wall relief to 0.9 m out, any turn, hiding at most half of a crack")
     parser.add_argument("--fixture-mount", choices=("plane", "relief"), default="plane",
                         help="plane: fixtures and skirting stand on the wall plane, so stone and brick relief "
                              "pokes through them; relief (with --layout-order fixtures-first): stand them out "
@@ -665,8 +646,8 @@ def main():
     parser.add_argument("--resume", action="store_true",
                         help="skip seeds whose scene.json exists (it is written last)")
     parser.add_argument("--layout-order", choices=("legacy", "fixtures-first"), default="legacy",
-                        help="legacy: crack tokens, props, lights, fixture plan, injection, fixture meshes, "
-                             "cameras (v1.x). fixtures-first: fixtures (planned and built), cracks around "
+                        help="legacy: crack tokens, lights, fixture plan, injection, fixture meshes, "
+                             "cameras, then props. fixtures-first: fixtures (planned and built), cracks around "
                              "them, injection, lights, cameras (blocked views dropped), props around cameras "
                              "and fixtures")
     parser.add_argument("--crack-near-service-fraction", type=float, default=0.3,
