@@ -10,3 +10,6 @@ outputs/
 eval/bd3/images/
 eval/bd3/gt/
 
+
+# Third-party crack benchmarks and reference code used by studies/.
+external/

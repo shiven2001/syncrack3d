@@ -691,7 +691,7 @@ Each arm trained from scratch on its own walls: 5 seeds × 4000 steps.
 Scoring used protocol v2, with paired 95% intervals against A (photos or
 source images and seeds resampled). Files:
 `outputs/domain_transfer/syncrack3d_cleanpolicy_eval_v1/`. Study script:
-`domain_transfer/syncrack3d_cleanpolicy_study.py`.
+`studies/syncrack3d_cleanpolicy_study.py`.
 
 | real benchmark | A material-aware | B − A all cracked | C − A uniform |
 |---|---:|---|---|
