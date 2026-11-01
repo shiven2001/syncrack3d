@@ -42,49 +42,80 @@ def structure_clean_wall(seed, profile, fraction):
     return profile != "off" and random.Random(seed ^ SALT ^ 0x434C).random() < fraction
 
 
-TRIM_KINDS = ("skirting", "ceiling_trim", "gutter")
-VERTICAL_RUNS = ("downpipe", "wall_cable", "conduit")
-FIXTURE_GAP_M = .03
+FIXTURE_GAP_M = .03  # nearest any fixture's built extent comes to another's
+TRIES = 60
+# Hardware an assembly builds past its nominal w x h box, as build_structures
+# makes it: (left, right, below, above) in metres - a window's sill and
+# lintel, a conduit's elbow and brackets, a cable's sag, a utility box's feed.
+# A test checks these cover the built geometry.
+PAD = {
+    "cable": (.03, .03, .06, 0.), "wall_cable": (0., .005, 0., 0.), "conduit": (0., .04, .03, .01),
+    "downpipe": (.02, .02, 0., 0.), "utility_box": (0., 0., 0., .25), "window": (.10, .10, .07, .12),
+    "vent": (.02, .02, 0., .015), "exterior_vent": (.02, .02, 0., .015), "access_panel": (.02, .02, 0., .015),
+    "service_hatch": (.02, .02, 0., .015), "plumbing": (-.11, -.04, 0., 0.), "gutter": (.006, .006, .025, 0.),
+    "ledge": (0., 0., .01, 0.),
+}
+JITTER_KINDS = ("utility_box", "window", "ledge")  # width and height x U(.8, 1.15)
+FLUSH_KINDS = ("panel_seam",)  # flush sealant joints: placed like the rest, but others may cross them
+BOUNDARIES = ("floor", "skirting", "ceiling")
+
+
+def fixture_rules(width_m, height_m):
+    """kind -> (width, height, anchor) on a width_m x height_m wall.
+
+    The anchor is where the centre height is drawn: None from 0.3 m up to
+    0.15 m under the ceiling, (lo, hi) a band, "run" the whole span between the
+    skirting and a ceiling trim, "floor" standing on the floor (a door), or
+    "skirting" / "ceiling" a full-width trim along that edge."""
+    W, H = width_m, height_m
+    return {
+        "cable": (W * .85, .5, (H * .55, H - .3)),
+        "wall_cable": (.08, H * .8, "run"),
+        "conduit": (.5, min(1.7, H * .75), "run"),
+        "downpipe": (.13, H, "run"),
+        "utility_box": (.24, .32, None),
+        "window": (min(1.1, W * .35), min(.85, H * .32), None),
+        "panel_seam": (W, .006, None),
+        "ledge": (min(1.5, W * .5), .16, None),
+        "socket": (.146, .086, (.25, .45)),
+        "switch": (.086, .086, (1.05, min(1.35, H - .2))),
+        "door": (.94, min(2.08, H - .20), "floor"),
+        "skirting": (W, .11, "skirting"),
+        "ceiling_trim": (W, .065, "ceiling"),
+        "vent": (.42, .24, None),
+        "access_panel": (.45, .50, None),
+        "trunking": (W * .7, .055, None),
+        "plumbing": (.50, .65, None),
+        "exterior_vent": (.42, .32, (H * .6, H - .26)),
+        "service_hatch": (.50, .65, None),
+        "gutter": (W - .012, .13, "ceiling"),  # its end caps reach to the side walls
+        "wall_light": (.16, .27, (H * .6, H - .235)),
+    }
 
 
 def built_extent(kind, u, v, w, h):
     """(u_lo, u_hi, v_lo, v_hi) on the wall covered by an assembly as
-    build_structures makes it, hardware included (a window's sill and lintel,
-    a conduit's elbow and brackets, a cable's sag and loose loop)."""
-    if kind == "cable":
-        return u - w * .5 - .03, u + w * .5 + .03, v - .31, v + .25
-    if kind == "wall_cable":
-        return u - .04, u + .045, v - h * .5, v + h * .5
-    if kind == "conduit":
-        return u - w * .5, u + w * .5 + .04, max(.04, v - h * .5) - .03, v + h * .5 + .01
-    if kind == "downpipe":
-        return u - .085, u + .085, max(.04, v - h * .5), v + h * .5
-    if kind == "utility_box":
-        return u - w * .5, u + w * .5, v - h * .5, v + h * .5 + .25
-    if kind == "window":
-        return u - w * .5 - .10, u + w * .5 + .10, v - h * .5 - .07, v + h * .5 + .12
-    if kind in ("vent", "exterior_vent", "access_panel", "service_hatch"):
-        return u - w * .5 - .02, u + w * .5 + .02, v - h * .5, v + h * .5 + .015
-    if kind == "plumbing":
-        return u - .14, u + .21, v - h * .5, v + h * .5
-    if kind == "gutter":
-        return u - w * .5 - .006, u + w * .5 + .006, v - h * .5 - .025, v + h * .5
-    if kind == "ledge":
-        return u - w * .5, u + w * .5, v - h * .5 - .01, v + h * .5
-    return u - w * .5, u + w * .5, v - h * .5, v + h * .5
+    build_structures makes it, hardware included (PAD)."""
+    left, right, below, above = PAD.get(kind, (0., 0., 0., 0.))
+    return u - w * .5 - left, u + w * .5 + right, v - h * .5 - below, v + h * .5 + above
 
 
 def _overlaps(a, b, gap):
     return a[0] < b[1] + gap and b[0] < a[1] + gap and a[2] < b[3] + gap and b[2] < a[3] + gap
 
 
-def sample_structure_plan(seed, spec, placements=(), profile="auto", environment="indoor", include_kinds=None,
-                          clear=False):
-    """Plan the wall's fixtures. clear: no two fixtures' built extents come
-    within FIXTURE_GAP_M of each other (a pipe never runs through a window),
-    and vertical runs stop at the skirting and ceiling trims instead of
-    passing through them; a fixture that finds no room is dropped. Panel
-    seams are flush joints and stay exempt. Off, the v1.x plans are unchanged."""
+def sample_structure_plan(seed, spec, placements=(), profile="auto", environment="indoor", include_kinds=None):
+    """Plan the wall's fixtures. Every kind is placed by one rule; only its
+    size, anchor (fixture_rules) and hardware (PAD) differ.
+
+    Each fixture draws its centre within its anchor so that its nominal box
+    and built extent stay on the wall, and is kept only if its built extent is
+    FIXTURE_GAP_M clear of every fixture already placed and of the base wall's
+    skirting; a large kind also keeps crack centres 6 cm clear. A fixture with
+    no room after TRIES draws is dropped. Boundaries - a door and the
+    full-width trims - go first and may meet each other (the skirting is cut
+    at the door); vertical runs then span from the skirting to under a ceiling
+    trim. Panel seams are flush joints: nothing is kept clear of them."""
     if profile not in PROFILES:
         raise ValueError(f"unknown structure profile: {profile}")
     if profile == "off":
@@ -105,89 +136,55 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
                 indoor if profile == "indoor" else outdoor if profile == "outdoor" else
                 outdoor if environment == "outdoor" else indoor)
         kinds = r.sample(pool, r.randint(2, min(4, len(pool))))
-    # Floor-anchored doors and boundary trims reserve their footprints first.
-    kinds.sort(key=lambda k: 0 if k == "door" else 1 if k in ("skirting", "ceiling_trim", "gutter") else 2)
+    W, H = spec.width_m, spec.height_m
+    rules = fixture_rules(W, H)
+    kinds.sort(key=lambda k: rules[k][2] not in BOUNDARIES)
+    skirting = getattr(spec, "skirting", False)
+    obstacles = [(-W * .5, W * .5, 0., .085)] if skirting else []  # the base wall's own skirting
+    # Free span for a vertical run; the 0.1 mm hair keeps a run that fills it clear of the trims.
+    clear = FIXTURE_GAP_M + 1e-4
+    low, high = (.085 + clear if skirting else 0.), H
     plans = []
-    # clear: built extents of everything placed so far, and the base wall's own
-    # skirting, which a door cuts instead.
-    obstacles = []
-    base = [(-spec.width_m * .5, spec.width_m * .5, 0., .085)] if getattr(spec, "skirting", False) else []
     for i, kind in enumerate(kinds):
-        w, h = {
-            "cable": (spec.width_m * .85, .5),
-            "wall_cable": (.08, spec.height_m * .8),
-            "conduit": (.5, min(1.7, spec.height_m * .75)),
-            "downpipe": (.13, spec.height_m),
-            "utility_box": (.24, .32),
-            "window": (min(1.1, spec.width_m * .35), min(.85, spec.height_m * .32)),
-            "panel_seam": (spec.width_m, .006),
-            "ledge": (min(1.5, spec.width_m * .5), .16),
-            "socket": (.146, .086), "switch": (.086, .086),
-            "door": (.94, min(2.08, spec.height_m - .20)),
-            "skirting": (spec.width_m, .11), "ceiling_trim": (spec.width_m, .065),
-            "vent": (.42, .24), "access_panel": (.45, .50),
-            "trunking": (spec.width_m * .7, .055), "plumbing": (.50, .65),
-            "exterior_vent": (.42, .32), "service_hatch": (.50, .65),
-            "gutter": (spec.width_m, .13), "wall_light": (.16, .27),
-        }[kind]
-        if kind in ("utility_box", "window", "ledge"):
+        w, h, anchor = rules[kind]
+        if kind in JITTER_KINDS:
             w *= r.uniform(.8, 1.15)
             h *= r.uniform(.8, 1.15)
-        if clear and kind in VERTICAL_RUNS:
-            # Run between the trims: from the skirting's top to under a ceiling trim or gutter.
-            floor = max([q.v_m + q.height_m * .5 + FIXTURE_GAP_M for q in plans if q.kind == "skirting"]
-                        + ([.085 + FIXTURE_GAP_M] if getattr(spec, "skirting", False) else [0.]))
-            ceiling = min([q.v_m - q.height_m * .5 - .025 - FIXTURE_GAP_M for q in plans if q.kind in TRIM_KINDS[1:]]
-                          + [spec.height_m])
-            h = min(h, ceiling - floor)
-        # Half the thin services pass near a defect. Large assemblies keep
-        # defect centres clear, while their frame edges can partially occlude.
-        for attempt in range(60):
-            x = r.uniform(-spec.width_m * .5 + w * .5, spec.width_m * .5 - w * .5)
-            z = r.uniform(max(h * .5, .3), spec.height_m - max(h * .5, .15))
+        left, right, below, above = (max(0., p) for p in PAD.get(kind, (0., 0., 0., 0.)))
+        if anchor == "run":
+            h = min(h, high - low - below - above)
+            band = (low + below + h * .5, high - above - h * .5)
+        elif anchor in BOUNDARIES:
+            band = (H - h * .5,) * 2 if anchor == "ceiling" else (h * .5,) * 2
+        else:
+            band = anchor or (max(h * .5, .3), H - max(h * .5, .15))
+        u_lo, u_hi = -W * .5 + w * .5 + left, W * .5 - w * .5 - right
+        v_lo, v_hi = max(band[0], h * .5 + below), min(band[1], H - h * .5 - above)
+        if h <= 0 or u_lo > u_hi + 1e-9 or v_lo > v_hi + 1e-9:
+            continue  # no room on this wall
+        for attempt in range(TRIES):
+            u, v = r.uniform(u_lo, u_hi), r.uniform(v_lo, v_hi)
             if placements and attempt == 0 and r.random() < .5:
+                # Half the fixtures first try beside a crack, so some partly cover one.
                 target = r.choice(placements)
-                x = max(-spec.width_m * .5 + w * .5, min(spec.width_m * .5 - w * .5, target.u_m + r.uniform(-.12, .12)))
-                z = max(h * .5, min(spec.height_m - h * .5, target.v_m + r.uniform(-.15, .15)))
-            if kind == "door":
-                z = h * .5
-            elif kind == "socket":
-                z = r.uniform(.25, .45)
-            elif kind == "switch":
-                z = r.uniform(1.05, min(1.35, spec.height_m - .2))
-            elif kind == "skirting":
-                x, z = 0., h * .5
-            elif kind in ("ceiling_trim", "gutter"):
-                x, z = 0., spec.height_m - h * .5
-            elif kind in ("exterior_vent", "wall_light"):
-                z = r.uniform(spec.height_m * .60, spec.height_m - h * .5 - .10)
-            if kind in ("skirting", "ceiling_trim", "gutter"):
-                break
-            if kind in ("trunking", "plumbing", "conduit", "wall_cable", "downpipe", "cable") and any(q.kind == "door" and
-                    abs(x-q.u_m) < (w+q.width_m)*.5 and z-h*.5 < q.height_m for q in plans):
+                u = min(u_hi, max(u_lo, target.u_m + r.uniform(-.12, .12)))
+                v = min(v_hi, max(v_lo, target.v_m + r.uniform(-.15, .15)))
+            if (kind not in FLUSH_KINDS and anchor not in BOUNDARIES
+                    and any(_overlaps(built_extent(kind, u, v, w, h), b, FIXTURE_GAP_M) for b in obstacles)):
                 continue
-            if kind == "cable" and not placements:
-                z = r.uniform(spec.height_m * .55, spec.height_m - .3)
-            if clear and kind in VERTICAL_RUNS:
-                z = min(max(z, floor + h * .5), ceiling - h * .5)
-            if clear and kind not in TRIM_KINDS:
-                box = built_extent(kind, x, z, w, h)
-                if any(_overlaps(box, other, FIXTURE_GAP_M) for other in obstacles + ([] if kind == "door" else base)):
-                    continue
-            if kind not in LARGE_KINDS:
-                break
-            if any(abs(x - p.u_m) < w * .5 + .06 and abs(z - p.v_m) < h * .5 + .06 for p in placements):
-                continue
-            if any(p.kind != "panel_seam" and
-                   abs(x - p.u_m) < (w + p.width_m) * .5 + .05 and
-                   abs(z - p.v_m) < (h + p.height_m) * .5 + .05 for p in plans):
+            if kind in LARGE_KINDS and any(abs(u - p.u_m) < w * .5 + .06 and abs(v - p.v_m) < h * .5 + .06
+                                           for p in placements):
                 continue
             break
         else:
-            continue  # no physically plausible space: report only built plans
-        plans.append(StructurePlan(i, kind, x, z, w, h, r.randrange(2**31)))
-        if kind != "panel_seam":
-            obstacles.append(built_extent(kind, x, z, w, h))
+            continue  # no room: report only built plans
+        if anchor == "skirting":
+            low = max(low, h + clear)
+        elif anchor == "ceiling":
+            high = min(high, H - h - below - clear)
+        plans.append(StructurePlan(i, kind, u, v, w, h, r.randrange(2**31)))
+        if kind not in FLUSH_KINDS:
+            obstacles.append(built_extent(kind, u, v, w, h))
     return plans
 
 

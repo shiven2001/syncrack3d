@@ -29,18 +29,19 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            fixtures (closed room), whatever its crack style. Props always stand
            loose on the floor (the v1.18 rule). From v1.19 fixtures and the
            skirting stand on stone/brick relief instead of sinking into it
-           (--fixture-mount relief) and clear of each other (--fixture-spacing
-           clear).
-  unified_v1.17, unified_v1.18  the unified recipe as of that version, to
-           rebuild those walls exactly. Placement no longer differs between them.
+           (--fixture-mount relief). From v1.20 every fixture is placed by one
+           rule (structures.sample_structure_plan): clear of every other.
+  unified_v1.17, unified_v1.18  the unified recipe's flags as of that version.
+           Prop and fixture placement no longer differ between them.
 
-The four release recipes rebuild the v1.x training walls; use unified for new
-data.
+The four release recipes keep the v1.x training walls' flags; use unified for
+new data.
 
 The labels and views of the released training set also passed a selection
 step per batch; releases/*.json list the views each release kept.
-Props always use the loose rule, so rebuilding a wall from before v1.18
-moves any prop that is in view.
+Props always use the loose rule and fixtures the v1.20 rule, so rebuilding a
+wall from before v1.18 moves any prop in view, and a fixtures wall from before
+v1.20 moves its fixtures; check out that version's tag to rebuild it exactly.
 """
 
 COMMON = ("--substrate paint --max-props 1 --resolution 640 --samples 64 --wall-normal-mode explicit "
@@ -89,8 +90,9 @@ RECIPES["unified_v1.17"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-
 # v1.18 made loose placement the rule. It is now the only placement, so the
 # recipe string no longer carries a flag for it.
 RECIPES["unified_v1.18"] = RECIPES["unified_v1.17"]
-# v1.19: fixtures mounted on the wall's relief and kept clear of each other.
-RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief --fixture-spacing clear"
+# v1.19: fixtures mounted on the wall's relief. Keeping them clear of each other
+# is now the only fixture rule, so the recipe no longer carries a flag for it.
+RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
 
 
 def parse_style_mix(text):

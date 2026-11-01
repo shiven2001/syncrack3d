@@ -6,7 +6,8 @@ Infinigen 2 materials; studies/syncrack3d_v2_compare.sh) or v200np (v2.0.0
 without wood-plank walls; syncrack3d_v2_noplanks.sh) or v117lp (v1.17.0 with
 --prop-placement loose; syncrack3d_loose_props.sh) or v118fm (v1.18.0 with
 --fixture-mount relief; syncrack3d_fixture_mount_250.sh) or v118fc (that plus
---fixture-spacing clear; syncrack3d_fixture_clear_250.sh). Data live in
+--fixture-spacing clear; syncrack3d_fixture_clear_250.sh) or v119fr (v1.19.0 with
+every fixture placed by one rule; syncrack3d_fixture_rule_250.sh). Data live in
 /mnt/nvme_storage/syncrack3d_<version>_dataset and models in
 outputs/domain_transfer/syncrack3d_<tag>_NAME.
 
@@ -46,7 +47,7 @@ sys.path.insert(0, str(ROOT))
 TAG = os.environ.get("STUDY_TAG", "v116")
 VERSION = {"v116": "v1.16.0", "v117": "v1.17.0", "v200": "v2.0.0", "v200np": "v2.0.0-noplanks",
            "v117lp": "v1.17.0-looseprops", "v118fm": "v1.18.0-fixturemount",
-           "v118fc": "v1.18.0-fixtureclear"}[TAG]
+           "v118fc": "v1.18.0-fixtureclear", "v119fr": "v1.19.0-fixturerule"}[TAG]
 DATA = Path(f"/mnt/nvme_storage/syncrack3d_{VERSION}_dataset")
 DT = ROOT / "syncrack3d/outputs/domain_transfer"
 APP = ROOT / "syncrack3d"
@@ -112,7 +113,8 @@ def train(args):
         lr=LR[args.arch], iters=iters, batch=8, imgsz=512, seeds=args.seeds,
         first_wall=rows[0][0], generator=f"SynCrack3D {VERSION}" + (", --recipe unified" if not TAG.startswith("v200") else "")
         + (" --prop-placement loose" if TAG == "v117lp" else "") + (" --fixture-mount relief" if TAG == "v118fm" else "")
-        + (" (loose props, --fixture-mount relief --fixture-spacing clear)" if TAG == "v118fc" else "")),
+        + (" (loose props, --fixture-mount relief --fixture-spacing clear)" if TAG == "v118fc" else "")
+        + (" (loose props, --fixture-mount relief, one fixture rule)" if TAG == "v119fr" else "")),
         indent=1) + "\n")
     print(args.name, len(rows), "views", iters, "iters", flush=True)
     torch.set_num_threads(4)

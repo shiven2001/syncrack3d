@@ -506,7 +506,8 @@ props alone (v1.18.0) on the same 250 walls and protocol: BD3 .882 -> .873 (seed
 Neutral within seed noise; kept because it removes a visible clipping
 artefact.
 
-`--fixture-spacing clear` (also in `--recipe unified`) keeps fixtures apart.
+`--fixture-spacing clear` (also in `--recipe unified`; replaced in v1.20.0 by
+the one fixture rule) keeps fixtures apart.
 Before it, only large assemblies avoided each other: thin runs were placed
 blind, and 54 of the 250 screen walls had a clash such as trunking through a
 window, plumbing or conduit under a sill, a cable across trunking, or a
@@ -519,6 +520,39 @@ keep their plan exactly. Screen against the relief mount on the same walls and
 protocol: BD3 .873 -> .877 (seed sd .01), CUBIT .865 -> .863, BuildCrack .666
 -> .647. Neutral within seed noise, though BuildCrack has drifted .679 -> .647
 over the two fixture changes; a 1,000-wall check before release settles it.
+
+## v1.20.0 one fixture rule
+
+Every fixture is now placed by one rule (`structures.sample_structure_plan`),
+the only fixture placement; `--fixture-spacing` is gone. Each kind differs
+only by its row in a table: a size, an anchor for its centre height (anywhere,
+a band such as 0.25-0.45 m for a socket, a run from the skirting to under the
+ceiling trim, standing on the floor, or a full-width trim) and the hardware it
+builds past its nominal box (`PAD`: a window's sill and lintel, a utility
+box's feed, a cable's sag). A fixture's built extent must stay on the wall and
+3 cm clear of every fixture already placed and of the base skirting; a large
+kind also keeps crack centres 6 cm clear. One that finds no room in 60 draws
+is dropped. A door and the trims go first and may meet each other; panel
+seams are flush joints that others may cross. The door-avoidance and
+large-assembly checks with their own gaps and nominal sizes, and the special
+height for a cable, are gone. The gutter is 12 mm narrower, so its end caps
+no longer reach into the side walls.
+
+v1.19.0's clear spacing only kept fixtures off each other. On 2,000 auto
+walls per environment it still put hardware past the wall edge on 139 indoor
+and 184 outdoor walls: a utility box's feed or a window lintel into the
+ceiling, a sill past a side wall or into the floor. The one rule has none,
+keeps as many fixtures (3.00 against 3.00 indoor, 2.89 against 2.85 outdoor)
+and plans in the same 0.02 ms.
+
+Screen against v1.19.0 on the same 250 walls and protocol, with only the
+planner swapped into the v1.19.0 tag so props match (every wall's fixture
+plan changed; 760 fixtures against 758): BD3 .877 -> .883 (seed sd .01),
+CUBIT .863 -> .865, BuildCrack .647 -> .657 (seed range .13), BD3 plain-wall
+false alarms .035 -> .038. Neutral within seed noise; kept because it is
+simpler and nothing clips. Rebuilding a fixtures wall from before v1.20.0
+moves its fixtures; check out that version's tag to rebuild it exactly.
+Script: `studies/syncrack3d_fixture_rule_250.sh`.
 
 ## v1.10.0 whole rooms for embodied inspection
 
@@ -556,7 +590,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 68 tests, a few seconds
+python -m pytest syncrack3d/tests          # 77 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -566,7 +600,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.19.0)
+## Generate new data: the unified recipe (v1.20.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -582,6 +616,7 @@ tagged:
 | v1.17.0 | `85a666c` | fixtures first, on every indoor wall (`--recipe unified_v1.17`) |
 | v1.18.0 | `4c698ea` | loose props: anywhere on the floor 2 cm past the wall relief to 0.9 m out, any turn, hiding at most half of a crack (`--prop-placement loose`; `--recipe unified_v1.18`) |
 | v1.19.0 | tag `v1.19.0` | fixtures and skirting stand on the wall relief (`--fixture-mount relief`) and clear of each other (`--fixture-spacing clear`) |
+| v1.20.0 | tag `v1.20.0` | every fixture placed by one rule: size, anchor and hardware per kind; on the wall and 3 cm clear of every other |
 
 The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
@@ -833,6 +868,11 @@ Props now stand loose on the floor, the only placement:
 
 A camera left inside a prop is dropped. Rebuilding a wall from before v1.18
 moves any prop that is in view.
+
+Fixtures likewise follow one rule (v1.20.0): each kind's size, anchor height
+and hardware come from a table in `structures.py`, and every fixture's built
+extent stays on the wall and 3 cm clear of every other; a door and the trims
+go first, and one that finds no room is dropped.
 
 ## Generate, export, check
 

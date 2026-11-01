@@ -35,7 +35,7 @@ def _catalog(monkeypatch, entries):
             "__init__": lambda self, seed: None,
             "spawn_asset": lambda self, i, size=size, offset=offset, name=name: _box(name, size, offset),
         })
-    monkeypatch.setattr(occlusion, "_PROP_CATALOG", tuple(("m", n, 0.3, True) for n, _, _ in entries))
+    monkeypatch.setattr(occlusion, "_PROP_CATALOG", tuple(("m", n) for n, _, _ in entries))
     monkeypatch.setattr(occlusion, "_load", lambda module, name: factories[name])
 
 

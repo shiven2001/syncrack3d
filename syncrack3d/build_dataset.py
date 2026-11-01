@@ -279,8 +279,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     ) if not fixtures_first else None
     if fixtures_first:
         # 3. Fixtures first, on their own stream and blind to cracks, built now.
-        structure_plans = sample_structure_plan(seed, spec, (), args.structures, environment, args.structure_kinds,
-                                                clear=args.fixture_spacing == "clear")
+        structure_plans = sample_structure_plan(seed, spec, (), args.structures, environment, args.structure_kinds)
         mount = 0.0
         if args.fixture_mount == "relief" and material_record:
             # Stone and brick relief stands out of the wall plane: mount fixtures and
@@ -317,7 +316,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         # Structures are planned before injection (own RNG stream, so nothing else
         # moves) so junction cracks can be snapped to their edges.
         structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment,
-                                                args.structure_kinds, clear=args.fixture_spacing == "clear")
+                                                args.structure_kinds)
     if args.crack_orientation == "random":
         # The spin already drawn for each card becomes its crack direction; no new draws.
         for p in placements:
@@ -420,7 +419,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "props": [p.to_dict() for p in props],
         "structures": structures,
         "junctions": junctions,
-        "structure_settings": {"spacing": args.fixture_spacing, "profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
+        "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
                                "clean_fraction": args.structure_clean_fraction},
         "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
         "shell_finish": shell_finish,
@@ -589,10 +588,6 @@ def main():
                         help="plane: fixtures and skirting stand on the wall plane, so stone and brick relief "
                              "pokes through them; relief (with --layout-order fixtures-first): stand them out "
                              "by the wall's displaced relief")
-    parser.add_argument("--fixture-spacing", choices=("overlap", "clear"), default="overlap",
-                        help="overlap: the v1.x plans, where a pipe or cable could run through a window, box "
-                             "or trim; clear: no fixture within 3 cm of another's built extent, vertical runs "
-                             "stop at the skirting and ceiling trim, and a fixture with no room is dropped")
     parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
                         help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
     parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,

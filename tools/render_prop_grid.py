@@ -1,4 +1,4 @@
-"""Render the seven foreground prop types in one labelled grid.
+"""Render the foreground prop types in one labelled grid.
 
 One example of each factory in ``occlusion._PROP_CATALOG``, sat on the floor
 and framed on its measured bounds. Writes a tile per type and
@@ -217,7 +217,7 @@ def _grid(tiles: list[tuple[str, Image.Image]], path: Path) -> None:
 
 def main() -> None:
     tiles = []
-    for module_name, class_name, _footprint, _on_floor in _PROP_CATALOG:
+    for module_name, class_name in _PROP_CATALOG:
         label = LABELS.get(class_name, class_name)
         path = OUT / "tiles" / f"{label.replace(' ', '_')}.png"
         print(f"rendering {label}", flush=True)

@@ -40,14 +40,14 @@ import numpy as np
 
 PROP_COLLECTION = "CWG_PROPS"
 
-# (module, factory, footprint hint in metres, stands-on-floor)
+# (module, factory); every prop is placed by the same rule, _place_loose
 _PROP_CATALOG = (
-    ("cwg_infinigen.assets.objects.shelves.cell_shelf", "CellShelfFactory", 0.9, True),
-    ("cwg_infinigen.assets.objects.shelves.large_shelf", "LargeShelfFactory", 1.1, True),
-    ("cwg_infinigen.assets.objects.lamp", "FloorLampFactory", 0.4, True),
-    ("cwg_infinigen.assets.objects.tables.dining_table", "TableDiningFactory", 1.8, True),
-    ("cwg_infinigen.assets.objects.tableware.bottle", "BottleFactory", 0.12, False),
-    ("cwg_infinigen.assets.objects.tableware.food_box", "FoodBoxFactory", 0.2, False),
+    ("cwg_infinigen.assets.objects.shelves.cell_shelf", "CellShelfFactory"),
+    ("cwg_infinigen.assets.objects.shelves.large_shelf", "LargeShelfFactory"),
+    ("cwg_infinigen.assets.objects.lamp", "FloorLampFactory"),
+    ("cwg_infinigen.assets.objects.tables.dining_table", "TableDiningFactory"),
+    ("cwg_infinigen.assets.objects.tableware.bottle", "BottleFactory"),
+    ("cwg_infinigen.assets.objects.tableware.food_box", "FoodBoxFactory"),
 )
 
 
@@ -220,7 +220,7 @@ def sample_props(
     room = _Room(spec, floor_depth_m, None, side_gap_m, obstacles, placements, relief_m)
 
     for index in range(count):
-        module_name, class_name, _footprint, _on_floor = rng.choice(_PROP_CATALOG)
+        module_name, class_name = rng.choice(_PROP_CATALOG)
         factory_cls = _load(module_name, class_name)
         if factory_cls is None:
             continue

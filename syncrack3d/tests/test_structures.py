@@ -31,19 +31,14 @@ def test_reproducible_independent_plan_and_clean_sampling():
     assert np.array_equal(np.random.get_state()[1], before[1][1])
 
 
-def test_large_assemblies_clear_crack_centres_and_services():
+def test_large_assemblies_clear_crack_centres():
+    from syncrack3d.structures import LARGE_KINDS
     for seed in range(30):
         spec = sample_scene_spec(seed)
         targets = [SimpleNamespace(u_m=0., v_m=spec.height_m * .5)]
-        plans = sample_structure_plan(seed, spec, targets, 'all')
-        for i, p in enumerate(plans):
-            if p.kind not in ('window', 'utility_box', 'ledge'):
-                continue
-            assert abs(p.u_m) >= p.width_m * .5 + .06 or abs(p.v_m - targets[0].v_m) >= p.height_m * .5 + .06
-            for q in plans[:i]:
-                if q.kind == "panel_seam":
-                    continue
-                assert abs(p.u_m - q.u_m) >= (p.width_m + q.width_m) * .5 + .05 or abs(p.v_m - q.v_m) >= (p.height_m + q.height_m) * .5 + .05
+        for p in sample_structure_plan(seed, spec, targets, 'all'):
+            if p.kind in LARGE_KINDS:
+                assert abs(p.u_m) >= p.width_m * .5 + .06 or abs(p.v_m - targets[0].v_m) >= p.height_m * .5 + .06
 
 
 def test_geometry_is_background_and_structure_cameras_have_no_crack_target():
@@ -273,19 +268,26 @@ def test_fixtures_stand_on_the_wall_relief():
             assert backs[1][kind] <= -0.034 + 1e-5, kind  # nothing sunk into the relief
 
 
-def test_clear_spacing_keeps_fixtures_apart():
-    from syncrack3d.structures import FIXTURE_GAP_M, TRIM_KINDS, _overlaps, built_extent
+def test_fixtures_stay_clear_of_each_other_and_on_the_wall():
+    from syncrack3d.structures import FIXTURE_GAP_M, _overlaps, built_extent
+    trims = ("door", "skirting", "ceiling_trim", "gutter")
     for seed in range(200):
         spec = sample_scene_spec(seed)
-        for profile, env in (("auto", "indoor"), ("auto", "outdoor"), ("all", "indoor")):
-            old = sample_structure_plan(seed, spec, (), profile, env)
-            assert old == sample_structure_plan(seed, spec, (), profile, env, clear=False)
-            plans = sample_structure_plan(seed, spec, (), profile, env, clear=True)
+        targets = [SimpleNamespace(u_m=0., v_m=spec.height_m * .5)]
+        for profile, env, near in (("auto", "indoor", ()), ("auto", "outdoor", ()), ("all", "indoor", ()),
+                                   ("all", "outdoor", targets)):
+            plans = sample_structure_plan(seed, spec, near, profile, env)
             boxes = [(p.kind, built_extent(p.kind, p.u_m, p.v_m, p.width_m, p.height_m)) for p in plans
                      if p.kind != "panel_seam"]
+            base = (-spec.width_m * .5, spec.width_m * .5, 0., .085)
             for i, (a, ea) in enumerate(boxes):
+                if a not in trims:
+                    assert -spec.width_m * .5 - 1e-9 <= ea[0] and ea[1] <= spec.width_m * .5 + 1e-9, (seed, a)
+                    assert -1e-9 <= ea[2] and ea[3] <= spec.height_m + 1e-9, (seed, a)
+                    if spec.skirting:
+                        assert not _overlaps(ea, base, FIXTURE_GAP_M - 1e-9), (seed, a)
                 for b, eb in boxes[:i]:
-                    if a in TRIM_KINDS and b in (*TRIM_KINDS, "door"):
+                    if a in trims and b in trims:
                         continue  # trims meet each other and run under a door's cut
                     assert not _overlaps(ea, eb, FIXTURE_GAP_M - 1e-9), (seed, profile, a, b)
 
