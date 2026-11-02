@@ -12,13 +12,21 @@ import math
 import random
 
 PROFILES = ("off", "auto", "services", "facade", "indoor", "outdoor", "all")
-KINDS = ("cable", "wall_cable", "conduit", "downpipe", "utility_box", "window", "panel_seam", "ledge")
-INDOOR_KINDS = ("socket", "switch", "door", "skirting", "ceiling_trim",
-                "vent", "access_panel", "trunking", "plumbing")
-OUTDOOR_KINDS = ("exterior_vent", "service_hatch", "gutter", "wall_light")
-KINDS += INDOOR_KINDS + OUTDOOR_KINDS
-LARGE_KINDS = ("utility_box", "window", "ledge", "door", "vent", "access_panel",
-               "exterior_vent", "service_hatch", "socket", "switch", "wall_light")
+KINDS = ("cable", "wall_cable", "conduit", "downpipe", "utility_box", "window", "panel_seam")
+# Exclusive to one setting. Vent, access panel, and the full-length runs are shared.
+# Outdoor scenes have no exclusive fixture of their own.
+INDOOR_KINDS = ("door", "trunking")
+OUTDOOR_KINDS = ()
+KINDS += INDOOR_KINDS + OUTDOOR_KINDS + ("vent", "access_panel", "plumbing")
+LARGE_KINDS = ("utility_box", "window", "door", "vent", "access_panel")
+# Full-length runs, down the wall or across it. Trunking is indoor only.
+# Outdoors the built run continues across the whole facade; the plan stays on
+# the inspection wall so cracks and junctions do too.
+SPAN_KINDS = ("wall_cable", "conduit", "downpipe", "plumbing", "trunking", "panel_seam")
+SPAN_SECTION = {
+    "wall_cable": 0.10, "conduit": 0.10, "downpipe": 0.18, "plumbing": 0.40,
+    "trunking": 0.055, "panel_seam": 0.006,
+}
 SALT = 0x53545255
 
 
@@ -49,48 +57,51 @@ TRIES = 60
 # lintel, a conduit's elbow and brackets, a cable's sag, a utility box's feed.
 # A test checks these cover the built geometry.
 PAD = {
-    "cable": (.03, .03, .06, 0.), "wall_cable": (0., .005, 0., 0.), "conduit": (0., .04, .03, .01),
-    "downpipe": (.02, .02, 0., 0.), "utility_box": (0., 0., 0., .25), "window": (.10, .10, .07, .12),
-    "vent": (.02, .02, 0., .015), "exterior_vent": (.02, .02, 0., .015), "access_panel": (.02, .02, 0., .015),
-    "service_hatch": (.02, .02, 0., .015), "plumbing": (-.11, -.04, 0., 0.), "gutter": (.006, .006, .025, 0.),
-    "ledge": (0., 0., .01, 0.),
+    "cable": (.03, .03, .06, 0.), "wall_cable": (0., 0., 0., 0.), "conduit": (0., 0., 0., 0.),
+    "downpipe": (0., 0., 0., 0.), "utility_box": (0., 0., 0., .25), "window": (.10, .10, .07, .12),
+    "vent": (.02, .02, 0., .015), "access_panel": (.02, .02, 0., .015),
+    "plumbing": (0., 0., 0., 0.),
 }
-JITTER_KINDS = ("utility_box", "window", "ledge")  # width and height x U(.8, 1.15)
+JITTER_KINDS = ("utility_box", "window")  # width and height x U(.8, 1.15)
 FLUSH_KINDS = ("panel_seam",)  # flush sealant joints: placed like the rest, but others may cross them
-BOUNDARIES = ("floor", "skirting", "ceiling")
+BOUNDARIES = ("floor",)
 
 
 def fixture_rules(width_m, height_m):
     """kind -> (width, height, anchor) on a width_m x height_m wall.
 
     The anchor is where the centre height is drawn: None from 0.3 m up to
-    0.15 m under the ceiling, (lo, hi) a band, "run" the whole span between the
-    skirting and a ceiling trim, "floor" standing on the floor (a door), or
-    "skirting" / "ceiling" a full-width trim along that edge."""
+    0.15 m under the ceiling, (lo, hi) a band, "run" the clear wall height, or
+    "floor" standing on the floor (a door)."""
     W, H = width_m, height_m
     return {
         "cable": (W * .85, .5, (H * .55, H - .3)),
-        "wall_cable": (.08, H * .8, "run"),
-        "conduit": (.5, min(1.7, H * .75), "run"),
-        "downpipe": (.13, H, "run"),
+        "wall_cable": (SPAN_SECTION["wall_cable"], H, "run"),
+        "conduit": (SPAN_SECTION["conduit"], H, "run"),
+        "downpipe": (SPAN_SECTION["downpipe"], H, "run"),
         "utility_box": (.24, .32, None),
         "window": (min(1.1, W * .35), min(.85, H * .32), None),
-        "panel_seam": (W, .006, None),
-        "ledge": (min(1.5, W * .5), .16, None),
-        "socket": (.146, .086, (.25, .45)),
-        "switch": (.086, .086, (1.05, min(1.35, H - .2))),
+        "panel_seam": (SPAN_SECTION["panel_seam"], H, "run"),
         "door": (.94, min(2.08, H - .20), "floor"),
-        "skirting": (W, .11, "skirting"),
-        "ceiling_trim": (W, .065, "ceiling"),
-        "vent": (.42, .24, None),
-        "access_panel": (.45, .50, None),
-        "trunking": (W * .7, .055, None),
-        "plumbing": (.50, .65, None),
-        "exterior_vent": (.42, .32, (H * .6, H - .26)),
-        "service_hatch": (.50, .65, None),
-        "gutter": (W - .012, .13, "ceiling"),  # its end caps reach to the side walls
-        "wall_light": (.16, .27, (H * .6, H - .235)),
+        "vent": (.56, .18, None),
+        "access_panel": (.46, .46, None),
+        "trunking": (SPAN_SECTION["trunking"], H, "run"),
+        "plumbing": (SPAN_SECTION["plumbing"], H, "run"),
     }
+
+
+def span_on_host(kind, u, v, w, h, bounds):
+    """(u, v, w, h) of a full-length run on bounds (u_lo, u_hi, v_lo, v_hi).
+
+    bounds is None on the inspection wall. Outdoors it is the whole front face,
+    past the inspection panel. A sideways run keeps its height; a vertical run
+    keeps its place across the wall. Other fixtures are unchanged."""
+    if bounds is None or kind not in SPAN_KINDS:
+        return u, v, w, h
+    u0, u1, v0, v1 = bounds
+    if w >= h:
+        return (u0 + u1) * .5, v, u1 - u0, h
+    return u, (v0 + v1) * .5, w, v1 - v0
 
 
 def built_extent(kind, u, v, w, h):
@@ -112,10 +123,9 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     and built extent stay on the wall, and is kept only if its built extent is
     FIXTURE_GAP_M clear of every fixture already placed and of the base wall's
     skirting; a large kind also keeps crack centres 6 cm clear. A fixture with
-    no room after TRIES draws is dropped. Boundaries - a door and the
-    full-width trims - go first and may meet each other (the skirting is cut
-    at the door); vertical runs then span from the skirting to under a ceiling
-    trim. Panel seams are flush joints: nothing is kept clear of them."""
+    no room after TRIES draws is dropped. A door goes first. A wire, conduit,
+    pipe, plumbing run, trunking or panel seam then spans the clear height, or
+    the full width. Panel seams are flush joints: nothing is kept clear of them."""
     if profile not in PROFILES:
         raise ValueError(f"unknown structure profile: {profile}")
     if profile == "off":
@@ -128,11 +138,12 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     elif profile == "all":
         kinds = list(KINDS)
     else:
-        indoor = ["wall_cable", "conduit", "utility_box", "window", "panel_seam", *INDOOR_KINDS]
-        outdoor = ["cable", "wall_cable", "conduit", "downpipe", "utility_box", "window",
-                   "panel_seam", "ledge", *OUTDOOR_KINDS]
+        runs = ("wall_cable", "conduit", "downpipe", "plumbing")
+        shared = ("vent", "access_panel", *runs)
+        indoor = ["utility_box", "window", "panel_seam", *shared, *INDOOR_KINDS]
+        outdoor = ["cable", "utility_box", "window", "panel_seam", *shared, *OUTDOOR_KINDS]
         pool = (list(KINDS[:5]) + ["trunking", "plumbing"] if profile == "services" else
-                ["window", "panel_seam", "ledge", "downpipe", *OUTDOOR_KINDS] if profile == "facade" else
+                ["window", "panel_seam", *shared, *OUTDOOR_KINDS] if profile == "facade" else
                 indoor if profile == "indoor" else outdoor if profile == "outdoor" else
                 outdoor if environment == "outdoor" else indoor)
         kinds = r.sample(pool, r.randint(2, min(4, len(pool))))
@@ -147,12 +158,22 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     plans = []
     for i, kind in enumerate(kinds):
         w, h, anchor = rules[kind]
+        if kind in SPAN_KINDS:
+            # Full length, floor to ceiling or side to side. The draw is its own
+            # call so both directions stay in the seeded stream.
+            section = SPAN_SECTION[kind]
+            if r.random() < .5:
+                w, h, anchor = W, section, "side"
+            else:
+                w, h, anchor = section, H, "run"
         if kind in JITTER_KINDS:
             w *= r.uniform(.8, 1.15)
             h *= r.uniform(.8, 1.15)
         left, right, below, above = (max(0., p) for p in PAD.get(kind, (0., 0., 0., 0.)))
         if anchor == "run":
             h = min(h, high - low - below - above)
+            band = (low + below + h * .5, high - above - h * .5)
+        elif anchor == "side":
             band = (low + below + h * .5, high - above - h * .5)
         elif anchor in BOUNDARIES:
             band = (H - h * .5,) * 2 if anchor == "ceiling" else (h * .5,) * 2
@@ -178,17 +199,13 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
             break
         else:
             continue  # no room: report only built plans
-        if anchor == "skirting":
-            low = max(low, h + clear)
-        elif anchor == "ceiling":
-            high = min(high, H - h - below - clear)
         plans.append(StructurePlan(i, kind, u, v, w, h, r.randrange(2**31)))
         if kind not in FLUSH_KINDS:
             obstacles.append(built_extent(kind, u, v, w, h))
     return plans
 
 
-def build_structures(plans, relief_m=0.0):
+def build_structures(plans, relief_m=0.0, span_bounds=None, host_height_m=None):
     """Build the planned fixtures. Each assembly stands `relief_m` out from the
     wall plane, on the wall's displaced relief rather than sunk into it."""
     import bpy
@@ -198,18 +215,6 @@ def build_structures(plans, relief_m=0.0):
     col = _collection("CWG_STRUCTURES")
     records = []
     plans = list(plans)
-    old_skirting = bpy.data.objects.get("CWG_Skirting")
-    if (old_skirting is not None and any(p.kind == "door" for p in plans)
-            and not any(p.kind == "skirting" for p in plans)):
-        # Replace the base wall's uninterrupted board with sections around
-        # the door, even when skirting was not explicitly sampled.
-        plans.append(StructurePlan(max(p.index for p in plans)+1, "skirting",
-                                   0., .0425, float(old_skirting.dimensions.x), .085,
-                                   next(p.seed for p in plans if p.kind == "door") ^ SALT))
-    if any(p.kind == "skirting" for p in plans):
-        old = bpy.data.objects.get("CWG_Skirting")
-        if old is not None:
-            bpy.data.objects.remove(old, do_unlink=True)
     for p in plans:
         r = random.Random(p.seed)
         prefix = f"CWG_Structure_{p.index:02d}_{p.kind}"
@@ -259,7 +264,7 @@ def build_structures(plans, relief_m=0.0):
             obj.data.materials.append(mat)
             return tag(obj)
 
-        x, z, w, h = p.u_m, p.v_m, p.width_m, p.height_m
+        x, z, w, h = span_on_host(p.kind, p.u_m, p.v_m, p.width_m, p.height_m, span_bounds)
         if p.kind == 'cable':
             # A suspended span with gravity sag, wall anchors and a loose return.
             radius = r.uniform(.0025, .006)
@@ -271,37 +276,141 @@ def build_structures(plans, relief_m=0.0):
             if r.random() < .65:
                 tube('loop', [(points[0][0], -.065, z + .22), (points[0][0] + .06, -.07, z - .18),
                               (points[0][0] + .20, -.08, z - .28), (points[0][0] + .24, -.06, z + .20)], radius, dark, True)
-        elif p.kind == 'wall_cable':
-            radius = r.uniform(.003, .007)
-            for bundle in range(r.randint(1, 3)):
-                xx = x + bundle * .012
-                pts = [(xx + .004 * math.sin(t * 2.1), -.018, z - h * .5 + h * t / 8) for t in range(9)]
-                tube('wire', pts, radius, dark, True)
-            for t in (.1, .45, .8):
-                zz = z - h * .5 + h * t
-                box('clip', (.055, .026, .014), (x + .012, -.017, zz), metal)
-        elif p.kind in ('conduit', 'downpipe'):
-            radius = r.uniform(.009, .015) if p.kind == 'conduit' else r.uniform(.035, .055)
-            y = -(radius + .022)
-            bottom, top = max(.04, z - h * .5), z + h * .5
-            if p.kind == 'conduit':
-                # Short bevel elbow into a horizontal run.
-                tube('run', [(x - w * .5, y, bottom), (x + w * .3, y, bottom),
-                             (x + w * .5, y, bottom + .06), (x + w * .5, y, top)], radius, paint)
-                x += w * .5
+        def finish(label, color, roughness=.4, metallic=0., variation=.025, scale=48.):
+            mat = make_solid_material(prefix + '_' + label, color, roughness=roughness, metallic=metallic)
+            nodes, links = mat.node_tree.nodes, mat.node_tree.links
+            bsdf = nodes['Principled BSDF']
+            noise = nodes.new('ShaderNodeTexNoise')
+            noise.inputs['Scale'].default_value = scale
+            noise.inputs['Detail'].default_value = 3.0
+            noise.inputs['Roughness'].default_value = .55
+            links.new(nodes.new('ShaderNodeTexCoord').outputs['Object'], noise.inputs['Vector'])
+            ramp = nodes.new('ShaderNodeValToRGB')
+            ramp.color_ramp.elements[0].position = .32
+            ramp.color_ramp.elements[0].color = tuple(max(0., c - variation) for c in color[:3]) + (1.,)
+            ramp.color_ramp.elements[1].position = .68
+            ramp.color_ramp.elements[1].color = tuple(min(1., c + variation) for c in color[:3]) + (1.,)
+            links.new(noise.outputs['Fac'], ramp.inputs['Fac'])
+            links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
+            return mat
+
+        if p.kind == 'wall_cable':
+            # Insulated live, neutral and earth cables in white plastic clips.
+            horizontal = w >= h
+            colours = ((.03, .03, .035, 1), (.78, .78, .76, 1), (.16, .45, .2, 1))
+            count = 3
+            span = w if horizontal else h
+            groups = max(3, int(span / .34))
+            for bundle in range(count):
+                short = (bundle - (count - 1) * .5) * .016
+                pts = []
+                for step in range(13):
+                    t = step / 12
+                    sag = .0025 * math.sin(t * math.pi * groups)
+                    if horizontal:
+                        pts.append((x - w * .5 + w * t, -.013 - sag, z + short))
+                    else:
+                        pts.append((x + short, -.013 - sag, z - h * .5 + h * t))
+                tube('wire', pts, .004, finish(f'insul{bundle}', colours[bundle], .48, variation=.02), True)
+            clip = finish('clip', (.93, .93, .91, 1), .5, variation=.01)
+            span_clip = count * .016 + .012
+            for i in range(1, groups):
+                t = i / groups
+                if horizontal:
+                    box('clip', (.016, .012, span_clip), (x - w * .5 + w * t, -.012, z), clip)
+                else:
+                    box('clip', (span_clip, .012, .016), (x, -.012, z - h * .5 + h * t), clip)
+        elif p.kind == 'conduit':
+            # White PVC, or galvanized EMT, with a coupler and saddle straps.
+            horizontal = w >= h
+            pvc = r.random() < .65
+            if pvc:
+                body = finish('pvc', (.86, .87, .85, 1), .36, variation=.015)
+                strap = finish('strap', (.78, .79, .77, 1), .48, variation=.01)
+                radius = .012
             else:
-                tube('run', [(x, y, bottom), (x, y, top)], radius)
-                tube('socket', [(x, y, top * .55 - .035), (x, y, top * .55 + .035)], radius * 1.22)
-            for zz in (bottom + .15, top - .15):
-                box('bracket', (radius * 2 + .045, abs(y), .018), (x, y * .5, zz), metal)
-                tube('collar', [(x, y, zz - .012), (x, y, zz + .012)], radius * 1.10, metal)
+                body = finish('emt', (.62, .63, .61, 1), .3, .9, variation=.03, scale=80.)
+                strap = body
+                radius = .01
+            y = -(radius + .016)
+            span = w if horizontal else h
+
+            def at(frac, delta=0.):
+                if horizontal:
+                    return (x - w * .5 + w * frac + delta, y, z)
+                return (x, y, z - h * .5 + h * frac + delta)
+
+            tube('run', [at(0.), at(1.)], radius, body)
+            joints = max(2, int(span / 1.5)) if span >= 1.2 else 1
+            for i in range(1, joints):
+                tube('coupling', [at(i / joints, -.02), at(i / joints, .02)], radius * 1.28, body)
+            straps = max(4, int(span / .55))
+            band = radius * 2 + .016
+            for i in range(straps):
+                frac = (i + .5) / straps
+                loc = at(frac)
+                dims = (.016, abs(y), band) if horizontal else (band, abs(y), .016)
+                box('saddle', dims, (loc[0], y * .4, loc[2]), strap)
+                front = y - radius - .003
+                band_dims = (.014, .004, band) if horizontal else (band, .004, .014)
+                box('strap', band_dims, (loc[0], front, loc[2]), strap)
+        elif p.kind == 'downpipe':
+            # Round PVC rainwater pipe, socket joints and stand-off clips.
+            horizontal = w >= h
+            tone = r.choice(((.91, .91, .89, 1), (.2, .21, .22, 1), (.58, .6, .61, 1)))
+            body = finish('pvc', tone, .26, variation=.018)
+            radius = r.uniform(.032, .04)
+            y = -(radius + .018)
+            span = w if horizontal else h
+
+            def at(frac, delta=0.):
+                if horizontal:
+                    return (x - w * .5 + w * frac + delta, y, z)
+                return (x, y, z - h * .5 + h * frac + delta)
+
+            tube('run', [at(0.), at(1.)], radius, body)
+            for frac in ((.5,) if span < 1.6 else (.33, .66)):
+                tube('socket', [at(frac, -.028), at(frac, .028)], radius * 1.16, body)
+            clips = max(3, int(span / .7))
+            shoulder = radius * 2 + .026
+            for i in range(1, clips):
+                loc = at(i / clips)
+                if horizontal:
+                    box('backplate', (.022, .01, shoulder), (loc[0], y * .28, z), body)
+                    box('strap', (.016, .005, shoulder), (loc[0], y - radius - .003, z), body)
+                else:
+                    box('backplate', (shoulder, .01, .022), (x, y * .28, loc[2]), body)
+                    box('strap', (shoulder, .005, .016), (x, y - radius - .003, loc[2]), body)
         elif p.kind == 'utility_box':
-            box('housing', (w, .10, h), (x, -.05, z))
-            box('lid', (w * .96, .012, h * .96), (x, -.108, z))
-            for dx in (-.39, .39):
-                for dz in (-.40, .40):
-                    tube('screw', [(x + w * dx, -.113, z + h * dz), (x + w * dx, -.12, z + h * dz)], .004, metal)
-            tube('feed', [(x, -.025, z + h * .5), (x, -.025, z + h * .5 + .25)], .009)
+            # Painted cabinet, shut door, and a conduit that runs the full host height.
+            colour = r.choice(((.78, .58, .10), (.82, .40, .12), (.32, .52, .28), (.55, .57, .59)))
+            cabinet = make_solid_material(prefix + '_cabinet', (*colour, 1), roughness=.45)
+            box('housing', (w, .055, h), (x, -.030, z), cabinet)
+            box('door', (w - .014, .012, h - .014), (x, -.062, z), cabinet)
+            for frac in (.22, .78):
+                hz = z - h * .5 + h * frac
+                tube('hinge', [(x - w * .5 + .008, -.064, hz - .014),
+                               (x - w * .5 + .008, -.064, hz + .014)], .005, metal)
+            tube('latch', [(x + w * .30, -.066, z), (x + w * .30, -.082, z)], .007, metal)
+            if r.random() < .6:
+                face = make_solid_material(prefix + '_meter', (.12, .16, .18, 1), roughness=.25)
+                rim = min(w, h) * .26
+                tube('meter_rim', [(x - w * .06, -.066, z + .01), (x - w * .06, -.080, z + .01)], rim, metal)
+                tube('meter_face', [(x - w * .06, -.074, z + .01), (x - w * .06, -.084, z + .01)], rim * .78, face)
+            if span_bounds is not None:
+                bottom, top = span_bounds[2], span_bounds[3]
+            elif host_height_m:
+                bottom, top = 0., host_height_m
+            else:
+                bottom, top = z - h * .5, z + h * .5 + .25
+            y, radius = -.018, .012
+            riser_mat = finish('riser', (.84, .85, .83, 1), .34, variation=.015)
+            tube('riser', [(x, y, bottom), (x, y, top)], radius, riser_mat)
+            tube('hub', [(x, y, z + h * .5 - .012), (x, y, z + h * .5 + .016)], radius * 1.35, riser_mat)
+            for z0, z1 in ((z + h * .5 + .04, top), (bottom, z - h * .5 - .02)):
+                if z1 - z0 < .15:
+                    continue
+                box('clip', (.036, .02, .012), (x, -.012, (z0 + z1) * .5), riser_mat)
         elif p.kind == 'window':
             glass = make_solid_material(prefix + '_opaque_glazing', (.035, .060, .075, 1), roughness=.2)
             # Opaque backing blocks the host AOV, including at oblique views.
@@ -315,27 +424,8 @@ def build_structures(plans, relief_m=0.0):
             box('sill', (w + .16, .22, .055), (x, -.10, z - h * .5 - .04))
             box('lintel', (w + .20, .16, .10), (x, -.075, z + h * .5 + .07))
         elif p.kind == 'panel_seam':
-            # Opaque sealant in a narrow construction joint: never a crack field.
-            box('horizontal_sealant', (w, .004, h), (x, -.004, z), dark)
-            if r.random() < .7:
-                box('vertical_sealant', (h, .004, max(.4, z)), (x + w * .22, -.004, max(.4, z) * .5), dark)
-        elif p.kind == 'ledge':
-            box('beam', (w, .32, h), (x, -.155, z))
-            box('drip_edge', (w, .015, .018), (x, -.29, z - h * .5), metal)
-        elif p.kind in ('socket', 'switch'):
-            box('gasket', (w, .007, h), (x, -.004, z), dark)
-            box('faceplate', (w-.004, .012, h-.004), (x, -.013, z))
-            for dx in (-w*.40, w*.40):
-                tube('screw', [(x+dx, -.019, z), (x+dx, -.022, z)], .0025, metal)
-                box('screw_slot', (.003, .001, .0007), (x+dx, -.0225, z), dark)
-            if p.kind == 'switch':
-                box('rocker_gap', (.037, .004, .049), (x, -.021, z), dark)
-                rocker = box('rocker', (.033, .007, .045), (x, -.025, z))
-                rocker.rotation_euler.x = math.radians(r.choice((-7, 7)))
-            else:
-                for dx in (-w*.22, w*.22):
-                    for xx, zz in ((-.009, -.006), (.009, -.006), (0, .014)):
-                        box('socket_aperture', (.004, .002, .010), (x+dx+xx, -.020, z+zz), dark)
+            # One construction joint the full length of the host. Never a crack field.
+            box('sealant', (w, .004, h), (x, -.004, z), dark)
         elif p.kind == 'door':
             door_mat = make_solid_material(prefix+'_leaf', (.22, .13, .065, 1), roughness=.6)
             box('shadow_reveal', (w, .018, h), (x, -.012, z), dark)
@@ -350,72 +440,106 @@ def build_structures(plans, relief_m=0.0):
             tube('lever', [(hx, -.105, hz), (hx-.10, -.105, hz)], .008, metal)
             for zz in (.30, h-.30):
                 tube('hinge', [(x-w*.5+.06, -.055, zz), (x-w*.5+.06, -.055, zz+.06)], .007, metal)
-        elif p.kind in ('skirting', 'ceiling_trim', 'trunking'):
-            depth = .028 if p.kind == 'trunking' else .018
-            # Small open butt joints between boards; split around door jambs.
-            cuts = [(x-w*.5, x+w*.5)]
-            if p.kind == 'skirting':
-                for door in (q for q in plans if q.kind == 'door'):
-                    left, right = door.u_m-door.width_m*.5, door.u_m+door.width_m*.5
-                    cuts = [(a, b) for lo, hi in cuts for a, b in
-                            ((lo, min(hi, left)), (max(lo, right), hi)) if b-a > .01]
-            for lo, hi in cuts:
-                count = max(1, math.ceil((hi-lo)/1.4))
-                length = (hi-lo)/count
+        elif p.kind == 'trunking':
+            # White PVC trunking: channel, snap lid with a centre seam, and screws.
+            pvc = finish('trunk', (.92, .92, .9, 1), .4, variation=.012)
+            seam = finish('seam', (.72, .72, .7, 1), .5, variation=.01)
+            horizontal = w >= h
+            lo, hi = (x - w * .5, x + w * .5) if horizontal else (z - h * .5, z + h * .5)
+            cross = h if horizontal else w
+            depth = min(.022, cross * .55)
+            count = max(1, math.ceil((hi - lo) / 2.0))
+            length = (hi - lo) / count
+            gap = .003 if count > 1 else 0.
+            for j in range(count):
+                c = lo + (j + .5) * length
+                piece = length - gap
+                if horizontal:
+                    box('section', (piece, depth, cross), (c, -depth * .5 - .003, z), pvc)
+                    box('lid', (piece - .002, .004, cross - .016), (c, -depth - .005, z), pvc)
+                    box('groove', (piece - .01, .0014, .0035), (c, -depth - .008, z), seam)
+                else:
+                    box('section', (cross, depth, piece), (x, -depth * .5 - .003, c), pvc)
+                    box('lid', (cross - .016, .004, piece - .002), (x, -depth - .005, c), pvc)
+                    box('groove', (.0035, .0014, piece - .01), (x, -depth - .008, c), seam)
+            screws = max(2, int((hi - lo) / .45))
+            for i in range(1, screws):
+                c = lo + (hi - lo) * i / screws
+                if horizontal:
+                    tube('screw', [(c, -depth - .004, z), (c, -depth - .010, z)], .0024, metal)
+                else:
+                    tube('screw', [(x, -depth - .004, c), (x, -depth - .010, c)], .0024, metal)
+        elif p.kind in ('vent', 'access_panel'):
+            def rails(border, depth, y, mat, tag):
+                box(tag + '_stile_l', (border, depth, h), (x - w * .5 + border * .5, y, z), mat)
+                box(tag + '_stile_r', (border, depth, h), (x + w * .5 - border * .5, y, z), mat)
+                box(tag + '_rail_b', (w - 2 * border, depth, border), (x, y, z - h * .5 + border * .5), mat)
+                box(tag + '_rail_t', (w - 2 * border, depth, border), (x, y, z + h * .5 - border * .5), mat)
+
+            if p.kind == 'vent':
+                # Wide register: pale frame, dark opening, thin horizontal slats, one screw each side.
+                frame = make_solid_material(prefix + '_frame', (.86, .87, .88, 1), roughness=.42)
+                border = min(.02, h * .22, w * .05)
+                rails(border, .014, -.014, frame, 'frame')
+                open_w, open_h = w - 2 * border - .004, h - 2 * border - .004
+                box('cavity', (open_w, .008, open_h), (x, -.006, z), dark)
+                count = max(7, int(open_h / .012))
+                thick = min(.0035, open_h / count * .42)
                 for j in range(count):
-                    cx = lo+(j+.5)*length
-                    box('joint_backing', (length, .003, h), (cx, -.002, z), dark)
-                    box('section', (length-.002, depth, h), (cx, -depth*.5-.004, z))
-                    if p.kind == 'trunking':
-                        box('lid', (length-.004, .004, h-.006), (cx, -depth-.006, z))
-                    else:
-                        box('moulding', (length-.003, .008, h*.18), (cx, -depth-.004, z+h*.28))
-        elif p.kind in ('vent', 'exterior_vent', 'access_panel', 'service_hatch'):
-            box('frame', (w, .028, h), (x, -.016, z))
-            box('recess', (w-.035, .008, h-.035), (x, -.035, z), dark)
-            if p.kind in ('vent', 'exterior_vent'):
-                count = max(4, int(h/.028))
-                for j in range(count):
-                    blade = box('louvre', (w-.045, .025, .012),
-                                (x, -.055, z-h*.5+.025+(h-.05)*(j+.5)/count), metal)
-                    blade.rotation_euler.x = math.radians(-25)
-                if p.kind == 'exterior_vent':
-                    box('rain_hood', (w+.04, .12, .025), (x, -.06, z+h*.5))
+                    zz = z - open_h * .5 + open_h * (j + .5) / count
+                    box('slat', (open_w - .004, .01, thick), (x, -.016, zz), dark)
+                for sx in (x - w * .5 + border * .5, x + w * .5 - border * .5):
+                    tube('screw', [(sx, -.018, z), (sx, -.024, z)], .004, metal)
             else:
-                box('door_panel', (w-.042, .012, h-.042), (x, -.043, z))
-                tube('latch', [(x+w*.28, -.051, z), (x+w*.28, -.057, z)], .01, metal)
-                for dz in (-h*.28, h*.28):
-                    box('hinge', (.025, .012, .06), (x-w*.38, -.053, z+dz), metal)
-            for dx in (-w*.43, w*.43):
-                for dz in (-h*.40, h*.40):
-                    tube('fastener', [(x+dx, -.031, z+dz), (x+dx, -.036, z+dz)], .003, metal)
+                # Square metal hatch, door shut in the frame, latch and hinge knuckles.
+                silver = make_solid_material(prefix + '_silver', (.70, .72, .74, 1), roughness=.28)
+                silver.node_tree.nodes['Principled BSDF'].inputs['Metallic'].default_value = .9
+                border = min(.03, w * .09, h * .09)
+                rails(border, .012, -.012, silver, 'frame')
+                open_w, open_h = w - 2 * border, h - 2 * border
+                box('cavity', (open_w + .004, .01, open_h + .004), (x, -.004, z), dark)
+                reveal = .004
+                door_w, door_h = open_w - reveal, open_h - reveal
+                box('door', (door_w, .008, door_h), (x, -.018, z), silver)
+                lx = x + door_w * .5 - .02
+                tube('latch', [(lx, -.020, z), (lx, -.030, z)], .006, metal)
+                hx = x + w * .5 - .007
+                for frac in (.22, .5, .78):
+                    hz = z - h * .5 + h * frac
+                    tube('hinge', [(hx, -.022, hz - .016), (hx, -.022, hz + .016)], .005, silver)
         elif p.kind == 'plumbing':
-            # Paired exposed service pipes, clamps, union fittings and a valve.
-            for dx in (-.12, .12):
-                xx = x+dx
-                tube('pipe', [(xx, -.045, z-h*.5), (xx, -.045, z+h*.5)], .011, metal)
-                for dz in (-h*.32, h*.32):
-                    box('wall_clip', (.04, .045, .018), (xx, -.0225, z+dz))
-                    tube('union', [(xx, -.045, z+dz-.018), (xx, -.045, z+dz+.018)], .016, metal)
-            tube('valve_body', [(x+.12, -.045, z-.03), (x+.12, -.045, z+.03)], .023, metal)
-            tube('valve_stem', [(x+.12, -.045, z), (x+.12, -.095, z)], .006, metal)
-            box('valve_lever', (.10, .014, .016), (x+.15, -.10, z), dark)
-        elif p.kind == 'gutter':
-            # Open U channel, end caps, section joints and wall brackets.
-            box('base', (w, .14, .012), (x, -.08, z-h*.5+.006))
-            box('back', (w, .012, h), (x, -.016, z))
-            box('front', (w, .012, h*.75), (x, -.144, z-h*.125))
-            for dx in (-w*.5, w*.5):
-                box('end_cap', (.012, .14, h), (x+dx, -.08, z))
-            for j in range(max(2, int(w/.7))):
-                xx=x-w*.5+.15+(w-.30)*j/(max(2, int(w/.7))-1)
-                box('bracket', (.022, .16, .025), (xx, -.08, z-h*.5-.012), metal)
-        elif p.kind == 'wall_light':
-            box('backplate', (w, .025, h), (x, -.014, z), dark)
-            diffuser = make_solid_material(prefix+'_diffuser', (.65, .68, .62, 1), roughness=.4)
-            box('opaque_diffuser', (w-.025, .07, h-.035), (x, -.055, z), diffuser)
-            for dz in (-h*.36, 0, h*.36):
-                box('guard', (w, .015, .012), (x, -.098, z+dz), metal)
+            # Paired copper or chrome pipes, compression fittings, clips and a stopcock.
+            horizontal = w >= h
+            if r.random() < .7:
+                pipe_mat = finish('copper', (.72, .40, .26, 1), .28, .92, variation=.05, scale=70.)
+                fit_mat = finish('brass', (.6, .46, .22, 1), .36, .88, variation=.03, scale=60.)
+            else:
+                pipe_mat = finish('chrome', (.78, .79, .78, 1), .12, .96, variation=.02, scale=90.)
+                fit_mat = pipe_mat
+            clip_mat = finish('clip', (.93, .93, .91, 1), .5, variation=.01)
+            radius, y = .008, -.034
+            for short in (-.09, .09):
+                if horizontal:
+                    tube('pipe', [(x - w * .5, y, z + short), (x + w * .5, y, z + short)], radius, pipe_mat)
+                else:
+                    tube('pipe', [(x + short, y, z - h * .5), (x + short, y, z + h * .5)], radius, pipe_mat)
+                for frac in (.22, .46, .78):
+                    if horizontal:
+                        cx = x - w * .5 + w * frac
+                        box('clip', (.014, .02, .028), (cx, y * .45, z + short), clip_mat)
+                        tube('union', [(cx - .012, y, z + short), (cx + .012, y, z + short)], radius * 1.45, fit_mat)
+                    else:
+                        cz = z - h * .5 + h * frac
+                        box('clip', (.028, .02, .014), (x + short, y * .45, cz), clip_mat)
+                        tube('union', [(x + short, y, cz - .012), (x + short, y, cz + .012)], radius * 1.45, fit_mat)
+            if horizontal:
+                tube('valve_body', [(x - .02, y, z + .09), (x + .02, y, z + .09)], .015, fit_mat)
+                tube('valve_stem', [(x, y, z + .09), (x, y - .03, z + .09)], .004, fit_mat)
+                box('valve_lever', (.01, .008, .05), (x, y - .034, z + .09), fit_mat)
+            else:
+                tube('valve_body', [(x + .09, y, z - .02), (x + .09, y, z + .02)], .015, fit_mat)
+                tube('valve_stem', [(x + .09, y, z), (x + .09, y - .03, z)], .004, fit_mat)
+                box('valve_lever', (.05, .008, .01), (x + .07, y - .034, z), fit_mat)
         root.location.y -= relief_m
         root['cwg_role'] = 'structure'
         root['cwg_hard_negative'] = p.kind

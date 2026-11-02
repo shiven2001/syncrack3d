@@ -19,10 +19,10 @@ any other mode, and a scene's material is reproducible from its seed.
 `--wall-materials unified` (v2, the `unified` recipe) is the palette the
 released training data was actually built from: those batches forced one
 category at a time in near-equal shares, so the weights above never shaped
-them. It draws the 11 crack-able categories uniformly, leaves out wood and
+them. It draws the 10 crack-able categories uniformly, leaves out wood and
 irregular stone entirely, and uses one clean-wall table for every wall, in
 which stone block and large tile join the other patterned masonry at 0.60.
-Plaster and stucco are each one of those 11. Each draws its coat from the
+Plaster and stucco are each one of those 10. Each draws its coat from the
 neutral, coloured, or mid-tone range, and stucco also draws a relief style.
 The named paint and stucco bands stay available for an explicit
 --material-category. `diverse` is kept unchanged so the v1.x releases rebuild exactly.
@@ -71,6 +71,8 @@ CATEGORIES = {
     # sandstone, ceramic/exterior_stone.py): rounded cobbles in mortar, angular
     # coursed or dry rubble, bedded sandstone ashlar. Cracks only; forced only.
     "cobble_wall": (0.0, "stone", [("ceramic", "CobbleWall", 1.0)]),
+    # Kept for an explicit --material-category. Unified omits it: at room scale
+    # it reads as the same irregular stone wall as cobble.
     "rubble_stone": (0.0, "stone", [("ceramic", "RubbleStone", 1.0)]),
     "sandstone": (0.0, "stone", [("ceramic", "SandstoneAshlar", 1.0)]),
 }
@@ -92,10 +94,10 @@ NEVER_CRACKED = ("wood", "irregular_stone")
 PLASTER_BANDS = ("paint_neutral", "paint_colour", "paint_colour_mid")
 STUCCO_BANDS = ("stucco_neutral", "stucco_colour", "stucco_colour_mid")
 # v2 (`unified`): one plaster, one stucco, plus the other crack-able categories,
-# drawn uniformly. Wood, irregular stone, and the named colour bands are out.
-UNIFIED_CATEGORIES = tuple(
-    c for c in CATEGORIES if c not in NEVER_CRACKED + PLASTER_BANDS + STUCCO_BANDS
-)
+# drawn uniformly. Wood, irregular stone, the named colour bands, and rubble
+# stone are out.
+UNIFIED_OMIT = NEVER_CRACKED + PLASTER_BANDS + STUCCO_BANDS + ("rubble_stone",)
+UNIFIED_CATEGORIES = tuple(c for c in CATEGORIES if c not in UNIFIED_OMIT)
 UNIFIED_CLEAN_FRACTION = {**{c: CLEAN_FRACTION[c] for c in UNIFIED_CATEGORIES},
                           "stone_block": 0.6, "large_tile": 0.6}
 # Network walls stay on a coated host, about half plaster and half stucco.

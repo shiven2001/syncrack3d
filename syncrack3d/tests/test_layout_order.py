@@ -55,7 +55,7 @@ def test_near_service_tokens_sit_beside_the_run():
 
 
 def test_crack_regions_grow_openings_to_their_built_extent():
-    plans = [StructurePlan(0, "window", 0.0, 1.5, 1.0, 0.9, 1), StructurePlan(1, "socket", 1.0, 0.4, 0.08, 0.08, 2),
+    plans = [StructurePlan(0, "window", 0.0, 1.5, 1.0, 0.9, 1), StructurePlan(1, "vent", 1.0, 0.4, 0.08, 0.08, 2),
              StructurePlan(2, "conduit", -1.0, 1.2, 0.04, 2.0, 3), StructurePlan(3, "panel_seam", 0.0, 1.0, 3.0, 0.006, 4)]
     keepout, near = crack_regions(plans)
     assert keepout[0] == (0.0, 1.52, 1.2, 1.22) and keepout[1][2] == pytest.approx(0.12)

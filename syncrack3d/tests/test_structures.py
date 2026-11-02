@@ -187,6 +187,47 @@ def test_structure_view_curation_keeps_only_true_negatives(tmp_path):
     assert presence() == 'failed_target'
 
 
+def test_outdoor_runs_cover_the_facade_face():
+    from syncrack3d.structures import span_on_host
+    u, v, w, h = span_on_host("downpipe", 0.0, 1.2, 4.0, 0.18, (-8.0, 7.0, 0.0, 6.5))
+    assert (u, w, v, h) == pytest.approx((-0.5, 15.0, 1.2, 0.18))
+    u, v, w, h = span_on_host("conduit", 0.4, 1.3, 0.10, 2.6, (-8.0, 7.0, 0.0, 6.5))
+    assert (u, v, w, h) == pytest.approx((0.4, 3.25, 0.10, 6.5))
+    assert span_on_host("downpipe", 0.0, 1.2, 4.0, 0.18, None) == (0.0, 1.2, 4.0, 0.18)
+    assert span_on_host("window", 0.2, 1.0, 1.0, 0.8, (-8.0, 7.0, 0.0, 6.5)) == (0.2, 1.0, 1.0, 0.8)
+
+
+def test_service_runs_span_either_axis_indoors_and_outdoors():
+    from syncrack3d.structures import SPAN_KINDS, SPAN_SECTION
+    spec = SimpleNamespace(width_m=4.0, height_m=2.6, skirting=False)
+    seen = {kind: set() for kind in SPAN_KINDS}
+    for environment in ("indoor", "outdoor"):
+        for seed in range(160):
+            plans = sample_structure_plan(seed, spec, profile="auto", environment=environment)
+            for plan in plans:
+                if plan.kind not in SPAN_KINDS:
+                    continue
+                if abs(plan.width_m - spec.width_m) < 1e-6:
+                    seen[plan.kind].add(environment + "-side")
+                else:
+                    seen[plan.kind].add(environment + "-down")
+    for kind, axes in seen.items():
+        envs = ("indoor",) if kind == "trunking" else ("indoor", "outdoor")
+        assert axes == {f"{env}-{axis}" for env in envs for axis in ("side", "down")}, kind
+    for kind in SPAN_KINDS:
+        axes = set()
+        for seed in range(24):
+            plan = sample_structure_plan(seed, spec, include_kinds=[kind])[0]
+            if abs(plan.width_m - spec.width_m) < 1e-6:
+                assert plan.height_m == pytest.approx(SPAN_SECTION[kind])
+                axes.add("side")
+            else:
+                assert plan.height_m == pytest.approx(spec.height_m)
+                assert plan.width_m == pytest.approx(SPAN_SECTION[kind])
+                axes.add("down")
+        assert axes == {"side", "down"}, kind
+
+
 def test_environment_pools_and_mounting_heights():
     from syncrack3d.structures import INDOOR_KINDS, OUTDOOR_KINDS
     seen = {'indoor': set(), 'outdoor': set()}
@@ -196,37 +237,12 @@ def test_environment_pools_and_mounting_heights():
             plans = sample_structure_plan(seed, spec, profile='auto', environment=environment)
             seen[environment].update(p.kind for p in plans)
             for p in plans:
-                if p.kind == 'socket':
-                    assert .25 <= p.v_m <= .45
-                elif p.kind == 'switch':
-                    assert 1.05 <= p.v_m <= 1.35
-                elif p.kind in ('door', 'skirting'):
+                if p.kind == 'door':
                     assert p.v_m == p.height_m * .5
-                elif p.kind in ('ceiling_trim', 'gutter'):
-                    assert p.v_m + p.height_m * .5 == pytest.approx(spec.height_m)
     assert set(INDOOR_KINDS) <= seen['indoor']
     assert set(OUTDOOR_KINDS) <= seen['outdoor']
     assert not set(OUTDOOR_KINDS) & seen['indoor']
     assert not set(INDOOR_KINDS) & seen['outdoor']
-
-
-def test_skirting_clears_door_opening():
-    import bpy
-    from syncrack3d.build_dataset import clear_scene
-    clear_scene()
-    try:
-        spec = sample_scene_spec(193000)
-        plans = sample_structure_plan(193000, spec, include_kinds=['door', 'skirting'])
-        assert {p.kind for p in plans} == {'door', 'skirting'}
-        records = build_structures(plans)
-        door = next(p for p in plans if p.kind == 'door')
-        for rec in records:
-            if rec['kind'] == 'skirting':
-                for name in rec['objects']:
-                    obj = bpy.data.objects[name]
-                    assert obj.location.x + obj.dimensions.x*.5 <= door.u_m-door.width_m*.5 + 1e-5 or obj.location.x-obj.dimensions.x*.5 >= door.u_m+door.width_m*.5 - 1e-5
-    finally:
-        clear_scene()
 
 
 def test_boundary_fixture_cameras_stay_above_floor_and_below_ceiling():
@@ -236,7 +252,7 @@ def test_boundary_fixture_cameras_stay_above_floor_and_below_ceiling():
     clear_scene()
     try:
         spec = sample_scene_spec(193000)
-        records = build_structures(sample_structure_plan(193000, spec, include_kinds=['skirting', 'ceiling_trim']))
+        records = build_structures(sample_structure_plan(193000, spec, include_kinds=['door']))
         cameras = sample_camera_poses(random.Random(9), spec, structure_camera_targets(records),
                                       bpy.context.scene.collection, closeups_per_defect=8,
                                       closeup_role='structure', include_context=False, max_pitch_deg=70)
@@ -270,7 +286,7 @@ def test_fixtures_stand_on_the_wall_relief():
 
 def test_fixtures_stay_clear_of_each_other_and_on_the_wall():
     from syncrack3d.structures import FIXTURE_GAP_M, _overlaps, built_extent
-    trims = ("door", "skirting", "ceiling_trim", "gutter")
+    trims = ("door",)
     for seed in range(200):
         spec = sample_scene_spec(seed)
         targets = [SimpleNamespace(u_m=0., v_m=spec.height_m * .5)]
@@ -302,7 +318,7 @@ def test_built_extent_covers_the_built_geometry():
     for seed in (191000, 191001, 191002):
         spec = sample_scene_spec(seed)
         plans = [replace(sample_structure_plan(seed, spec, include_kinds=[kind])[0], index=i)
-                 for i, kind in enumerate(KINDS) if kind not in ("skirting", "door", "panel_seam")]
+                 for i, kind in enumerate(KINDS) if kind not in ("door", "panel_seam")]
         clear_scene()
         for r in build_structures(plans):
             lo, hi = _world_bounds(bpy.data.objects[r['object_name']])

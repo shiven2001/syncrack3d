@@ -181,14 +181,11 @@ def build_room_shell(spec, plan: ShellPlan, seed: int = 0) -> list:
 
 # --------------------------------------------------------------------------- matched finishes
 # --shell-finish matched. The plain shell above gives every room grey side walls
-# beside a coloured or tiled test wall, so the one textured surface in frame is
-# always the one with cracks. Here the side walls usually carry the test wall's
-# own finish (a crack-free copy made before injection), otherwise plaster,
-# whose coat is drawn from the neutral, coloured, or mid-tone range. The floor
-# gets an Infinigen floor material. The ceiling is plaster in the light, mid,
-# or warm off-white drawn for the shell.
+# beside a coloured or tiled test wall. Here both side walls carry the test
+# wall's own finish (a crack-free copy made before injection), shaded as bump
+# only. The floor gets an Infinigen floor material. The ceiling is plaster in
+# the light, mid, or warm off-white drawn for the shell.
 SHELL_FINISHES = ("plain", "matched")
-MATCH_PROBABILITY = 0.7
 FLOOR_GENERATORS = (
     ("wood", "HardwoodFloor"), ("wood", "SquareWoodTile"), ("wood", "StaggeredWoodTile"),
     ("wood", "CrossedWoodTile"), ("wood", "HexagonWoodTile"), ("wood", "NonWoodTile"),
@@ -233,7 +230,7 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
 
     from cwg_infinigen.core import surface
     from cwg_infinigen.core.util.math import int_hash
-    from syncrack3d.material_diversity import PAINT_PARAMS, _metric_uv, apply_diverse_wall_material
+    from syncrack3d.material_diversity import PAINT_PARAMS, _metric_uv
 
     r = random.Random(int_hash((seed, "shell_finish")))
     np_state, py_state = np.random.get_state(), random.getstate()
@@ -244,18 +241,13 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
         for obj in returns:
             _face_frame(obj, math.pi / 2 if obj.name.endswith("left") else -math.pi / 2)
             _metric_uv(obj)
-        if returns:
-            if r.random() < MATCH_PROBABILITY and wall.data.materials:
-                material = wall.data.materials[0].copy()  # before injection: no cracks
-                material.name = "CWG_Shell_Return_Matched"
-                record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category")}
-            else:
-                apply_diverse_wall_material(returns[0], r.randrange(1, 2**31), forced="plaster")
-                material = returns[0].data.materials[0]
-                record["returns"] = {"source": "paint", "category": "plaster",
-                                     "paint_band": returns[0].get("cwg_paint_band")}
-            # Side walls are never photographed at crack distance: bump, no subdivision.
+        if returns and wall.data.materials:
+            r.random()  # the old match-or-plaster coin; the floor draw stays put
+            material = wall.data.materials[0].copy()  # before injection: no cracks
+            material.name = "CWG_Shell_Return_Matched"
+            # Same texture as the inspection wall, bump only: no subdivision.
             material.displacement_method = "BUMP"
+            record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category")}
             for obj in returns:
                 obj.data.materials.clear()
                 obj.data.materials.append(material)

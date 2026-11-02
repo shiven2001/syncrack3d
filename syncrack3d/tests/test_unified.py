@@ -35,8 +35,9 @@ def test_forced_material_survives_network_style():
 
 
 def test_unified_palette_has_no_wood_or_irregular_stone():
-    drawn = {sample_category(s, None, "unified") for s in range(3000)}
-    assert drawn == set(UNIFIED_CATEGORIES) and not drawn & set(NEVER_CRACKED)
+    counts = collections.Counter(sample_category(s, None, "unified") for s in range(10000))
+    assert set(counts) == set(UNIFIED_CATEGORIES) and not set(counts) & set(NEVER_CRACKED)
+    assert all(abs(counts[name] / 10000 - 0.1) < 0.02 for name in UNIFIED_CATEGORIES)
 
 
 def test_unified_clean_table_cracks_stone_block_and_large_tile():

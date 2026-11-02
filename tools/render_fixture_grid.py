@@ -1,8 +1,8 @@
 """Render one example of each fixture kind in an unlabelled grid.
 
-Indoor kinds from the unified recipe, plus the facade kinds that are not
-already in that indoor set. Each assembly is built on a short wall patch and
-framed on its measured bounds. Writes a tile per kind and
+Vent and the access panel are each one kind. A wire, conduit, pipe or plumbing
+run draws its own direction, down the wall or across it. Each assembly is built
+on a short wall patch and framed on its measured bounds. Writes
 ``outputs/fixture_grid/grid.png``.
 
     PYTHONPATH=. /home/shiven/anaconda3/envs/infinigen_v2/bin/python tools/render_fixture_grid.py
@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import bpy
 import numpy as np
 from mathutils import Vector
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
@@ -27,7 +27,7 @@ if str(REPO) not in sys.path:
 
 from syncrack3d.occlusion import _world_bounds  # noqa: E402
 from syncrack3d.render import configure_cycles  # noqa: E402
-from syncrack3d.structures import build_structures, sample_structure_plan  # noqa: E402
+from syncrack3d.structures import SPAN_KINDS, SPAN_SECTION, build_structures, sample_structure_plan  # noqa: E402
 
 OUT = REPO / "outputs" / "fixture_grid"
 TILE = 640
@@ -37,36 +37,39 @@ COLUMNS = 5
 LENS_MM = 50.0
 SENSOR_MM = 36.0
 
-# 14 indoor kinds, then the 6 facade kinds that indoor walls do not use.
+# One tile per kind. Run direction is drawn inside the kind, not shown twice.
 KINDS = (
-    "socket", "switch", "utility_box", "wall_light", "vent",
-    "window", "door", "access_panel", "service_hatch", "exterior_vent",
-    "wall_cable", "conduit", "trunking", "plumbing", "downpipe",
-    "skirting", "ceiling_trim", "panel_seam", "ledge", "gutter",
+    "utility_box", "vent", "window", "door",
+    "access_panel", "trunking", "wall_cable", "conduit", "downpipe",
+    "plumbing", "panel_seam",
 )
+NAMES = {
+    "utility_box": "utility box",
+    "vent": "vent",
+    "window": "window",
+    "door": "door",
+    "access_panel": "access panel",
+    "trunking": "trunking",
+    "wall_cable": "wires",
+    "conduit": "conduit",
+    "downpipe": "pipe",
+    "plumbing": "plumbing",
+    "panel_seam": "panel seam",
+}
 
 # Host wall (width, height) so a full-width trim is a short visible run.
 WALL = {
-    "socket": (1.0, 1.2),
-    "switch": (1.0, 1.6),
     "utility_box": (1.1, 1.3),
-    "wall_light": (1.0, 1.4),
     "vent": (1.4, 1.3),
     "window": (2.0, 1.7),
     "door": (1.8, 2.5),
     "access_panel": (1.4, 1.4),
-    "service_hatch": (1.5, 1.5),
-    "exterior_vent": (1.4, 1.6),
-    "wall_cable": (0.8, 1.7),
-    "conduit": (1.5, 1.9),
-    "trunking": (1.6, 1.2),
-    "plumbing": (1.2, 1.5),
-    "downpipe": (0.9, 1.8),
-    "skirting": (1.6, 1.0),
-    "ceiling_trim": (1.6, 1.0),
-    "panel_seam": (1.5, 1.3),
-    "ledge": (1.8, 1.2),
-    "gutter": (1.6, 1.0),
+    "wall_cable": (2.2, 2.2),
+    "conduit": (2.2, 2.2),
+    "trunking": (2.2, 2.2),
+    "plumbing": (2.2, 2.2),
+    "downpipe": (2.2, 2.2),
+    "panel_seam": (2.2, 2.2),
 }
 
 
@@ -183,23 +186,35 @@ def _render(path: Path) -> None:
     written[-1].replace(path)
 
 
-def _frame(root) -> None:
+def _frame(root, edge_to_edge: bool = False, margin_frac: float | None = None, fill: float = 0.92,
+           view_span: float | None = None) -> None:
     """Look at the fixture from a slight three-quarter in front of the wall."""
     bpy.context.view_layer.update()
     bounds = _world_bounds(root)
     if bounds is None:
         raise RuntimeError("fixture has no mesh bounds")
     lo, hi = bounds
+    if view_span is not None:
+        # Crop to a length of the run so clips and joints stay readable,
+        # while the run still leaves the top and bottom of the tile.
+        lo, hi = np.array(lo, dtype=float), np.array(hi, dtype=float)
+        mid = (float(lo[2]) + float(hi[2])) * 0.5
+        lo[2], hi[2] = mid - view_span * 0.5, mid + view_span * 0.5
+        context = max(0.06, view_span * 0.22 - (float(hi[0]) - float(lo[0])) * 0.5)
+        lo[0] -= context
+        hi[0] += context
     center = (lo + hi) * 0.5
     size = hi - lo
     # A hairline joint or a full-width trim needs wall around it. A socket,
-    # window or door should fill the tile.
+    # window or door should fill the tile. A full-length run is framed on its
+    # own ends, so it reads as reaching the wall edges.
     span = max(float(size[0]), float(size[2]))
     narrow = min(float(size[0]), float(size[2]))
-    # Hairlines (a sealant joint, a skirting) need a little wall around them.
-    # A small plate such as a socket should still fill the tile.
-    hairline = narrow < 0.045 or span / max(narrow, 1e-3) > 8.0
-    margin = np.maximum(size * (0.28 if hairline else 0.14), 0.03)
+    hairline = not edge_to_edge and (narrow < 0.045 or span / max(narrow, 1e-3) > 8.0)
+    frac = 0.04 if edge_to_edge else 0.28 if hairline else 0.14
+    if margin_frac is not None:
+        frac = margin_frac
+    margin = np.maximum(size * frac, 0.0 if edge_to_edge or margin_frac == 0.0 else 0.03)
     if hairline and float(size[2]) < 0.2:
         margin[2] = max(float(margin[2]), 0.07)
     if hairline and float(size[0]) < 0.2:
@@ -209,7 +224,7 @@ def _frame(root) -> None:
     frame_center = (frame_lo + frame_hi) * 0.5
     eye_dir = np.array([0.42, -1.0, 0.22])
     fov = 2.0 * math.atan(SENSOR_MM / (2.0 * LENS_MM))
-    distance = _fit_distance(frame_center, _box_corners(frame_lo, frame_hi), eye_dir, fov, fill=0.92)
+    distance = _fit_distance(frame_center, _box_corners(frame_lo, frame_hi), eye_dir, fov, fill=fill)
     eye = eye_dir / np.linalg.norm(eye_dir) * distance + frame_center
 
     aim = bpy.data.objects.new("CWG_Aim", None)
@@ -252,7 +267,12 @@ def _one(kind: str, path: Path) -> Image.Image:
     plans = sample_structure_plan(SEED, spec, include_kinds=[kind])
     if not plans:
         raise RuntimeError(f"no placement for {kind}")
-    records = build_structures(plans)
+    if kind in SPAN_KINDS:
+        # The grid shows every run standing vertical. The generator still draws either axis.
+        from dataclasses import replace
+        plans = [replace(plans[0], u_m=0.0, v_m=height * 0.5,
+                         width_m=SPAN_SECTION[kind], height_m=height)]
+    records = build_structures(plans, host_height_m=height)
     if not records:
         raise RuntimeError(f"no geometry for {kind}")
     root = bpy.data.objects[records[0]["object_name"]]
@@ -261,25 +281,33 @@ def _one(kind: str, path: Path) -> Image.Image:
     if bounds is None:
         raise RuntimeError(f"{kind} has no mesh bounds")
     _studio((bounds[0] + bounds[1]) * 0.5)
-    _frame(root)
+    _frame(root, edge_to_edge=kind in SPAN_KINDS or kind == "utility_box",
+           margin_frac=0.0 if kind in SPAN_KINDS or kind == "utility_box" else None,
+           fill=1.0 if kind == "utility_box" else 0.9,
+           view_span=0.62 if kind in SPAN_KINDS else None)
     _render(path)
     return Image.open(path).convert("RGB")
 
 
-def _grid(images: list[Image.Image], path: Path) -> None:
+def _grid(images: list[Image.Image], names: list[str], path: Path) -> None:
     gap = 8
+    label_h = 36
     rows = math.ceil(len(images) / COLUMNS)
+    cell_h = TILE + label_h
     sheet = Image.new(
         "RGB",
-        (COLUMNS * TILE + (COLUMNS + 1) * gap, rows * TILE + (rows + 1) * gap),
+        (COLUMNS * TILE + (COLUMNS + 1) * gap, rows * cell_h + (rows + 1) * gap),
         (255, 255, 255),
     )
+    draw = ImageDraw.Draw(sheet)
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
     for index, image in enumerate(images):
         col, row = index % COLUMNS, index // COLUMNS
-        sheet.paste(
-            image.resize((TILE, TILE), Image.Resampling.LANCZOS),
-            (gap + col * (TILE + gap), gap + row * (TILE + gap)),
-        )
+        x = gap + col * (TILE + gap)
+        y = gap + row * (cell_h + gap)
+        sheet.paste(image.resize((TILE, TILE), Image.Resampling.LANCZOS), (x, y))
+        draw.text((x + TILE / 2, y + TILE + label_h / 2), names[index], font=font,
+                  fill=(30, 30, 30), anchor="mm")
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(path)
 
@@ -295,7 +323,7 @@ def main() -> None:
             traceback.print_exc()
             images.append(_blank())
     grid = OUT / "grid.png"
-    _grid(images, grid)
+    _grid(images, [NAMES[kind] for kind in KINDS], grid)
     print(grid, flush=True)
 
 

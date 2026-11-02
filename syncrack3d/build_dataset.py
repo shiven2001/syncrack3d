@@ -66,6 +66,7 @@ from syncrack3d.occlusion import sample_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
     build_outdoor,
+    facade_front_bounds,
     environment_for,
     outdoor_lighting,
     sample_outdoor_plan,
@@ -220,6 +221,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             shell_finish = apply_matched_finish(shell, wall, seed)
     else:
         build_outdoor(spec, outdoor_plan, wall)
+    span_bounds = facade_front_bounds(spec, outdoor_plan) if outdoor_plan is not None else None
     configure_capture_scene(spec, build.root)
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
@@ -286,7 +288,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             if skirting is not None:
                 skirting.location.y -= mount
         layout_record["fixture_mount_m"] = mount
-        structures = build_structures(structure_plans, mount)
+        structures = build_structures(structure_plans, mount, span_bounds, spec.height_m)
         keepout, near = crack_regions(structure_plans)
         # 4. Crack tokens around the fixtures: none under a large assembly, some
         # beside a service run; then a share snapped to fixture corners and edges.
@@ -387,7 +389,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         props, poses, more = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked + more
     else:
-        structures = build_structures(structure_plans)
+        structures = build_structures(structure_plans, span_bounds=span_bounds, host_height_m=spec.height_m)
         poses = pose_cameras(structures)
         props, poses, blocked = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked
@@ -540,7 +542,7 @@ def main():
             "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
             "so a controlled-wall dataset is comparable against the apartment "
             "one; 'controlled' keeps the base generator's deterministic stand-in; "
-            "'diverse' is the v1.x palette; 'unified' (v2) draws the 11 crack-able "
+            "'diverse' is the v1.x palette; 'unified' (v2) draws the 10 crack-able "
             "categories uniformly with one clean-wall table, no wood or irregular stone."
         ),
     )
@@ -640,8 +642,8 @@ def main():
     parser.add_argument("--crack-near-service-fraction", type=float, default=0.3,
                         help="fixtures-first: share of crack tokens tried beside a cable/pipe/trunking run")
     parser.add_argument("--shell-finish", choices=("plain", "matched"), default="plain",
-                        help="indoor context: plain flat colours, or side walls in the test wall's finish "
-                             "(70%%, else a different paint) and an Infinigen floor material")
+                        help="indoor context: plain flat colours, or side walls in the test wall's "
+                             "finish (bump only) and an Infinigen floor material")
     parser.add_argument("--clean-wall-uniform", type=float, default=None,
                         help="one clean-wall probability for every material instead of the per-category "
                              "table (same per-wall draw); 1 renders every wall crack-free")

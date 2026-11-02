@@ -555,6 +555,33 @@ simpler and nothing clips. Rebuilding a fixtures wall from before v1.20.0
 moves its fixtures; check out that version's tag to rebuild it exactly.
 Script: `studies/syncrack3d_fixture_rule_250.sh`.
 
+## v1.21.0 one fixture catalogue, and the outdoor screen
+
+The fixture catalogue is smaller and every service run is full length. Sockets,
+switches, the sampled skirting and ceiling trims, the ledge and the outdoor-only
+kinds (exterior vent, service hatch, gutter, wall light) are gone. Door and
+trunking are indoor only; vent, access panel and the wire, conduit, downpipe
+and plumbing runs are shared. A wire, conduit, pipe, plumbing run, trunking or
+panel seam now spans the wall's clear height or its full width (each draw picks
+one), with its own hardware: three insulated cables in clips, PVC or EMT
+conduit with couplers and saddles, a PVC rainwater pipe with sockets and
+clips, and a painted utility cabinet with hinges, latch and sometimes a meter.
+Outdoors the built run continues across the whole facade; the plan stays on
+the inspection wall, so cracks and junctions do too. Matched side walls now
+always carry the test wall's own finish (bump only), and the unified palette
+leaves out rubble stone (10 categories), which at room scale reads as the same
+irregular stone wall as cobble. None of these changes has its own screen yet.
+
+Outdoor screen, run before those changes on v1.20.0 with combined plaster and
+stucco and no outdoor dirt (v120nd): its 22 outdoor (facade) walls replaced by
+the next 22 indoor walls (910250 onward), so both train on 250 walls; same
+protocol. BD3 .864 -> .875 (seed sd .022 / .012; higher on all five seeds),
+plain-wall false alarms .055 -> .046, CUBIT .860 -> .859, BuildCrack .666 ->
+.683 (seed sd .03-.04). The outdoor walls neither help nor hurt on these three
+test sets, none of which is mainly outdoor walls. The replacements include 4
+major-crack and 1 network wall where the facade walls were all legacy cracks.
+Script: `studies/syncrack3d_indoor_only_250.sh`.
+
 ## v1.10.0 whole rooms for embodied inspection
 
 Close-up training cameras are aimed at the cracks, so a policy trained on
@@ -591,7 +618,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 77 tests, a few seconds
+python -m pytest syncrack3d/tests          # 79 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -601,7 +628,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.20.0)
+## Generate new data: the unified recipe (v1.21.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -618,6 +645,7 @@ tagged:
 | v1.18.0 | `4c698ea` | loose props: anywhere on the floor 2 cm past the wall relief to 0.9 m out, any turn, hiding at most half of a crack (`--prop-placement loose`; `--recipe unified_v1.18`) |
 | v1.19.0 | tag `v1.19.0` | fixtures and skirting stand on the wall relief (`--fixture-mount relief`) and clear of each other (`--fixture-spacing clear`) |
 | v1.20.0 | tag `v1.20.0` | every fixture placed by one rule: size, anchor and hardware per kind; on the wall and 3 cm clear of every other |
+| v1.21.0 | tag `v1.21.0` | one smaller fixture catalogue with full-length service runs; matched side walls always; rubble stone out of the unified palette |
 
 The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.

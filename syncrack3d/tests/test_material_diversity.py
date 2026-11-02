@@ -42,7 +42,8 @@ def test_stone_block_and_large_tile_crack_only_when_forced():
 def test_unified_plaster_and_stucco_draw_colour_inside_one_category():
     assert {"plaster", "stucco"} <= set(md.UNIFIED_CATEGORIES)
     assert not set(md.PLASTER_BANDS + md.STUCCO_BANDS) & set(md.UNIFIED_CATEGORIES)
-    assert len(md.UNIFIED_CATEGORIES) == 11
+    assert len(md.UNIFIED_CATEGORIES) == 10
+    assert "cobble_wall" in md.UNIFIED_CATEGORIES and "rubble_stone" not in md.UNIFIED_CATEGORIES
     for draw, bands in ((md.plaster_color_band, md.PLASTER_BANDS), (md.stucco_color_band, md.STUCCO_BANDS)):
         assert [draw(s) for s in range(30)] == [draw(s) for s in range(30)]
         assert {draw(s) for s in range(300)} == set(bands)

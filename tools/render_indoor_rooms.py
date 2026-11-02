@@ -46,7 +46,6 @@ ROOMS = (
     ("marble", "marble"),
     ("stone_block", "stone block"),
     ("cobble_wall", "cobble"),
-    ("rubble_stone", "rubble"),
     ("sandstone", "sandstone"),
 )
 

@@ -17,7 +17,7 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            rebuild those walls exactly
   unified  v2: one recipe for everything. Each wall draws a crack style
            (legacy/major/network/facade, STYLES) that sets only what defines that
-           kind of crack; materials (--wall-materials unified: 11 crack-able
+           kind of crack; materials (--wall-materials unified: 10 crack-able
            categories drawn uniformly, one plaster and one stucco whose coats
            are neutral, coloured, or mid-tone, no wood or irregular stone), capture and
            rendering are shared. Every wall is cracked (--clean-wall-scale 0),
@@ -129,7 +129,7 @@ def wall_style(seed, args):
     wall = Namespace(**{**vars(args), **STYLES[style], "crack_style": style})
     if getattr(args, "layout_order", "legacy") == "fixtures-first" and wall.environment == "indoor" \
             and wall.structures == "off":
-        # Real rooms have sockets, switches, trims and doors whatever the crack;
+        # Real rooms have doors and the other indoor fixtures whatever the crack;
         # the v1.x styles kept them to network walls only.
         wall.structures, wall.structure_views = "auto", 0
     if style == "network" and not args.material_category:

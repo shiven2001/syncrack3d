@@ -210,6 +210,18 @@ def facade_extent(plan: OutdoorPlan) -> tuple[float, float]:
     return r.uniform(4.0, 9.0), r.uniform(1.0, 4.0)
 
 
+def facade_front_bounds(spec, plan: OutdoorPlan) -> tuple[float, float, float, float]:
+    """(u_lo, u_hi, v_lo, v_hi) of the whole front face, past the inspection panel.
+
+    A corner ends that side of the front; the other side and the top continue.
+    """
+    side, top = facade_extent(plan)
+    w, h = spec.width_m, spec.height_m
+    left = -w * 0.5 - (0.0 if plan.corner == "left" else side)
+    right = w * 0.5 + (0.0 if plan.corner == "right" else side)
+    return left, right, 0.0, h + top
+
+
 def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
     """Ground, the rest of the facade, optional corner, eave and downpipe. Wall front y = 0, normal -Y.
 
@@ -220,22 +232,20 @@ def build_outdoor(spec, plan: OutdoorPlan, wall=None) -> list:
     col = _collection(SHELL_COLLECTION)
     w, h, t = spec.width_m, spec.height_m, 0.12
     built = [_slab("CWG_Outdoor_Ground", (60.0, 40.0, t), (0.0, -19.0, -t * 0.5), _ground_material(plan), col)]
-    side, top = facade_extent(plan)
+    left_x, right_x, _, facade_top = facade_front_bounds(spec, plan)
     facade = wall.data.materials[0] if wall is not None else \
         _principled_material("CWG_Outdoor_Facade", (0.45, 0.43, 0.40, 1.0), 0.85)[0]
-    left_x = -w * 0.5 - (0.0 if plan.corner == "left" else side)
-    right_x = w * 0.5 + (0.0 if plan.corner == "right" else side)
     frame = tuple(wall.matrix_world.translation) if wall is not None else None
     if plan.corner != "left":
-        built.append(_facade_slab("CWG_Outdoor_Facade_L", left_x, -w * 0.5, 0.0, h + top, facade, col, frame))
+        built.append(_facade_slab("CWG_Outdoor_Facade_L", left_x, -w * 0.5, 0.0, facade_top, facade, col, frame))
     if plan.corner != "right":
-        built.append(_facade_slab("CWG_Outdoor_Facade_R", w * 0.5, right_x, 0.0, h + top, facade, col, frame))
-    built.append(_facade_slab("CWG_Outdoor_Facade_Top", -w * 0.5, w * 0.5, h, h + top, facade, col, frame))
+        built.append(_facade_slab("CWG_Outdoor_Facade_R", w * 0.5, right_x, 0.0, facade_top, facade, col, frame))
+    built.append(_facade_slab("CWG_Outdoor_Facade_Top", -w * 0.5, w * 0.5, h, facade_top, facade, col, frame))
     if plan.corner:
         x = (-1 if plan.corner == "left" else 1) * (w * 0.5 + t * 0.5)
-        built.append(_slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, h + top),
-                           (x, -plan.corner_depth_m * 0.5, (h + top) * 0.5), facade, col))
-    h = h + top  # the eave and downpipe belong to the whole facade
+        built.append(_slab("CWG_Outdoor_Corner", (t, plan.corner_depth_m, facade_top),
+                           (x, -plan.corner_depth_m * 0.5, facade_top * 0.5), facade, col))
+    h = facade_top  # the eave and downpipe belong to the whole facade
     if plan.eave:
         built.append(_slab("CWG_Outdoor_Eave", (right_x - left_x + 0.6, plan.eave_depth_m, 0.15),
                            ((left_x + right_x) * 0.5, -plan.eave_depth_m * 0.5, h + 0.075),

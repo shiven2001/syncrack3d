@@ -9,7 +9,8 @@ without wood-plank walls; syncrack3d_v2_noplanks.sh) or v117lp (v1.17.0 with
 --fixture-spacing clear; syncrack3d_fixture_clear_250.sh) or v119fr (v1.19.0 with
 every fixture placed by one rule; syncrack3d_fixture_rule_250.sh) or v120mc (that plus
 plaster and stucco each one unified category; syncrack3d_material_combine_250.sh) or v120nd
-(that without outdoor wall dirt or crack staining; syncrack3d_no_dirt_250.sh). Data live in
+(that without outdoor wall dirt or crack staining; syncrack3d_no_dirt_250.sh) or v120io (that
+with indoor walls only; syncrack3d_indoor_only_250.sh). Data live in
 /mnt/nvme_storage/syncrack3d_<version>_dataset and models in
 outputs/domain_transfer/syncrack3d_<tag>_NAME.
 
@@ -50,7 +51,8 @@ TAG = os.environ.get("STUDY_TAG", "v116")
 VERSION = {"v116": "v1.16.0", "v117": "v1.17.0", "v200": "v2.0.0", "v200np": "v2.0.0-noplanks",
            "v117lp": "v1.17.0-looseprops", "v118fm": "v1.18.0-fixturemount",
            "v118fc": "v1.18.0-fixtureclear", "v119fr": "v1.19.0-fixturerule",
-           "v120mc": "v1.20.0-matcombine", "v120nd": "v1.20.0-nodirt"}[TAG]
+           "v120mc": "v1.20.0-matcombine", "v120nd": "v1.20.0-nodirt",
+           "v120io": "v1.20.0-indooronly"}[TAG]
 DATA = Path(f"/mnt/nvme_storage/syncrack3d_{VERSION}_dataset")
 DT = ROOT / "syncrack3d/outputs/domain_transfer"
 APP = ROOT / "syncrack3d"
@@ -119,7 +121,8 @@ def train(args):
         + (" (loose props, --fixture-mount relief --fixture-spacing clear)" if TAG == "v118fc" else "")
         + (" (loose props, --fixture-mount relief, one fixture rule)" if TAG == "v119fr" else "")
         + (" (one fixture rule, plaster and stucco combined: 11 categories)" if TAG == "v120mc" else "")
-        + (" (combined plaster and stucco, no outdoor dirt or crack staining)" if TAG == "v120nd" else "")),
+        + (" (combined plaster and stucco, no outdoor dirt or crack staining)" if TAG == "v120nd" else "")
+        + (" (v120nd with indoor walls only: 22 outdoor walls replaced by 910250+ indoor walls)" if TAG == "v120io" else "")),
         indent=1) + "\n")
     print(args.name, len(rows), "views", iters, "iters", flush=True)
     torch.set_num_threads(4)
