@@ -79,9 +79,14 @@ def _sample_plaster_pair(plaster_colored):
     return front, back
 
 
-def shader_plaster(nw: NodeWrangler, plaster_colored=None, **kwargs):
-    """Eggshell paint: mottled plaster, orange-peel bump, corner AO."""
-    front_color, back_color = _sample_plaster_pair(plaster_colored)
+def shader_plaster(nw: NodeWrangler, plaster_colored=None, front_color=None, back_color=None, **kwargs):
+    """Eggshell paint: mottled plaster, orange-peel bump, corner AO.
+
+    ``front_color`` and ``back_color`` replace the sampled coat. The ceiling uses
+    this to keep the plaster texture inside its own off-white range.
+    """
+    if front_color is None or back_color is None:
+        front_color, back_color = _sample_plaster_pair(plaster_colored)
 
     uv_map = nw.new_node(Nodes.UVMap)
     obj_coord = nw.new_node(Nodes.TextureCoord).outputs["Object"]

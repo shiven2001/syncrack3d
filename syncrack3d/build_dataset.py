@@ -65,7 +65,6 @@ from syncrack3d.occlusion import _world_bounds as prop_bounds  # noqa: E402
 from syncrack3d.occlusion import sample_props  # noqa: E402
 from syncrack3d.outdoor import (  # noqa: E402
     apply_sky,
-    apply_weathering,
     build_outdoor,
     environment_for,
     outdoor_lighting,
@@ -216,7 +215,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         # door frames are not photographed against the sky outside the slab.
         shell_plan = replace(shell_plan, has_ceiling=True, returns=("left", "right"))
     if outdoor_plan is None:
-        shell = build_room_shell(spec, shell_plan)
+        shell = build_room_shell(spec, shell_plan, seed)
         if args.shell_finish == "matched":
             shell_finish = apply_matched_finish(shell, wall, seed)
     else:
@@ -225,22 +224,20 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
     def light_scene():
-        """Indoor lighting rig, or the outdoor sun and sky (with facade weathering)."""
+        """Indoor lighting rig, or the outdoor sun and sky."""
         lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
         if args.light_profile != "default" and not args.relight_per_view:
             # Independent stream: walls, defects and cameras stay as in the default run.
             lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
                                             profile=args.light_profile)
         apply_lighting(lighting, spec.height_m, capture_collection)
-        weathering = {}
         if outdoor_plan is not None:
             # one sun (or overcast sky) per wall, visible sky; the indoor plan above
             # was still drawn so the shared RNG stream is unchanged
             lighting = outdoor_lighting(outdoor_plan, spec)
             apply_lighting(lighting, spec.height_m, capture_collection)
             apply_sky(outdoor_plan)
-            weathering = apply_weathering(wall, outdoor_plan, spec.height_m)
-        return lighting, weathering
+        return lighting
 
     def pose_cameras(structures):
         poses = sample_camera_poses(
@@ -312,7 +309,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     else:
         placements = build_defects(spec, wall, rng, plan, legacy_names=args.legacy_defect_names,
                                    axis_snap=args.crack_axis_snap)
-        lighting, weathering = light_scene()
+        lighting = light_scene()
         # Structures are planned before injection (own RNG stream, so nothing else
         # moves) so junction cracks can be snapped to their edges.
         structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment,
@@ -338,7 +335,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         gin.bind_parameter("_inject_crack.crack_network_grime", tuple(args.crack_network_grime))
         gin.bind_parameter("_inject_crack.crack_network_edge", args.crack_network_edge)
         gin.bind_parameter("_inject_crack.crack_network_extent", args.crack_network_extent)
-        gin.bind_parameter("_inject_crack.crack_weathering_fraction", args.crack_weathering_fraction)
         gin.bind_parameter("_inject_crack.crack_width_scale", args.crack_width_scale)
         gin.bind_parameter("_inject_crack.crack_jitter_scale", args.crack_jitter_scale)
         gin.bind_parameter("_inject_crack.crack_depth_scale", args.crack_depth_scale)
@@ -362,7 +358,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     def place_foreground_props(poses):
         """Props last: anywhere on the floor, clear of fixtures, lights and cameras."""
         if outdoor_plan is not None:
-            return [], poses, 0
+            return [], poses, []
 
         def around(obj, radius):
             at = np.array(obj.matrix_world.translation)
@@ -378,7 +374,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         placed = sample_props(
             rng, spec, placements, count_range=(0, args.max_props),
             floor_depth_m=shell_plan.depth_m, obstacles=obstacles, relief_m=relief)
-        extra = 0
+        extra = []
         if placed:
             poses, extra = drop_blocked_cameras(poses, wall)
         return placed, poses, extra
@@ -386,7 +382,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     if fixtures_first:
         # Lighting and cameras; a camera jammed against an object is dropped.
         # Props come last, around the cameras and the fixture meshes. None outdoors.
-        lighting, weathering = light_scene()
+        lighting = light_scene()
         poses, blocked = drop_blocked_cameras(pose_cameras(structures), wall)
         props, poses, more = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked + more
@@ -426,7 +422,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "layout": layout_record,
         "environment": environment,
         "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
-        "weathering": weathering,
         "wall_material": {
             "source": args.wall_materials,
             "generator": generator_name,
@@ -474,7 +469,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "prop_placement": "loose",
             "crack_orientation": args.crack_orientation,
             "crack_junction_fraction": args.crack_junction_fraction,
-            "crack_weathering_fraction": args.crack_weathering_fraction,
             "crack_axis_snap": args.crack_axis_snap,
             "paint_profile": args.paint_profile,
             "wall_normal_mode": args.wall_normal_mode,
@@ -546,7 +540,7 @@ def main():
             "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
             "so a controlled-wall dataset is comparable against the apartment "
             "one; 'controlled' keeps the base generator's deterministic stand-in; "
-            "'diverse' is the v1.x palette; 'unified' (v2) draws the 15 crack-able "
+            "'diverse' is the v1.x palette; 'unified' (v2) draws the 11 crack-able "
             "categories uniformly with one clean-wall table, no wood or irregular stone."
         ),
     )
@@ -571,7 +565,7 @@ def main():
                         help="share of cracks turned to run along a wall axis (+-2 deg), like joint cracks")
     parser.add_argument("--defect-size-range", type=float, nargs=2, default=(.10, .45))
     parser.add_argument("--environment", choices=("indoor", "outdoor", "mixed"), default="indoor",
-                        help="indoor room, outdoor building facade (ground, sky, sun, weathering), or half each")
+                        help="indoor room, outdoor building facade (ground, sky, sun), or half each")
     parser.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
                         help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
     parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
@@ -611,8 +605,6 @@ def main():
                              "to v1.7.0); random: each crack runs at its card's spin angle")
     parser.add_argument("--crack-junction-fraction", type=float, default=0.0,
                         help="share of cracks moved to structure edges: opening corners, sill/ledge undersides, jambs, trims (needs --structures)")
-    parser.add_argument("--crack-weathering-fraction", type=float, default=0.0,
-                        help="share of non-network cracks with rain-wash dirt or efflorescence streaks below them (wall colour only)")
     parser.add_argument("--crack-network-extent", type=float, default=1.4,
                         help="network field size relative to its card (.5-2); 1.4 keeps organic crack length near a square patch. Cards and cameras are unchanged. Use 1 with --crack-network-edge square to reproduce v1.4.0-v1.5.0")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,
@@ -692,8 +684,8 @@ def main():
         parser.error("crack network spacing must be positive and ordered")
     if not 0 <= args.crack_network_grime[0] <= args.crack_network_grime[1] <= 1:
         parser.error("crack network grime must be ordered within 0..1")
-    if not 0 <= args.crack_junction_fraction <= 1 or not 0 <= args.crack_weathering_fraction <= 1:
-        parser.error("crack junction and weathering fractions must be 0..1")
+    if not 0 <= args.crack_junction_fraction <= 1:
+        parser.error("crack junction fraction must be 0..1")
     if not .5 <= args.crack_network_extent <= 2:
         parser.error("crack network extent must be .5..2")
     if not .25 <= args.crack_width_scale <= 4 or not 0 <= args.crack_jitter_scale <= 2:

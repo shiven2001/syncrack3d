@@ -391,7 +391,8 @@ outdoor facades with facade structures (windows, ledges, vents, hatches,
 downpipes). Half of their cracks are moved to junctions with
 `--crack-junction-fraction .5`: diagonal from opening corners, and along the
 undersides and tops of sills and ledges. `--crack-weathering-fraction .6`
-adds rain-wash dirt or efflorescence below 60% of cracks. Ordinary cracks
+adds rain-wash dirt or efflorescence below 60% of cracks (the flag was removed
+later, together with the outdoor wall weathering). Ordinary cracks
 keep the default vertical orientation. The re-renders replace the indoor
 versions, so the 2,243 view stems and everything else are as in v1.7.0.
 50 cracks sit at junctions. Recipe and view list:
@@ -922,7 +923,6 @@ lists every option.
 | `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks. `--crack-axis-snap` has no effect: it turns the card, and the field never read the card's spin (see `--crack-orientation`) |
 | `--crack-orientation random` | each crack runs at its card's spin angle. By default (`vertical`, every release to v1.7.0) a crack runs along the wall's vertical with lateral wander: 79% of v1.2.0–v1.3.0 crack segments are near-vertical and 3–4% near-horizontal, against 31–49% near-horizontal in BD3, BuildCrack and CUBIT. Training rotates images by multiples of 90°, which hides most of this |
 | `--crack-junction-fraction` | share of cracks moved to structure edges (needs `--structures`): diagonal from the corners of windows, doors, vents and hatches, along sill and ledge undersides and tops, beside door jambs and along trims. Junction cracks set their own direction; edge cracks get a near-straight path (`syncrack3d/junctions.py`) |
-| `--crack-weathering-fraction` | share of non-network cracks with rain-wash dirt (or efflorescence on mineral hosts, 30%) hanging 3–15 cm below the crack's downward side. Wall colour only: the label is unchanged |
 | `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |
 | `--camera-isp`, `--awb-strength`, `--exposure-ev-range` | phone-camera processing, partial white balance, exposure spread |
 

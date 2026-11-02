@@ -39,6 +39,17 @@ def test_stone_block_and_large_tile_crack_only_when_forced():
     assert not any(md.is_clean_wall(s, "tile", scale=0.0) for s in range(200))
 
 
+def test_unified_plaster_and_stucco_draw_colour_inside_one_category():
+    assert {"plaster", "stucco"} <= set(md.UNIFIED_CATEGORIES)
+    assert not set(md.PLASTER_BANDS + md.STUCCO_BANDS) & set(md.UNIFIED_CATEGORIES)
+    assert len(md.UNIFIED_CATEGORIES) == 11
+    for draw, bands in ((md.plaster_color_band, md.PLASTER_BANDS), (md.stucco_color_band, md.STUCCO_BANDS)):
+        assert [draw(s) for s in range(30)] == [draw(s) for s in range(30)]
+        assert {draw(s) for s in range(300)} == set(bands)
+        counts = Counter(draw(s) for s in range(3000))
+        assert all(abs(counts[name] / 3000 - 1 / 3) < 0.04 for name in bands)
+
+
 def test_only_paint_categories_use_plaster_and_are_coated():
     for name, (_, finish, choices) in md.CATEGORIES.items():
         uses_plaster = any(cls in md.PAINTED for _, cls, _ in choices)

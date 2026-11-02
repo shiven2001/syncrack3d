@@ -17,8 +17,9 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            rebuild those walls exactly
   unified  v2: one recipe for everything. Each wall draws a crack style
            (legacy/major/network/facade, STYLES) that sets only what defines that
-           kind of crack; materials (--wall-materials unified: 15 crack-able
-           categories drawn uniformly, no wood or irregular stone), capture and
+           kind of crack; materials (--wall-materials unified: 11 crack-able
+           categories drawn uniformly, one plaster and one stucco whose coats
+           are neutral, coloured, or mid-tone, no wood or irregular stone), capture and
            rendering are shared. Every wall is cracked (--clean-wall-scale 0),
            chosen after the 2026-10-23 clean-wall study: more BD3 recall at the
            cost of more false alarms than the material-aware table. Crack-free
@@ -60,7 +61,7 @@ RECIPES = {
                 "--crack-profile network --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 "
                 "--structures auto --structure-views 0 --crack-network-edge organic --crack-network-extent 1.4"),
     "facade": (LEGACY + " --clean-wall-scale 0 --environment outdoor --structures facade --structure-views 0 "
-               "--crack-junction-fraction .5 --crack-weathering-fraction .6"),
+               "--crack-junction-fraction .5"),
 }
 
 # v2: one recipe for everything. Each wall draws a crack style; the style sets
@@ -78,7 +79,7 @@ STYLES = {
                     structures="auto", structure_views=0),
     "facade": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
                    crack_width_scale=1.3, crack_depth_scale=.5, environment="outdoor", structures="facade",
-                   structure_views=0, crack_junction_fraction=.5, crack_weathering_fraction=.6),
+                   structure_views=0, crack_junction_fraction=.5),
 }
 # Close to the v1.9 training mix by view (legacy ~75%, major ~10%, network ~7%,
 # facade ~8%); major walls carry fewer cracks and so fewer views per wall.
@@ -120,7 +121,7 @@ def wall_style(seed, args):
     import random
     from argparse import Namespace
 
-    from syncrack3d.material_diversity import PAINTED_CATEGORIES
+    from syncrack3d.material_diversity import PAINTED_CATEGORIES, PAINTED_WEIGHTS
 
     rng = random.Random(int(hashlib.md5(f"{int(seed)}:crack_style".encode()).hexdigest()[:16], 16))
     mix = parse_style_mix(args.crack_style_mix)
@@ -132,7 +133,7 @@ def wall_style(seed, args):
         # the v1.x styles kept them to network walls only.
         wall.structures, wall.structure_views = "auto", 0
     if style == "network" and not args.material_category:
-        wall.material_category = rng.choice(PAINTED_CATEGORIES)
+        wall.material_category = rng.choices(PAINTED_CATEGORIES, weights=PAINTED_WEIGHTS, k=1)[0]
     return style, wall
 
 

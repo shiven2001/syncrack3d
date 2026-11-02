@@ -103,7 +103,30 @@ def _slab(name, dimensions, location, material, collection):
     return obj
 
 
-def build_room_shell(spec, plan: ShellPlan) -> list:
+def ceiling_plaster_material(color, seed: int = 0):
+    """Plaster in the ceiling's light, mid, or warm off-white, not a flat paint.
+
+    The texture draw uses its own numpy stream, so the wall and floor are unchanged.
+    """
+    import numpy as np
+
+    from cwg_infinigen.assets.materials.ceramic.plaster import Plaster
+    from cwg_infinigen.core.util.math import int_hash
+
+    state = np.random.get_state()
+    try:
+        np.random.seed(int_hash((int(seed), "ceiling", *(f"{float(c):.4f}" for c in color[:3]))) % (2**32))
+        front = tuple(float(c) for c in color[:3]) + (1.0,)
+        back = tuple(channel * 0.94 for channel in front[:3]) + (1.0,)
+        material = Plaster().generate(False, front_color=front, back_color=back)
+        material.displacement_method = "BUMP"
+        material.name = "CWG_Shell_Ceiling_Mat"
+        return material
+    finally:
+        np.random.set_state(state)
+
+
+def build_room_shell(spec, plan: ShellPlan, seed: int = 0) -> list:
     """Floor, optional ceiling and optional return walls in front of the wall.
 
     The wall's front face is at y = 0 with its normal along -Y, so the room
@@ -130,17 +153,15 @@ def build_room_shell(spec, plan: ShellPlan) -> list:
     )
 
     if plan.has_ceiling:
-        built.append(
-            _slab(
-                "CWG_Shell_Ceiling",
-                (width, depth, thickness),
-                (0.0, -depth * 0.5, height + thickness * 0.5),
-                make_solid_material(
-                    "CWG_Shell_Ceiling_Mat", plan.ceiling_color, roughness=0.85
-                ),
-                collection,
-            )
+        ceiling = _slab(
+            "CWG_Shell_Ceiling",
+            (width, depth, thickness),
+            (0.0, -depth * 0.5, height + thickness * 0.5),
+            ceiling_plaster_material(plan.ceiling_color, seed),
+            collection,
         )
+        _metric_uv_xy(ceiling)
+        built.append(ceiling)
 
     for side in plan.returns:
         sign = -1.0 if side == "left" else 1.0
@@ -162,8 +183,10 @@ def build_room_shell(spec, plan: ShellPlan) -> list:
 # --shell-finish matched. The plain shell above gives every room grey side walls
 # beside a coloured or tiled test wall, so the one textured surface in frame is
 # always the one with cracks. Here the side walls usually carry the test wall's
-# own finish (a crack-free copy made before injection), otherwise a different
-# paint; the floor gets an Infinigen floor material. The ceiling stays plain.
+# own finish (a crack-free copy made before injection), otherwise plaster,
+# whose coat is drawn from the neutral, coloured, or mid-tone range. The floor
+# gets an Infinigen floor material. The ceiling is plaster in the light, mid,
+# or warm off-white drawn for the shell.
 SHELL_FINISHES = ("plain", "matched")
 MATCH_PROBABILITY = 0.7
 FLOOR_GENERATORS = (
@@ -227,10 +250,10 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
                 material.name = "CWG_Shell_Return_Matched"
                 record["returns"] = {"source": "test_wall", "category": wall.get("cwg_material_category")}
             else:
-                category = r.choice(("paint_neutral", "paint_colour", "paint_colour_mid"))
-                apply_diverse_wall_material(returns[0], r.randrange(1, 2**31), forced=category)
+                apply_diverse_wall_material(returns[0], r.randrange(1, 2**31), forced="plaster")
                 material = returns[0].data.materials[0]
-                record["returns"] = {"source": "paint", "category": category}
+                record["returns"] = {"source": "paint", "category": "plaster",
+                                     "paint_band": returns[0].get("cwg_paint_band")}
             # Side walls are never photographed at crack distance: bump, no subdivision.
             material.displacement_method = "BUMP"
             for obj in returns:
@@ -248,9 +271,9 @@ def apply_matched_finish(built, wall, seed: int) -> dict:
     finally:
         np.random.set_state(np_state)
         random.setstate(py_state)
-        category = wall.get("cwg_material_category")
-        if category in PAINT_PARAMS:  # the side-wall paint rebinds these; give the wall's back
+        band = wall.get("cwg_paint_band") or wall.get("cwg_material_category")
+        if band in PAINT_PARAMS:  # the side-wall paint rebinds these; give the wall's back
             with gin.unlock_config():
-                for key, value in PAINT_PARAMS[category].items():
+                for key, value in PAINT_PARAMS[band].items():
                     gin.bind_parameter(f"plaster_paint_params.{key}", value)
     return record

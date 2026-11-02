@@ -10,11 +10,11 @@ def test_no_recipe_leaves_argv_alone():
 
 
 def test_recipe_flags_precede_user_flags():
-    argv = recipe_argv(["--seeds", "1", "--recipe", "facade", "--crack-weathering-fraction", "0"])
+    argv = recipe_argv(["--seeds", "1", "--recipe", "facade", "--crack-junction-fraction", "0"])
     assert argv[:len(RECIPES["facade"].split())] == RECIPES["facade"].split()
     # the user's value is the last occurrence of the flag, so argparse keeps it
-    last = len(argv) - 1 - argv[::-1].index("--crack-weathering-fraction")
-    assert argv[last + 1] == "0" and last > argv.index("--crack-weathering-fraction")
+    last = len(argv) - 1 - argv[::-1].index("--crack-junction-fraction")
+    assert argv[last + 1] == "0" and last > argv.index("--crack-junction-fraction")
     assert argv[-2:] == ["--recipe", "facade"]
 
 

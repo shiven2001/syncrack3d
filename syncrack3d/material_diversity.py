@@ -19,10 +19,13 @@ any other mode, and a scene's material is reproducible from its seed.
 `--wall-materials unified` (v2, the `unified` recipe) is the palette the
 released training data was actually built from: those batches forced one
 category at a time in near-equal shares, so the weights above never shaped
-them. It draws the 15 crack-able categories uniformly, leaves out wood and
+them. It draws the 11 crack-able categories uniformly, leaves out wood and
 irregular stone entirely, and uses one clean-wall table for every wall, in
 which stone block and large tile join the other patterned masonry at 0.60.
-`diverse` is kept unchanged so the v1.x releases rebuild exactly.
+Plaster and stucco are each one of those 11. Each draws its coat from the
+neutral, coloured, or mid-tone range, and stucco also draws a relief style.
+The named paint and stucco bands stay available for an explicit
+--material-category. `diverse` is kept unchanged so the v1.x releases rebuild exactly.
 """
 
 from __future__ import annotations
@@ -45,6 +48,9 @@ CATEGORIES = {
     # Weight 0 and listed last: only used when forced (--material-category), so
     # random category draws for every existing seed are unchanged.
     "paint_colour_mid": (0.0, "paint", [("ceramic", "Plaster", 1.0)]),
+    # Weight 0, so diverse draws are unchanged. Unified uses this one plaster
+    # and draws a neutral, coloured, or mid coat inside it.
+    "plaster": (0.0, "paint", [("ceramic", "Plaster", 1.0)]),
     # Grey split-face stone block cladding: mortar joints were every BD3
     # plain-wall false alarm. Weight 0, forced only.
     "stone_block": (0.0, "stone", [("ceramic", "StoneBlock", 1.0)]),
@@ -57,6 +63,10 @@ CATEGORIES = {
     "stucco_neutral": (0.0, "paint", [("ceramic", "StuccoPlaster", 1.0)]),
     "stucco_colour": (0.0, "paint", [("ceramic", "StuccoPlaster", 1.0)]),
     "stucco_colour_mid": (0.0, "paint", [("ceramic", "StuccoPlaster", 1.0)]),
+    # Weight 0, so diverse draws are unchanged. Unified uses this one stucco
+    # and draws a neutral, coloured, or mid coat inside it. Relief style is
+    # drawn by the shader, not by the category.
+    "stucco": (0.0, "paint", [("ceramic", "StuccoPlaster", 1.0)]),
     # Exterior masonry (wall-scale ports of Infinigen's terrain cobblestone/stone/
     # sandstone, ceramic/exterior_stone.py): rounded cobbles in mortar, angular
     # coursed or dry rubble, bedded sandstone ashlar. Cracks only; forced only.
@@ -68,21 +78,29 @@ PAINTED = ("Plaster", "StuccoPlaster")  # generators that read plaster_paint_par
 
 # Probability that a wall of this category carries NO defects (a negative wall).
 CLEAN_FRACTION = {
-    "paint_neutral": 0.15, "paint_colour": 0.15, "concrete": 0.35,
+    "paint_neutral": 0.15, "paint_colour": 0.15, "plaster": 0.15, "concrete": 0.35,
     "brick": 0.6, "tile": 0.6, "marble": 0.6, "wood": 1.0, "paint_colour_mid": 0.15,
     "stone_block": 1.0, "large_tile": 1.0, "irregular_stone": 1.0,
-    "stucco_neutral": 0.15, "stucco_colour": 0.15, "stucco_colour_mid": 0.15,
+    "stucco_neutral": 0.15, "stucco_colour": 0.15, "stucco_colour_mid": 0.15, "stucco": 0.15,
     "cobble_wall": 0.6, "rubble_stone": 0.6, "sandstone": 0.6,
 }
 # Kept as plain walls even under --clean-wall-scale 0.
 NEVER_CRACKED = ("wood", "irregular_stone")
 
-# v2 (`unified`): drawn uniformly, no wood or irregular stone; one clean table.
-UNIFIED_CATEGORIES = tuple(c for c in CATEGORIES if c not in NEVER_CRACKED)
+# Colour ranges of the one unified plaster. Diverse still draws paint_neutral
+# and paint_colour as their own categories.
+PLASTER_BANDS = ("paint_neutral", "paint_colour", "paint_colour_mid")
+STUCCO_BANDS = ("stucco_neutral", "stucco_colour", "stucco_colour_mid")
+# v2 (`unified`): one plaster, one stucco, plus the other crack-able categories,
+# drawn uniformly. Wood, irregular stone, and the named colour bands are out.
+UNIFIED_CATEGORIES = tuple(
+    c for c in CATEGORIES if c not in NEVER_CRACKED + PLASTER_BANDS + STUCCO_BANDS
+)
 UNIFIED_CLEAN_FRACTION = {**{c: CLEAN_FRACTION[c] for c in UNIFIED_CATEGORIES},
                           "stone_block": 0.6, "large_tile": 0.6}
-PAINTED_CATEGORIES = ("paint_neutral", "paint_colour", "paint_colour_mid",
-                      "stucco_neutral", "stucco_colour", "stucco_colour_mid")
+# Network walls stay on a coated host, about half plaster and half stucco.
+PAINTED_CATEGORIES = ("plaster", "stucco")
+PAINTED_WEIGHTS = (1, 1)
 
 # Plaster paint parameters (gin: plaster_paint_params). Neutral = Infinigen's
 # defaults; colour = any hue, up to medium saturation, light to mid-dark value.
@@ -112,7 +130,9 @@ PAINT_PARAMS = {
 _PLASTER, _STUCCO = (0.0048, 0.99), (0.0062, None)
 RELIEF_M = {
     "paint_neutral": _PLASTER, "paint_colour": _PLASTER, "paint_colour_mid": _PLASTER,
+    "plaster": _PLASTER,
     "stucco_neutral": _STUCCO, "stucco_colour": _STUCCO, "stucco_colour_mid": _STUCCO,
+    "stucco": _STUCCO,
     "concrete": (0.001, None), "tile": (0.001, None), "large_tile": (0.0031, None),
     "marble": (0.0086, None), "brick": (0.0135, None),
     "cobble_wall": (0.0339, 1.13), "rubble_stone": (0.0394, 1.12),
@@ -134,6 +154,16 @@ def wall_relief(wall, category: str) -> float:
 
 def _rng(seed: int, salt: int) -> random.Random:
     return random.Random((int(seed) * 1_000_003) ^ salt)
+
+
+def plaster_color_band(seed: int) -> str:
+    """Neutral, coloured, or mid coat for the single plaster category."""
+    return _rng(seed, 0x504C4153).choice(PLASTER_BANDS)
+
+
+def stucco_color_band(seed: int) -> str:
+    """Neutral, coloured, or mid coat for the single stucco category."""
+    return _rng(seed, 0x53545543).choice(STUCCO_BANDS)
 
 
 def sample_category(seed: int, forced: str | None = None, palette: str = "diverse") -> str:
@@ -243,11 +273,17 @@ def apply_diverse_wall_material(wall, seed: int, forced: str | None = None,
     _, _, choices = CATEGORIES[category]
     mod, cls, _w = _rng(seed, 0x47454E5F).choices(choices, weights=[c[2] for c in choices], k=1)[0]
     generator = getattr(importlib.import_module(f"cwg_infinigen.assets.materials.{mod}"), cls)()
+    if category == "plaster":
+        params_key = plaster_color_band(seed)
+    elif category == "stucco":
+        params_key = stucco_color_band(seed)
+    else:
+        params_key = category
     if cls in PAINTED:
         import cwg_infinigen.assets.materials.ceramic.plaster  # noqa: F401  registers the configurable
 
         with gin.unlock_config():
-            for key, value in PAINT_PARAMS[category].items():
+            for key, value in PAINT_PARAMS[params_key].items():
                 gin.bind_parameter(f"plaster_paint_params.{key}", value)
     # Infinigen materials draw through numpy's global RNG, which the driver has
     # already seeded from the scene seed.
@@ -260,8 +296,11 @@ def apply_diverse_wall_material(wall, seed: int, forced: str | None = None,
     wall["surface_finish"] = finish
     wall["cwg_material_generator"] = cls
     wall["cwg_material_category"] = category
+    if params_key in PAINT_PARAMS:
+        wall["cwg_paint_band"] = params_key
     record = dict(category=category, generator=cls, finish=finish, pattern_feeds_rotated=oriented,
-                  paint_params=PAINT_PARAMS.get(category) if cls in PAINTED else None)
+                  paint_band=params_key if params_key in PAINT_PARAMS else None,
+                  paint_params=PAINT_PARAMS.get(params_key) if cls in PAINTED else None)
     return cls, finish, record
 
 

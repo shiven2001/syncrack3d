@@ -3,16 +3,15 @@
 Indoor walls get the room shell (room_shell.py). An outdoor wall becomes a
 building facade instead: open ground in front (paving, concrete, gravel, soil,
 grass), no ceiling, visible sky, sometimes the building's inside corner, an eave
-or a downpipe, and weathering on the wall (rain streaks from the top, ground
-splash and dirt at the base, algae patches). Light is outdoor light: direct sun
+or a downpipe. The wall carries no dirt or staining beyond its own material.
+Light is outdoor light: direct sun
 at a sampled elevation and direction (hard shadows), overcast sky, the shaded
 side of the building, or low golden-hour sun; one sun per wall, as in reality.
 
 Everything here draws from its own stream (random.Random(seed ^ OUTDOOR_SALT)),
 and build_dataset still makes every draw an indoor wall makes, so the same seed
 has the same wall, defects and cameras indoors and outdoors. None of these
-objects is an injection host; weathering edits the wall's colour before
-injection, so defect labels are unchanged.
+objects is an injection host, so defect labels are unchanged.
 """
 
 from __future__ import annotations
@@ -47,9 +46,6 @@ class OutdoorPlan:
     sun_angle_deg: float
     world_strength: float
     overcast_grey: float
-    rain_streaks: float
-    ground_splash: float
-    algae: float
 
     def to_dict(self):
         return asdict(self)
@@ -84,9 +80,6 @@ def sample_outdoor_plan(seed: int, width_m: float) -> OutdoorPlan:
         downpipe_x_m=(r.choice((-1, 1)) * (width_m * 0.5 - r.uniform(0.15, 0.6))) if r.random() < 0.4 else None,
         sky=sky, sun_elevation_deg=elev, sun_azimuth_deg=azi, sun_strength=strength, sun_kelvin=kelvin,
         sun_angle_deg=r.uniform(0.5, 1.2), world_strength=world, overcast_grey=r.uniform(0.55, 0.85),
-        rain_streaks=r.uniform(0.1, 0.35) if r.random() < 0.6 else 0.0,
-        ground_splash=r.uniform(0.15, 0.4) if r.random() < 0.6 else 0.0,
-        algae=r.uniform(0.15, 0.45) if r.random() < 0.3 else 0.0,
     )
 
 
@@ -305,80 +298,3 @@ def apply_sky(plan: OutdoorPlan):
     bg.inputs["Strength"].default_value = plan.world_strength
     world["cwg_environment"] = f"outdoor_{plan.sky}"
 
-
-# --------------------------------------------------------------------------- weathering
-
-
-def apply_weathering(wall, plan: OutdoorPlan, height_m: float) -> dict:
-    """Rain streaks from the top, splash/dirt at the base, algae patches: background, not defects."""
-    if not (plan.rain_streaks or plan.ground_splash or plan.algae):
-        return {}
-    mat = wall.data.materials[0]
-    nt = mat.node_tree
-    bsdf = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
-    if bsdf is None:
-        return {}
-    base = bsdf.inputs["Base Color"]
-    if base.is_linked:
-        src = base.links[0].from_socket
-    else:
-        rgb = nt.nodes.new("ShaderNodeRGB")
-        rgb.outputs[0].default_value = base.default_value
-        src = rgb.outputs[0]
-    uv = nt.nodes.new("ShaderNodeUVMap")
-    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
-    nt.links.new(uv.outputs["UV"], sep.inputs[0])
-    v = sep.outputs["Y"]  # metres above the ground (metric wall UVs)
-
-    def rng_(value, a, b):
-        m = nt.nodes.new("ShaderNodeMapRange")
-        m.clamp = True
-        m.inputs["From Min"].default_value, m.inputs["From Max"].default_value = a, b
-        nt.links.new(value, m.inputs["Value"])
-        return m.outputs["Result"]
-
-    def mul(a, b):
-        m = nt.nodes.new("ShaderNodeMath")
-        m.operation = "MULTIPLY"
-        m.use_clamp = True
-        for i, x in enumerate((a, b)):
-            if hasattr(x, "is_linked"):
-                nt.links.new(x, m.inputs[i])
-            else:
-                m.inputs[i].default_value = x
-        return m.outputs[0]
-
-    def mix(fac, c1, colour):
-        m = nt.nodes.new("ShaderNodeMixRGB")
-        m.blend_type = "MULTIPLY" if colour is None else "MIX"
-        nt.links.new(fac, m.inputs["Fac"])
-        nt.links.new(c1, m.inputs["Color1"])
-        m.inputs["Color2"].default_value = colour if colour is not None else (0.55, 0.53, 0.5, 1.0)
-        return m.outputs["Color"]
-
-    color = src
-    if plan.rain_streaks:  # long vertical runs, strongest near the top
-        stretch = nt.nodes.new("ShaderNodeMapping")
-        stretch.inputs["Scale"].default_value = (8.0, 0.6, 1.0)  # 5-20 cm wide soft runs, not crack-like lines
-        nt.links.new(uv.outputs["UV"], stretch.inputs["Vector"])
-        streak = nt.nodes.new("ShaderNodeTexNoise")
-        streak.inputs["Scale"].default_value = 2.0
-        streak.inputs["Detail"].default_value = 4.0
-        nt.links.new(stretch.outputs[0], streak.inputs["Vector"])
-        fac = mul(mul(rng_(streak.outputs["Fac"], 0.5, 0.75), rng_(v, 0.0, height_m)), plan.rain_streaks)
-        color = mix(fac, color, None)
-    if plan.ground_splash:  # dirty band at the base with a ragged top edge
-        edge = nt.nodes.new("ShaderNodeTexNoise")
-        edge.inputs["Scale"].default_value = 6.0
-        nt.links.new(uv.outputs["UV"], edge.inputs["Vector"])
-        band = rng_(v, 0.55, 0.05)
-        fac = mul(mul(band, rng_(edge.outputs["Fac"], 0.3, 0.6)), plan.ground_splash)
-        color = mix(fac, color, (0.22, 0.18, 0.13, 1.0))
-    if plan.algae:  # green-black patches low on the wall
-        patch = nt.nodes.new("ShaderNodeTexNoise")
-        patch.inputs["Scale"].default_value = 2.5
-        nt.links.new(uv.outputs["UV"], patch.inputs["Vector"])
-        fac = mul(mul(rng_(v, 0.9, 0.0), rng_(patch.outputs["Fac"], 0.55, 0.7)), plan.algae)
-        color = mix(fac, color, (0.10, 0.14, 0.07, 1.0))
-    nt.links.new(color, base)
-    return {"rain_streaks": plan.rain_streaks, "ground_splash": plan.ground_splash, "algae": plan.algae}
