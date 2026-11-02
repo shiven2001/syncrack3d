@@ -1,10 +1,10 @@
 """Render the foreground prop types in one labelled grid.
 
 One example of each factory in ``occlusion._PROP_CATALOG``, sat on the floor
-and framed on its measured bounds. Writes a tile per type and
+and framed on its measured bounds. Writes a tile per type and an unlabelled
 ``outputs/prop_grid/grid.png``.
 
-    PYTHONPATH=. .venv/bin/python tools/render_prop_grid.py
+    PYTHONPATH=. /home/shiven/anaconda3/envs/infinigen_v2/bin/python tools/render_prop_grid.py
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ from syncrack3d.occlusion import _PROP_CATALOG, _load, _world_bounds  # noqa: E4
 from syncrack3d.render import configure_cycles  # noqa: E402
 
 OUT = REPO / "outputs" / "prop_grid"
-TILE = 640
-SAMPLES = 32
+TILE = 768
+SAMPLES = 192
 SEED = 4
 COLUMNS = 3
 LENS_MM = 50.0
@@ -46,6 +46,9 @@ LABELS = {
 
 def _font(size: int) -> ImageFont.ImageFont:
     for path in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
         "/Library/Fonts/Arial.ttf",
@@ -55,36 +58,61 @@ def _font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
+def _mat(name: str, color: tuple[float, float, float], roughness: float = 0.85) -> bpy.types.Material:
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    bsdf = mat.node_tree.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = (*color, 1.0)
+    bsdf.inputs["Roughness"].default_value = roughness
+    bsdf.inputs["Specular IOR Level"].default_value = 0.15
+    return mat
+
+
 def _studio() -> bpy.types.Object:
+    """Soft product studio: mid-grey floor, pale wall, three-point area lights.
+
+    Energies stay modest so white props (shelves, marble tables) do not blow out
+    before auto-exposure lands; relative ratios are fixed and scaled in `_frame`.
+    """
     scene = bpy.context.scene
     scene.world = bpy.data.worlds.new("CWG_World")
     scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
     if bg is not None:
-        bg.inputs["Color"].default_value = (0.62, 0.63, 0.65, 1.0)
-        bg.inputs["Strength"].default_value = 0.35
+        bg.inputs["Color"].default_value = (0.70, 0.72, 0.76, 1.0)
+        bg.inputs["Strength"].default_value = 0.22
 
-    mesh = bpy.data.meshes.new("CWG_Floor")
-    mesh.from_pydata(
-        [(x, y, 0.0) for x in (-20.0, 20.0) for y in (-20.0, 20.0)],
+    floor_mesh = bpy.data.meshes.new("CWG_Floor")
+    floor_mesh.from_pydata(
+        [(x, y, 0.0) for x in (-12.0, 12.0) for y in (-12.0, 12.0)],
         [],
         [(0, 2, 3, 1)],
     )
-    floor = bpy.data.objects.new("CWG_Floor", mesh)
+    floor = bpy.data.objects.new("CWG_Floor", floor_mesh)
     bpy.context.scene.collection.objects.link(floor)
-    mat = bpy.data.materials.new("CWG_Floor")
-    mat.use_nodes = True
-    mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (0.45, 0.46, 0.47, 1.0)
-    mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = 0.7
-    floor.data.materials.append(mat)
+    floor.data.materials.append(_mat("CWG_Floor", (0.48, 0.47, 0.45), 0.8))
 
-    for name, energy, location in (
-        ("CWG_Key", 800.0, (2.2, -3.4, 3.2)),
-        ("CWG_Fill", 220.0, (-2.6, -1.6, 2.2)),
+    wall_mesh = bpy.data.meshes.new("CWG_Wall")
+    wall_mesh.from_pydata(
+        [(x, 4.5, z) for x in (-12.0, 12.0) for z in (0.0, 8.0)],
+        [],
+        [(0, 1, 3, 2)],
+    )
+    wall = bpy.data.objects.new("CWG_Wall", wall_mesh)
+    bpy.context.scene.collection.objects.link(wall)
+    wall.data.materials.append(_mat("CWG_Wall", (0.82, 0.83, 0.85), 0.9))
+
+    for name, energy, size, location, color in (
+        ("CWG_Key", 320.0, 2.6, (3.2, -4.0, 3.6), (1.00, 0.97, 0.93)),
+        ("CWG_Fill", 90.0, 4.2, (-3.8, -2.2, 2.2), (0.90, 0.94, 1.00)),
+        ("CWG_Rim", 140.0, 2.0, (-1.8, 3.4, 3.0), (0.94, 0.96, 1.00)),
+        ("CWG_Top", 60.0, 3.4, (0.2, -0.8, 4.6), (1.00, 1.00, 1.00)),
     ):
         light = bpy.data.lights.new(name, "AREA")
         light.energy = energy
-        light.size = 2.4
+        light.size = size
+        light.spread = 160.0
+        light.color = color
         obj = bpy.data.objects.new(name, light)
         obj.location = location
         bpy.context.scene.collection.objects.link(obj)
@@ -105,9 +133,10 @@ def _render(path: Path) -> None:
     tree = scene.node_tree
     tree.nodes.clear()
     layers = tree.nodes.new("CompositorNodeRLayers")
+    # Auto-exposure keeps dark props and white shelves in a similar display range.
     rgb = apply_sensor_response(
         NodeWrangler(tree), layers.outputs["Image"], enabled=True,
-        auto_exposure=True, ev_compensation=0.0, noise=False,
+        auto_exposure=True, ev_compensation=0.1, noise=False,
     )
     out = tree.nodes.new("CompositorNodeOutputFile")
     out.base_path = str(path.parent)
@@ -116,15 +145,53 @@ def _render(path: Path) -> None:
     out.file_slots[0].path = path.stem
     tree.links.new(rgb, out.inputs[0])
     path.parent.mkdir(parents=True, exist_ok=True)
+    for old in path.parent.glob(f"{path.stem}*.png"):
+        old.unlink()
     bpy.ops.render.render(write_still=False)
     written = sorted(path.parent.glob(f"{path.stem}*.png"), key=lambda item: item.stat().st_mtime)
-    frame = next(item for item in written if item != path)
-    frame.replace(path)
+    if not written:
+        raise RuntimeError(f"Cycles wrote no PNG for {path.stem}")
+    written[-1].replace(path)
+
+
+def _fit_distance(center, points, direction, fov: float, fill: float) -> float:
+    """Camera distance so `points` fill `fill` of a square frame."""
+    forward = np.asarray(direction, dtype=float)
+    forward = forward / np.linalg.norm(forward)
+    # Blender camera looks down local -Z with local +Y up, so local +Z
+    # points from the target back toward the camera.
+    world_up = np.array([0.0, 0.0, 1.0])
+    right = np.cross(world_up, forward)
+    norm = float(np.linalg.norm(right))
+    right = np.array([1.0, 0.0, 0.0]) if norm < 1e-8 else right / norm
+    up = np.cross(forward, right)
+    limit = math.tan(fov * 0.5) * fill
+    distance = 0.05
+    for point in points:
+        rel = np.asarray(point, dtype=float) - np.asarray(center, dtype=float)
+        span = max(abs(float(np.dot(rel, right))), abs(float(np.dot(rel, up))))
+        distance = max(distance, float(np.dot(rel, forward)) + span / limit)
+    return distance
+
+
+def _oriented_corners(obj) -> np.ndarray:
+    """World-space corners of the object's local bounding box."""
+    return np.array([obj.matrix_world @ Vector(corner) for corner in obj.bound_box], dtype=float)
 
 
 def _frame(obj) -> None:
     """Sit the prop on the floor at the origin and look at it from a three-quarter view."""
-    obj.rotation_euler = (0.0, 0.0, math.radians(18.0))
+    # Peek at unrotated extents so wide furniture (tables) can share the shelf pose.
+    bpy.context.view_layer.update()
+    raw = _world_bounds(obj)
+    if raw is None:
+        raise RuntimeError("prop has no mesh bounds")
+    raw_size = raw[1] - raw[0]
+    flat = float(raw_size[2]) < 0.25 * max(float(raw_size[0]), float(raw_size[1]))
+    low = float(raw_size[2]) < 0.55 * max(float(raw_size[0]), float(raw_size[1]))
+    # Shelves use a shallow three-quarter. A long table needs more yaw so we
+    # see the corner, not a thin side elevation.
+    obj.rotation_euler = (0.0, 0.0, math.radians(50.0 if (low and not flat) else 22.0))
     bpy.context.view_layer.update()
     bounds = _world_bounds(obj)
     if bounds is None:
@@ -139,16 +206,22 @@ def _frame(obj) -> None:
     size = hi - lo
     radius = max(0.05, 0.5 * float(np.linalg.norm(size)))
     fov = 2.0 * math.atan(SENSOR_MM / (2.0 * LENS_MM))
-    distance = radius / math.sin(fov * 0.5) * 1.35
-    # A flat prop reads from above. A shelf's open face is the
-    # wider vertical face, so the camera sits on the thinner horizontal axis.
-    if size[2] < 0.25 * max(size[0], size[1]):
-        eye = np.array([0.2, -0.55, 1.0])
-    elif size[0] <= size[1]:
-        eye = np.array([1.0, -0.38, 0.36])
+    # A long low table has a large bounding sphere, so sphere-fit leaves it
+    # small in frame. Fit those on the projected box instead, from a higher
+    # three-quarter so the top reads the way a shelf front does.
+    short = float(size[2]) < 0.55 * max(float(size[0]), float(size[1]))
+    if flat:
+        eye_dir = np.array([0.2, -0.55, 1.0])
+    elif short:
+        eye_dir = np.array([0.95, -0.42, 0.62])
     else:
-        eye = np.array([0.38, -1.0, 0.36])
-    eye = eye / np.linalg.norm(eye) * distance + center
+        eye_dir = np.array([1.0, -0.42, 0.34])
+    if short or flat:
+        # Fit the mesh corners, not the inflated axis-aligned box around a yawed table.
+        distance = _fit_distance(center, _oriented_corners(obj), eye_dir, fov, fill=0.86)
+    else:
+        distance = radius / math.sin(fov * 0.5) * 1.28
+    eye = eye_dir / np.linalg.norm(eye_dir) * distance + center
 
     aim = bpy.data.objects.new("CWG_Aim", None)
     aim.location = tuple(float(v) for v in center)
@@ -166,21 +239,28 @@ def _frame(obj) -> None:
     bpy.context.scene.collection.objects.link(cam)
     bpy.context.scene.camera = cam
 
-    scale = max(radius, 0.2)
+    # Keep illuminance roughly stable across prop size.
+    scale = max(radius, 0.25)
+    size_mul = {
+        "CWG_Key": 1.4,
+        "CWG_Fill": 2.4,
+        "CWG_Rim": 1.2,
+        "CWG_Top": 2.0,
+    }
     for light in bpy.data.objects:
         if light.type != "LIGHT":
             continue
         light.data.energy *= scale * scale
-        light.data.size = max(0.4, radius * 1.6)
+        light.data.size = max(0.7, radius * size_mul.get(light.name, 1.5))
         for constraint in light.constraints:
             if constraint.type == "TRACK_TO":
                 constraint.target = aim
 
 
 def _blank(message: str) -> Image.Image:
-    image = Image.new("RGB", (TILE, TILE), (40, 40, 42))
+    image = Image.new("RGB", (TILE, TILE), (236, 236, 238))
     draw = ImageDraw.Draw(image)
-    draw.multiline_text((24, 24), message, fill=(230, 210, 180), font=_font(22))
+    draw.multiline_text((24, 24), message, fill=(40, 40, 42), font=_font(22))
     return image
 
 
@@ -199,18 +279,16 @@ def _one(module_name: str, class_name: str, path: Path) -> Image.Image:
 
 
 def _grid(tiles: list[tuple[str, Image.Image]], path: Path) -> None:
-    label_h = 44
+    gap = 8
     rows = math.ceil(len(tiles) / COLUMNS)
-    sheet = Image.new("RGB", (COLUMNS * TILE, rows * (TILE + label_h)), (18, 18, 20))
-    draw = ImageDraw.Draw(sheet)
-    font = _font(26)
-    for index, (label, image) in enumerate(tiles):
+    sheet_w = COLUMNS * TILE + (COLUMNS + 1) * gap
+    sheet_h = rows * TILE + (rows + 1) * gap
+    sheet = Image.new("RGB", (sheet_w, sheet_h), (255, 255, 255))
+    for index, (_, image) in enumerate(tiles):
         col, row = index % COLUMNS, index // COLUMNS
-        x, y = col * TILE, row * (TILE + label_h)
+        x = gap + col * (TILE + gap)
+        y = gap + row * (TILE + gap)
         sheet.paste(image.resize((TILE, TILE), Image.Resampling.LANCZOS), (x, y))
-        text = label
-        width = draw.textlength(text, font=font)
-        draw.text((x + (TILE - width) / 2, y + TILE + 8), text, fill=(235, 235, 235), font=font)
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(path)
 
