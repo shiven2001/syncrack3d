@@ -63,14 +63,6 @@ from syncrack3d.structures import (  # noqa: E402
 )
 from syncrack3d.occlusion import _world_bounds as prop_bounds  # noqa: E402
 from syncrack3d.occlusion import sample_props  # noqa: E402
-from syncrack3d.outdoor import (  # noqa: E402
-    apply_sky,
-    build_outdoor,
-    facade_front_bounds,
-    environment_for,
-    outdoor_lighting,
-    sample_outdoor_plan,
-)
 from syncrack3d.room_shell import (  # noqa: E402
     apply_matched_finish,
     build_room_shell,
@@ -209,36 +201,24 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         generator_name, surface_finish = "controlled", spec.material.finish
     clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
     shell_plan = sample_shell_plan(rng)  # drawn for every wall: keeps the shared RNG stream
-    environment = environment_for(seed, args.environment)
-    outdoor_plan = sample_outdoor_plan(seed, spec.width_m) if environment == "outdoor" else None
-    if outdoor_plan is None and args.structures != "off":
-        # Fixture views reach wall boundaries; close the room so sockets and
-        # door frames are not photographed against the sky outside the slab.
+    if args.structures != "off":
+        # Fixture views reach wall boundaries; close the room so door frames
+        # are not photographed against the empty world outside the slab.
         shell_plan = replace(shell_plan, has_ceiling=True, returns=("left", "right"))
-    if outdoor_plan is None:
-        shell = build_room_shell(spec, shell_plan, seed)
-        if args.shell_finish == "matched":
-            shell_finish = apply_matched_finish(shell, wall, seed)
-    else:
-        build_outdoor(spec, outdoor_plan, wall)
-    span_bounds = facade_front_bounds(spec, outdoor_plan) if outdoor_plan is not None else None
+    shell = build_room_shell(spec, shell_plan, seed)
+    if args.shell_finish == "matched":
+        shell_finish = apply_matched_finish(shell, wall, seed)
     configure_capture_scene(spec, build.root)
     capture_collection = bpy.data.collections[CAPTURE_COLLECTION]
 
     def light_scene():
-        """Indoor lighting rig, or the outdoor sun and sky."""
+        """The room's lighting rig."""
         lighting = sample_lighting_plan(rng, spec.width_m, spec.height_m)
         if args.light_profile != "default" and not args.relight_per_view:
             # Independent stream: walls, defects and cameras stay as in the default run.
             lighting = sample_lighting_plan(random.Random(seed ^ 0x4C494748), spec.width_m, spec.height_m,
                                             profile=args.light_profile)
         apply_lighting(lighting, spec.height_m, capture_collection)
-        if outdoor_plan is not None:
-            # one sun (or overcast sky) per wall, visible sky; the indoor plan above
-            # was still drawn so the shared RNG stream is unchanged
-            lighting = outdoor_lighting(outdoor_plan, spec)
-            apply_lighting(lighting, spec.height_m, capture_collection)
-            apply_sky(outdoor_plan)
         return lighting
 
     def pose_cameras(structures):
@@ -278,7 +258,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     ) if not fixtures_first else None
     if fixtures_first:
         # 3. Fixtures first, on their own stream and blind to cracks, built now.
-        structure_plans = sample_structure_plan(seed, spec, (), args.structures, environment, args.structure_kinds)
+        structure_plans = sample_structure_plan(seed, spec, (), args.structures, args.structure_kinds)
         mount = 0.0
         if args.fixture_mount == "relief" and material_record:
             # Stone and brick relief stands out of the wall plane: mount fixtures and
@@ -288,7 +268,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             if skirting is not None:
                 skirting.location.y -= mount
         layout_record["fixture_mount_m"] = mount
-        structures = build_structures(structure_plans, mount, span_bounds, spec.height_m)
+        structures = build_structures(structure_plans, mount, spec.height_m)
         keepout, near = crack_regions(structure_plans)
         # 4. Crack tokens around the fixtures: none under a large assembly, some
         # beside a service run; then a share snapped to fixture corners and edges.
@@ -314,8 +294,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         lighting = light_scene()
         # Structures are planned before injection (own RNG stream, so nothing else
         # moves) so junction cracks can be snapped to their edges.
-        structure_plans = sample_structure_plan(seed, spec, placements, args.structures, environment,
-                                                args.structure_kinds)
+        structure_plans = sample_structure_plan(seed, spec, placements, args.structures, args.structure_kinds)
     if args.crack_orientation == "random":
         # The spin already drawn for each card becomes its crack direction; no new draws.
         for p in placements:
@@ -359,9 +338,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
     def place_foreground_props(poses):
         """Props last: anywhere on the floor, clear of fixtures, lights and cameras."""
-        if outdoor_plan is not None:
-            return [], poses, []
-
         def around(obj, radius):
             at = np.array(obj.matrix_world.translation)
             return at - radius, at + radius
@@ -383,13 +359,13 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
     if fixtures_first:
         # Lighting and cameras; a camera jammed against an object is dropped.
-        # Props come last, around the cameras and the fixture meshes. None outdoors.
+        # Props come last, around the cameras and the fixture meshes.
         lighting = light_scene()
         poses, blocked = drop_blocked_cameras(pose_cameras(structures), wall)
         props, poses, more = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked + more
     else:
-        structures = build_structures(structure_plans, span_bounds=span_bounds, host_height_m=spec.height_m)
+        structures = build_structures(structure_plans, host_height_m=spec.height_m)
         poses = pose_cameras(structures)
         props, poses, blocked = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked
@@ -419,11 +395,10 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         "junctions": junctions,
         "structure_settings": {"profile": args.structures, "views": args.structure_views, "kinds": args.structure_kinds,
                                "clean_fraction": args.structure_clean_fraction},
-        "room_shell": shell_plan.to_dict() if outdoor_plan is None else None,
+        "room_shell": shell_plan.to_dict(),
         "shell_finish": shell_finish,
         "layout": layout_record,
-        "environment": environment,
-        "outdoor": outdoor_plan.to_dict() if outdoor_plan is not None else None,
+        "environment": "indoor",  # always; kept so manifests read like the v1.x ones
         "wall_material": {
             "source": args.wall_materials,
             "generator": generator_name,
@@ -495,9 +470,6 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             record["view_lighting"] = []
 
             def relight(index, cam):
-                if outdoor_plan is not None:  # outdoors there is one sun for the whole wall
-                    record["view_lighting"].append(lighting.to_dict())
-                    return
                 # A fresh rig per view, aimed where this camera looks on the wall
                 # (y = 0), from its own stream so nothing else is resampled.
                 fwd = cam.matrix_world.to_3x3() @ Vector((0.0, 0.0, -1.0))
@@ -566,8 +538,6 @@ def main():
     parser.add_argument("--crack-axis-snap", type=float, default=0.0,
                         help="share of cracks turned to run along a wall axis (+-2 deg), like joint cracks")
     parser.add_argument("--defect-size-range", type=float, nargs=2, default=(.10, .45))
-    parser.add_argument("--environment", choices=("indoor", "outdoor", "mixed"), default="indoor",
-                        help="indoor room, outdoor building facade (ground, sky, sun), or half each")
     parser.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
                         help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
     parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
@@ -585,7 +555,7 @@ def main():
                              "pokes through them; relief (with --layout-order fixtures-first): stand them out "
                              "by the wall's displaced relief")
     parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
-                        help="background cables/pipes/boxes/windows/joints; auto selects indoor/outdoor mix")
+                        help="background fixtures: doors, windows, vents, boxes, cables, pipes, joints")
     parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,
                         help="force a subset for QA; requires --structures enabled")
     parser.add_argument("--structure-views", type=int, default=2,
@@ -648,7 +618,7 @@ def main():
                         help="one clean-wall probability for every material instead of the per-category "
                              "table (same per-wall draw); 1 renders every wall crack-free")
     parser.add_argument("--crack-style-mix", default=None,
-                        help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10,facade=.10 "
+                        help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10 "
                              "(recipes.STYLES); a wall's style overrides the flags that define it; "
                              "'off' disables it, e.g. to override the unified recipe")
     parser.add_argument("--recipe", choices=sorted(RECIPES),

@@ -1,6 +1,6 @@
 """Rebuild the v1.20 showcase sheets for seeds 920000, 920009, 920012, 920014.
 
-Each sheet is the wide room or facade view plus the first close-up of the
+Each sheet is the wide room view plus the first close-up of the
 first two cracks. The walls themselves are the unified recipe at 1024px.
 
     PYTHONPATH=. python tools/render_showcase.py
@@ -31,22 +31,10 @@ BG = (244, 244, 244)
 def _wide_camera(record: dict) -> None:
     spec = record["spec"]
     width, height = float(spec["width_m"]), float(spec["height_m"])
-    if record["environment"] == "indoor":
-        depth = float(record["room_shell"]["depth_m"])
-        location = (-0.12 * width, -(depth - 0.30), 0.55 * height)
-        aim_at = (0.0, 0.0, 0.40 * height)
-        lens = 16.0
-    else:
-        corner = (record.get("outdoor") or {}).get("corner")
-        if corner == "left":
-            x = -0.22 * width
-        elif corner == "right":
-            x = 0.22 * width
-        else:
-            x = -0.08 * width
-        location = (x, -max(3.2, 0.95 * width), 0.42 * height)
-        aim_at = (0.0, 0.0, 0.46 * height)
-        lens = 24.0
+    depth = float(record["room_shell"]["depth_m"])
+    location = (-0.12 * width, -(depth - 0.30), 0.55 * height)
+    aim_at = (0.0, 0.0, 0.40 * height)
+    lens = 16.0
     aim = bpy.data.objects.new("CWG_Showcase_Aim", None)
     aim.location = aim_at
     bpy.context.scene.collection.objects.link(aim)

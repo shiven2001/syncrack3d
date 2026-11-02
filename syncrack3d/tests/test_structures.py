@@ -187,33 +187,16 @@ def test_structure_view_curation_keeps_only_true_negatives(tmp_path):
     assert presence() == 'failed_target'
 
 
-def test_outdoor_runs_cover_the_facade_face():
-    from syncrack3d.structures import span_on_host
-    u, v, w, h = span_on_host("downpipe", 0.0, 1.2, 4.0, 0.18, (-8.0, 7.0, 0.0, 6.5))
-    assert (u, w, v, h) == pytest.approx((-0.5, 15.0, 1.2, 0.18))
-    u, v, w, h = span_on_host("conduit", 0.4, 1.3, 0.10, 2.6, (-8.0, 7.0, 0.0, 6.5))
-    assert (u, v, w, h) == pytest.approx((0.4, 3.25, 0.10, 6.5))
-    assert span_on_host("downpipe", 0.0, 1.2, 4.0, 0.18, None) == (0.0, 1.2, 4.0, 0.18)
-    assert span_on_host("window", 0.2, 1.0, 1.0, 0.8, (-8.0, 7.0, 0.0, 6.5)) == (0.2, 1.0, 1.0, 0.8)
-
-
-def test_service_runs_span_either_axis_indoors_and_outdoors():
+def test_service_runs_span_either_axis():
     from syncrack3d.structures import SPAN_KINDS, SPAN_SECTION
     spec = SimpleNamespace(width_m=4.0, height_m=2.6, skirting=False)
     seen = {kind: set() for kind in SPAN_KINDS}
-    for environment in ("indoor", "outdoor"):
-        for seed in range(160):
-            plans = sample_structure_plan(seed, spec, profile="auto", environment=environment)
-            for plan in plans:
-                if plan.kind not in SPAN_KINDS:
-                    continue
-                if abs(plan.width_m - spec.width_m) < 1e-6:
-                    seen[plan.kind].add(environment + "-side")
-                else:
-                    seen[plan.kind].add(environment + "-down")
+    for seed in range(160):
+        for plan in sample_structure_plan(seed, spec, profile="auto"):
+            if plan.kind in SPAN_KINDS:
+                seen[plan.kind].add("side" if abs(plan.width_m - spec.width_m) < 1e-6 else "down")
     for kind, axes in seen.items():
-        envs = ("indoor",) if kind == "trunking" else ("indoor", "outdoor")
-        assert axes == {f"{env}-{axis}" for env in envs for axis in ("side", "down")}, kind
+        assert axes == {"side", "down"}, kind
     for kind in SPAN_KINDS:
         axes = set()
         for seed in range(24):
@@ -228,21 +211,18 @@ def test_service_runs_span_either_axis_indoors_and_outdoors():
         assert axes == {"side", "down"}, kind
 
 
-def test_environment_pools_and_mounting_heights():
-    from syncrack3d.structures import INDOOR_KINDS, OUTDOOR_KINDS
-    seen = {'indoor': set(), 'outdoor': set()}
-    for environment in seen:
-        for seed in range(150):
-            spec = sample_scene_spec(seed)
-            plans = sample_structure_plan(seed, spec, profile='auto', environment=environment)
-            seen[environment].update(p.kind for p in plans)
-            for p in plans:
-                if p.kind == 'door':
-                    assert p.v_m == p.height_m * .5
-    assert set(INDOOR_KINDS) <= seen['indoor']
-    assert set(OUTDOOR_KINDS) <= seen['outdoor']
-    assert not set(OUTDOOR_KINDS) & seen['indoor']
-    assert not set(INDOOR_KINDS) & seen['outdoor']
+def test_auto_pool_and_mounting_heights():
+    from syncrack3d.structures import INDOOR_KINDS
+    seen = set()
+    for seed in range(150):
+        spec = sample_scene_spec(seed)
+        plans = sample_structure_plan(seed, spec, profile='auto')
+        seen.update(p.kind for p in plans)
+        for p in plans:
+            if p.kind == 'door':
+                assert p.v_m == p.height_m * .5
+    assert set(INDOOR_KINDS) <= seen
+    assert 'cable' not in seen  # the sagging overhead span is services/all only
 
 
 def test_boundary_fixture_cameras_stay_above_floor_and_below_ceiling():
@@ -290,9 +270,8 @@ def test_fixtures_stay_clear_of_each_other_and_on_the_wall():
     for seed in range(200):
         spec = sample_scene_spec(seed)
         targets = [SimpleNamespace(u_m=0., v_m=spec.height_m * .5)]
-        for profile, env, near in (("auto", "indoor", ()), ("auto", "outdoor", ()), ("all", "indoor", ()),
-                                   ("all", "outdoor", targets)):
-            plans = sample_structure_plan(seed, spec, near, profile, env)
+        for profile, near in (("auto", ()), ("all", ()), ("all", targets)):
+            plans = sample_structure_plan(seed, spec, near, profile)
             boxes = [(p.kind, built_extent(p.kind, p.u_m, p.v_m, p.width_m, p.height_m)) for p in plans
                      if p.kind != "panel_seam"]
             base = (-spec.width_m * .5, spec.width_m * .5, 0., .085)

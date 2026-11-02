@@ -6,17 +6,20 @@ import pytest
 
 from syncrack3d.material_diversity import (NEVER_CRACKED, PAINTED_CATEGORIES, UNIFIED_CATEGORIES,
                                            is_clean_wall, sample_category)
-from syncrack3d.recipes import RECIPES, STYLES, UNIFIED_MIX, parse_style_mix, wall_style
+from syncrack3d.recipes import REDRAW, RECIPES, STYLES, UNIFIED_MIX, parse_style_mix, wall_style
 
 ARGS = Namespace(crack_style_mix=UNIFIED_MIX, material_category=None, crack_profile="legacy",
-                 structures="off", environment="indoor")
+                 structures="off")
 
 
 def test_style_draw_is_deterministic_and_follows_the_mix():
     assert [wall_style(s, ARGS)[0] for s in range(50)] == [wall_style(s, ARGS)[0] for s in range(50)]
     counts = collections.Counter(wall_style(s, ARGS)[0] for s in range(4000))
-    for name, p in parse_style_mix(UNIFIED_MIX).items():
-        assert abs(counts[name] / 4000 - p) < 0.03
+    mix = parse_style_mix(UNIFIED_MIX)
+    kept = 1 - mix.pop(REDRAW)
+    assert set(counts) == set(mix)  # a redraw slot never becomes a wall's style
+    for name, p in mix.items():
+        assert abs(counts[name] / 4000 - p / kept) < 0.03
 
 
 def test_style_sets_its_own_settings_and_leaves_the_rest():
@@ -48,7 +51,7 @@ def test_unified_clean_table_cracks_stone_block_and_large_tile():
 
 
 def test_bad_mix_is_rejected():
-    for text in ("legacy", "nope=1", "legacy=0"):
+    for text in ("legacy", "nope=1", "legacy=0", "redraw=1", "facade=1"):
         with pytest.raises(ValueError):
             parse_style_mix(text)
     assert "--crack-style-mix" in RECIPES["unified"] and "--wall-materials unified" in RECIPES["unified"]
@@ -66,6 +69,5 @@ def test_fixtures_first_puts_fixtures_on_every_indoor_wall():
     ff = Namespace(**{**vars(ARGS), "layout_order": "fixtures-first"})
     for seed in range(300):
         name, wall = wall_style(seed, ff)
-        if wall.environment == "indoor":
-            assert wall.structures == "auto" and wall.structure_views == 0
+        assert wall.structures == "auto" and wall.structure_views == 0
         assert wall_style(seed, ARGS)[1].structures == STYLES[name]["structures"]  # legacy order unchanged

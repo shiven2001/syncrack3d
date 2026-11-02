@@ -11,17 +11,12 @@ from dataclasses import asdict, dataclass
 import math
 import random
 
-PROFILES = ("off", "auto", "services", "facade", "indoor", "outdoor", "all")
+PROFILES = ("off", "auto", "services", "all")
 KINDS = ("cable", "wall_cable", "conduit", "downpipe", "utility_box", "window", "panel_seam")
-# Exclusive to one setting. Vent, access panel, and the full-length runs are shared.
-# Outdoor scenes have no exclusive fixture of their own.
 INDOOR_KINDS = ("door", "trunking")
-OUTDOOR_KINDS = ()
-KINDS += INDOOR_KINDS + OUTDOOR_KINDS + ("vent", "access_panel", "plumbing")
+KINDS += INDOOR_KINDS + ("vent", "access_panel", "plumbing")
 LARGE_KINDS = ("utility_box", "window", "door", "vent", "access_panel")
-# Full-length runs, down the wall or across it. Trunking is indoor only.
-# Outdoors the built run continues across the whole facade; the plan stays on
-# the inspection wall so cracks and junctions do too.
+# Full-length runs, down the wall or across it.
 SPAN_KINDS = ("wall_cable", "conduit", "downpipe", "plumbing", "trunking", "panel_seam")
 SPAN_SECTION = {
     "wall_cable": 0.10, "conduit": 0.10, "downpipe": 0.18, "plumbing": 0.40,
@@ -90,20 +85,6 @@ def fixture_rules(width_m, height_m):
     }
 
 
-def span_on_host(kind, u, v, w, h, bounds):
-    """(u, v, w, h) of a full-length run on bounds (u_lo, u_hi, v_lo, v_hi).
-
-    bounds is None on the inspection wall. Outdoors it is the whole front face,
-    past the inspection panel. A sideways run keeps its height; a vertical run
-    keeps its place across the wall. Other fixtures are unchanged."""
-    if bounds is None or kind not in SPAN_KINDS:
-        return u, v, w, h
-    u0, u1, v0, v1 = bounds
-    if w >= h:
-        return (u0 + u1) * .5, v, u1 - u0, h
-    return u, (v0 + v1) * .5, w, v1 - v0
-
-
 def built_extent(kind, u, v, w, h):
     """(u_lo, u_hi, v_lo, v_hi) on the wall covered by an assembly as
     build_structures makes it, hardware included (PAD)."""
@@ -115,7 +96,7 @@ def _overlaps(a, b, gap):
     return a[0] < b[1] + gap and b[0] < a[1] + gap and a[2] < b[3] + gap and b[2] < a[3] + gap
 
 
-def sample_structure_plan(seed, spec, placements=(), profile="auto", environment="indoor", include_kinds=None):
+def sample_structure_plan(seed, spec, placements=(), profile="auto", include_kinds=None):
     """Plan the wall's fixtures. Every kind is placed by one rule; only its
     size, anchor (fixture_rules) and hardware (PAD) differ.
 
@@ -140,12 +121,8 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     else:
         runs = ("wall_cable", "conduit", "downpipe", "plumbing")
         shared = ("vent", "access_panel", *runs)
-        indoor = ["utility_box", "window", "panel_seam", *shared, *INDOOR_KINDS]
-        outdoor = ["cable", "utility_box", "window", "panel_seam", *shared, *OUTDOOR_KINDS]
         pool = (list(KINDS[:5]) + ["trunking", "plumbing"] if profile == "services" else
-                ["window", "panel_seam", *shared, *OUTDOOR_KINDS] if profile == "facade" else
-                indoor if profile == "indoor" else outdoor if profile == "outdoor" else
-                outdoor if environment == "outdoor" else indoor)
+                ["utility_box", "window", "panel_seam", *shared, *INDOOR_KINDS])
         kinds = r.sample(pool, r.randint(2, min(4, len(pool))))
     W, H = spec.width_m, spec.height_m
     rules = fixture_rules(W, H)
@@ -205,7 +182,7 @@ def sample_structure_plan(seed, spec, placements=(), profile="auto", environment
     return plans
 
 
-def build_structures(plans, relief_m=0.0, span_bounds=None, host_height_m=None):
+def build_structures(plans, relief_m=0.0, host_height_m=None):
     """Build the planned fixtures. Each assembly stands `relief_m` out from the
     wall plane, on the wall's displaced relief rather than sunk into it."""
     import bpy
@@ -264,7 +241,7 @@ def build_structures(plans, relief_m=0.0, span_bounds=None, host_height_m=None):
             obj.data.materials.append(mat)
             return tag(obj)
 
-        x, z, w, h = span_on_host(p.kind, p.u_m, p.v_m, p.width_m, p.height_m, span_bounds)
+        x, z, w, h = p.u_m, p.v_m, p.width_m, p.height_m
         if p.kind == 'cable':
             # A suspended span with gravity sag, wall anchors and a loose return.
             radius = r.uniform(.0025, .006)
@@ -397,9 +374,7 @@ def build_structures(plans, relief_m=0.0, span_bounds=None, host_height_m=None):
                 rim = min(w, h) * .26
                 tube('meter_rim', [(x - w * .06, -.066, z + .01), (x - w * .06, -.080, z + .01)], rim, metal)
                 tube('meter_face', [(x - w * .06, -.074, z + .01), (x - w * .06, -.084, z + .01)], rim * .78, face)
-            if span_bounds is not None:
-                bottom, top = span_bounds[2], span_bounds[3]
-            elif host_height_m:
+            if host_height_m:
                 bottom, top = 0., host_height_m
             else:
                 bottom, top = z - h * .5, z + h * .5 + .25

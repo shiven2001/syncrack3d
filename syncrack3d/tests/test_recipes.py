@@ -10,12 +10,12 @@ def test_no_recipe_leaves_argv_alone():
 
 
 def test_recipe_flags_precede_user_flags():
-    argv = recipe_argv(["--seeds", "1", "--recipe", "facade", "--crack-junction-fraction", "0"])
-    assert argv[:len(RECIPES["facade"].split())] == RECIPES["facade"].split()
+    argv = recipe_argv(["--seeds", "1", "--recipe", "legacy", "--clean-wall-scale", "0"])
+    assert argv[:len(RECIPES["legacy"].split())] == RECIPES["legacy"].split()
     # the user's value is the last occurrence of the flag, so argparse keeps it
-    last = len(argv) - 1 - argv[::-1].index("--crack-junction-fraction")
-    assert argv[last + 1] == "0" and last > argv.index("--crack-junction-fraction")
-    assert argv[-2:] == ["--recipe", "facade"]
+    last = len(argv) - 1 - argv[::-1].index("--clean-wall-scale")
+    assert argv[last + 1] == "0" and last > argv.index("--clean-wall-scale")
+    assert argv[-2:] == ["--recipe", "legacy"]
 
 
 def test_every_recipe_uses_the_release_labels():

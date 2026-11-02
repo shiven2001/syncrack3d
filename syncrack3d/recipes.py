@@ -11,12 +11,10 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
   major    indoor walls, broad open and branched cracks, every wall cracked
   network  indoor paint and stucco walls with visible crack networks (crazing),
            organic outline, indoor structures beside the cracks (v1.7.0 on)
-  facade   outdoor facades with facade structures, junction cracks and rain-wash
-           staining (v1.8.0)
   unified_v1.16  the unified recipe as of v1.16.0 (legacy layout order), to
            rebuild those walls exactly
   unified  v2: one recipe for everything. Each wall draws a crack style
-           (legacy/major/network/facade, STYLES) that sets only what defines that
+           (legacy/major/network, STYLES) that sets only what defines that
            kind of crack; materials (--wall-materials unified: 10 crack-able
            categories drawn uniformly, one plaster and one stucco whose coats
            are neutral, coloured, or mid-tone, no wood or irregular stone), capture and
@@ -32,11 +30,15 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            skirting stand on stone/brick relief instead of sinking into it
            (--fixture-mount relief). From v1.20 every fixture is placed by one
            rule (structures.sample_structure_plan): clear of every other.
+           From v1.22 every wall is indoor: the facade style and the outdoor
+           scene are gone, and a draw that would have been a facade wall
+           draws again (REDRAW), so every other wall keeps its style.
   unified_v1.17, unified_v1.18  the unified recipe's flags as of that version.
            Prop and fixture placement no longer differ between them.
 
-The four release recipes keep the v1.x training walls' flags; use unified for
-new data.
+The three release recipes keep the v1.x training walls' flags; use unified for
+new data. The v1.8.0 facade recipe and its outdoor walls rebuild only from the
+v1.21.0 tag.
 
 The labels and views of the released training set also passed a selection
 step per batch; releases/*.json list the views each release kept.
@@ -60,8 +62,6 @@ RECIPES = {
     "network": (COMMON + " --clean-wall-scale 0 --min-defects 2 --max-defects 3 --defect-size-range .20 .45 "
                 "--crack-profile network --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 "
                 "--structures auto --structure-views 0 --crack-network-edge organic --crack-network-extent 1.4"),
-    "facade": (LEGACY + " --clean-wall-scale 0 --environment outdoor --structures facade --structure-views 0 "
-               "--crack-junction-fraction .5"),
 }
 
 # v2: one recipe for everything. Each wall draws a crack style; the style sets
@@ -69,21 +69,22 @@ RECIPES = {
 # capture, rendering, materials, clean-wall policy - is shared.
 STYLES = {
     "legacy": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
-                   crack_width_scale=1.3, crack_depth_scale=.5, environment="indoor", structures="off"),
+                   crack_width_scale=1.3, crack_depth_scale=.5, structures="off"),
     "major": dict(crack_profile="major", min_defects=1, max_defects=2, defect_size_range=(.30, .45),
-                  crack_width_scale=1.0, crack_depth_scale=1.0, environment="indoor", structures="off"),
+                  crack_width_scale=1.0, crack_depth_scale=1.0, structures="off"),
     # Crazing is only visible on paint and stucco, so these walls draw one of those.
     "network": dict(crack_profile="network", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
                     crack_width_scale=2.0, crack_depth_scale=2.0, crack_network_grime=(.8, 1.0),
-                    crack_network_edge="organic", crack_network_extent=1.4, environment="indoor",
+                    crack_network_edge="organic", crack_network_extent=1.4,
                     structures="auto", structure_views=0),
-    "facade": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
-                   crack_width_scale=1.3, crack_depth_scale=.5, environment="outdoor", structures="facade",
-                   structure_views=0, crack_junction_fraction=.5),
 }
-# Close to the v1.9 training mix by view (legacy ~75%, major ~10%, network ~7%,
-# facade ~8%); major walls carry fewer cracks and so fewer views per wall.
-UNIFIED_MIX = "legacy=.65,major=.15,network=.10,facade=.10"
+# A draw that lands on REDRAW draws again from the same stream. The unified mix
+# keeps the retired facade style's 10% slot under this name, so every wall that
+# was indoor before v1.22 keeps its style; the rest split .65:.15:.10.
+REDRAW = "redraw"
+# Close to the v1.9 training mix by view; major walls carry fewer cracks and so
+# fewer views per wall.
+UNIFIED_MIX = "legacy=.65,major=.15,network=.10,redraw=.10"
 RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
                             + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
 # v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
@@ -97,15 +98,15 @@ RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
 
 
 def parse_style_mix(text):
-    """'legacy=.65,major=.15,...' -> {style: probability}, normalised."""
+    """'legacy=.65,major=.15,...' -> {style: probability}, normalised; may include REDRAW."""
     mix = {}
     for part in text.split(","):
         name, _, value = part.partition("=")
-        if name.strip() not in STYLES or not value:
+        if name.strip() not in (*STYLES, REDRAW) or not value:
             raise ValueError(f"crack style mix needs style=weight pairs from {sorted(STYLES)}: {text}")
         mix[name.strip()] = float(value)
     total = sum(mix.values())
-    if total <= 0 or any(v < 0 for v in mix.values()):
+    if total - mix.get(REDRAW, 0) <= 0 or any(v < 0 for v in mix.values()):
         raise ValueError(f"crack style weights must be non-negative and not all zero: {text}")
     return {k: v / total for k, v in mix.items()}
 
@@ -125,10 +126,11 @@ def wall_style(seed, args):
 
     rng = random.Random(int(hashlib.md5(f"{int(seed)}:crack_style".encode()).hexdigest()[:16], 16))
     mix = parse_style_mix(args.crack_style_mix)
-    style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
+    style = REDRAW
+    while style == REDRAW:
+        style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
     wall = Namespace(**{**vars(args), **STYLES[style], "crack_style": style})
-    if getattr(args, "layout_order", "legacy") == "fixtures-first" and wall.environment == "indoor" \
-            and wall.structures == "off":
+    if getattr(args, "layout_order", "legacy") == "fixtures-first" and wall.structures == "off":
         # Real rooms have doors and the other indoor fixtures whatever the crack;
         # the v1.x styles kept them to network walls only.
         wall.structures, wall.structure_views = "auto", 0

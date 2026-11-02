@@ -14,10 +14,8 @@ exported with labels and checked with the label contract. Steps resume.
   legacy     indoor walls, legacy cracks
   major      indoor walls, broad open and branched cracks
   network    indoor paint/stucco walls with crack networks beside indoor fixtures
-  facade     outdoor facades, facade fixtures, junction cracks, rain-wash staining
-  negatives  crack-free walls, indoor and outdoor, with fixture views (doors,
-             sockets, vents, cables, pipes, windows, gutters, ...) and plain
-             close-ups
+  negatives  crack-free walls with fixture views (doors, vents, cables, pipes,
+             windows, ...) and plain close-ups
 
 OUT/manifest.json records the code commit, the exact commands, and per view:
 subset, seed, wall material, environment, crack pixels and SHA-256 of image and
@@ -39,8 +37,7 @@ SUBSETS = {
     "legacy": ("unified", "810000-810049", ["--crack-style-mix", "legacy=1"]),
     "major": ("unified", "811000-811039", ["--crack-style-mix", "major=1"]),
     "network": ("unified", "812000-812049", ["--crack-style-mix", "network=1"]),
-    "facade": ("unified", "813000-813039", ["--crack-style-mix", "facade=1"]),
-    "negatives": ("unified", "814000-814039", ["--crack-style-mix", "off", "--environment", "mixed",
+    "negatives": ("unified", "814000-814039", ["--crack-style-mix", "off",
                                                "--structures", "auto", "--structure-views", "2",
                                                "--structure-clean-fraction", "1"]),
 }

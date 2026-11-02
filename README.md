@@ -582,6 +582,24 @@ test sets, none of which is mainly outdoor walls. The replacements include 4
 major-crack and 1 network wall where the facade walls were all legacy cracks.
 Script: `studies/syncrack3d_indoor_only_250.sh`.
 
+## v1.22.0 indoor only
+
+SynCrack3D is now an indoor generator. The outdoor scene is removed:
+`syncrack3d/outdoor.py` (ground, sky, sun, surrounding facade, corner, eave,
+downpipe), the `--environment` flag, the `facade` crack style, the `facade`
+release recipe, the `facade` and `outdoor` fixture profiles, and the facade
+spans of service runs. `scene.json` still records `"environment": "indoor"`
+so manifests read like the v1.x ones; `room_shell` is always set and the
+`outdoor` record is gone. The synthetic evaluation set loses its facade
+subset, and its negatives are indoor only.
+
+The unified mix keeps the facade style's 10% slot as `redraw`: a wall that
+lands on it draws its style again from the same stream. Every wall that was
+indoor in v1.21.0 keeps its style and settings (checked on seeds
+910000-919999: 9,014 unchanged); the 986 former facade seeds become 733
+legacy, 140 major and 113 network walls. Outdoor walls rebuild only from the
+`v1.21.0` tag.
+
 ## v1.10.0 whole rooms for embodied inspection
 
 Close-up training cameras are aimed at the cracks, so a policy trained on
@@ -618,7 +636,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 79 tests, a few seconds
+python -m pytest syncrack3d/tests          # 77 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -628,7 +646,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.21.0)
+## Generate new data: the unified recipe (v1.22.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -646,8 +664,9 @@ tagged:
 | v1.19.0 | tag `v1.19.0` | fixtures and skirting stand on the wall relief (`--fixture-mount relief`) and clear of each other (`--fixture-spacing clear`) |
 | v1.20.0 | tag `v1.20.0` | every fixture placed by one rule: size, anchor and hardware per kind; on the wall and 3 cm clear of every other |
 | v1.21.0 | tag `v1.21.0` | one smaller fixture catalogue with full-length service runs; matched side walls always; rubble stone out of the unified palette |
+| v1.22.0 | tag `v1.22.0` | indoor only: the outdoor scene, facade style and recipe are removed; facade draws redraw |
 
-The four release recipes stay on the plain shell, so the v1.0–v1.10 walls
+The three release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
 
 ```bash
@@ -661,23 +680,26 @@ Each wall draws a crack style:
 | legacy | 0.65 | indoor, legacy cracks |
 | major | 0.15 | indoor, broad open and branched cracks |
 | network | 0.10 | indoor paint or stucco, crack networks beside indoor fixtures |
-| facade | 0.10 | outdoor, facade fixtures, junction cracks, rain-wash staining |
+| redraw | 0.10 | the retired facade style's slot: the wall draws again (v1.22.0) |
 
-The style sets only what defines that kind of crack. Everything else is shared.
+Every wall is indoor (v1.22.0). The redraw slot keeps every wall that was
+indoor before the same, so the split is .72 / .17 / .11 in practice. The style
+sets only what defines that kind of crack. Everything else is shared.
 
-- **Materials:** `--wall-materials unified` draws 15 categories uniformly.
+- **Materials:** `--wall-materials unified` draws 10 categories uniformly
+  (one plaster and one stucco, each with a neutral, coloured or mid coat).
   The v1.x training data was built in near-equal forced batches per category,
   so this matches what the model was trained on, not the old palette weights.
-  Wood and irregular stone are left out.
+  Wood, irregular stone and rubble stone are left out.
 - **Clean walls:** none. Every wall is cracked (`--clean-wall-scale 0`),
   chosen after the clean-wall study below. The material-aware table
   (`--clean-wall-scale 1` with `--wall-materials unified`: paint and stucco
   0.15, concrete 0.35, patterned masonry, tile and stone 0.60) stays
   available.
 - **Indoor context:** `--shell-finish matched`. Side walls carry the test
-  wall's finish in 70% of rooms, otherwise a different paint, and the floor
-  gets an Infinigen floor material. See the matched indoor finishes study
-  below.
+  wall's finish (bump only; from v1.21.0 in every room, before that in 70%),
+  and the floor gets an Infinigen floor material. See the matched indoor
+  finishes study below.
 - **Shared settings:** capture, lighting, rendering and labels.
 
 `--crack-style-mix` changes the mix (for example `network=1` for one style),
@@ -692,7 +714,7 @@ paired comparison against v1.9.0 on BD3, CUBIT and BuildCrack.
 `--layout-order fixtures-first` builds a wall in this order:
 
 1. wall and material
-2. room shell or outdoor facade
+2. room shell
 3. fixtures, planned and built
 4. crack tokens, then junction snapping
 5. crack injection
@@ -720,7 +742,7 @@ other way round. Checks in the new order:
 | crack tokens | no centre under a large assembly (windows with sill and lintel, doors, boxes, vents, sockets, switches, lights), grown by 0.3 × the largest token size + 3 cm; 30% of tokens are tried 3–15 cm beside a cable, pipe or trunking run (`--crack-near-service-fraction`), so services partly cover some cracks; network tokens are spaced by their full patch size (extent × size), because overlapping patches blended instance ids |
 | junctions | as before: a share of tokens moves to fixture corners and edges |
 | cameras | a ray along each view axis, ignoring the wall and crack cards: a camera with another object within 0.35 m and before half the way to the wall is dropped |
-| props | placed around the cameras (0.2 m boxes) and the fixture meshes, stepping out from the wall past them or dropped; none outdoors |
+| props | placed around the cameras (0.2 m boxes) and the fixture meshes, stepping out from the wall past them or dropped |
 
 QA (12 walls with fixtures, seeds 840000–840011, network and facade styles):
 
@@ -858,24 +880,20 @@ diverse`.
 | `legacy` | indoor walls, legacy cracks; some walls plain by material (the v1.0.0–v1.3.0 base walls) |
 | `major` | indoor walls, broad open and branched cracks |
 | `network` | indoor paint and stucco walls with crack networks and indoor structures (v1.7.0 on) |
-| `facade` | outdoor facades, junction cracks, rain-wash staining (v1.8.0) |
+
+The v1.8.0 `facade` recipe (outdoor facades) is gone with the outdoor scene in
+v1.22.0; check out the `v1.21.0` tag to rebuild those walls.
 
 ```bash
-python syncrack3d/build_dataset.py --recipe facade --seeds 176022-176023 \
-  --material-category brick --output out/facade --resume
+python syncrack3d/build_dataset.py --recipe network --seeds 176022-176023 \
+  --material-category stucco_neutral --output out/network --resume
 ```
 
 A seed with the same recipe and material rebuilds the same wall, cameras and
 cracks as the release. The training set also kept a selected subset of views
 per batch: `releases/*.json` lists them with their seeds.
 
-Renders are deterministic: the same command gives identical images. One
-exception was fixed after v1.8.0. Outdoor walls drew the size of the
-surrounding facade (and so the corner, eave height and their shadows) from
-Python's per-process string hash, so it changed from run to run. Test-wall
-cameras, cracks and labels were never affected. The v1.8.0 facade walls and
-earlier outdoor renders were made before the fix, so their wide context views
-show a different surrounding facade when regenerated.
+Renders are deterministic: the same command gives identical images.
 
 From v1.9.0, props are placed by their real bounds, not by a catalogue
 footprint (`--prop-placement measured`, the default). The old placement let
@@ -1223,12 +1241,11 @@ three ordinary cracks. These are generator checks, not transfer results.
 
 ## Structural background details (v1.5.0)
 
-`--structures auto` adds an environment-dependent selection of background
-assemblies: sagging cables with anchor hardware and slack loops, clipped
-vertical cable bundles, conduit runs and elbows, downpipes with sockets and
-brackets, utility boxes with lids/screws/feed conduit, framed windows with
-mullions/sills/lintels, straight sealant panel joints, and projecting ledges.
-Indoor auto sampling excludes the exterior downpipe/ledge assemblies.
+`--structures auto` adds a selection of background assemblies. As of
+v1.21.0: a door, framed windows with sills and lintels, vents, access panels,
+utility cabinets, and full-length runs (cables in clips, conduit, pipes,
+plumbing, trunking, sealant panel joints). The v1.5.0 list below it (ledges,
+gutters, outdoor kinds) is history; v1.22.0 removed the outdoor scene.
 v1.5.0 puts these beside the v1.4.0 crack networks by swapping the same
 162 views; see the v1.5.0 study above.
 
@@ -1243,7 +1260,7 @@ without cracks as well as beside them:
 
 ```bash
 python -m syncrack3d.build_dataset --seeds 192000-192019 --output out/structures \
-  --environment mixed --structures auto --structure-views 2 \
+  --structures auto --structure-views 2 \
   --structure-clean-fraction .35 --wall-materials diverse \
   --min-defects 1 --max-defects 3 --max-props 0 \
   --resolution 640 --samples 64 --wall-normal-mode explicit \
@@ -1255,8 +1272,8 @@ python tools/prepare_defect_annotated_dataset.py -i out/structures/frames \
 python tools/check_instance_contract.py --pack out/structure_pack
 ```
 
-`--structures services` restricts sampling to cables, conduit, pipes and boxes;
-`facade` samples windows, joints, ledges and downpipes. `all` attempts every
+`--structures services` restricts sampling to cables, conduit, pipes and boxes.
+`all` attempts every
 assembly for QA, skipping large pieces if no collision-free placement is found.
 `off` is the default. Structural sampling uses its own random stream. Large
 assemblies avoid crack centres and service footprints; thin services may cross
