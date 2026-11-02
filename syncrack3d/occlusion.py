@@ -112,6 +112,43 @@ def _delete(obj) -> None:
         bpy.data.objects.remove(part, do_unlink=True)
 
 
+def _shade_as_bump(root) -> None:
+    """Prop relief stays a bump, the same rule as the side walls.
+
+    A material that already feeds the displacement socket keeps that height and
+    is set to bump, so it does not become real geometry. A flat shader gets a
+    fine bump of its own.
+    """
+    seen = set()
+    for part in (root, *getattr(root, "children_recursive", ())):
+        data = getattr(part, "data", None)
+        materials = getattr(data, "materials", None)
+        if not materials:
+            continue
+        for mat in materials:
+            if mat is None or mat in seen or not mat.use_nodes:
+                continue
+            seen.add(mat)
+            mat.displacement_method = "BUMP"
+            nodes, links = mat.node_tree.nodes, mat.node_tree.links
+            output = next((n for n in nodes if n.type == "OUTPUT_MATERIAL" and n.is_active_output), None)
+            if output is not None and output.inputs["Displacement"].is_linked:
+                continue
+            bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
+            if bsdf is None or bsdf.inputs["Normal"].is_linked:
+                continue
+            coord = nodes.new("ShaderNodeTexCoord")
+            noise = nodes.new("ShaderNodeTexNoise")
+            noise.inputs["Scale"].default_value = 160.0
+            noise.inputs["Detail"].default_value = 6.0
+            links.new(coord.outputs["Object"], noise.inputs["Vector"])
+            bump = nodes.new("ShaderNodeBump")
+            bump.inputs["Strength"].default_value = 0.3
+            bump.inputs["Distance"].default_value = 0.00035
+            links.new(noise.outputs["Fac"], bump.inputs["Height"])
+            links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+
+
 def _collection(name: str):
     col = bpy.data.collections.get(name)
     if col is None:
@@ -233,6 +270,7 @@ def sample_props(
         obj.parent = None
         obj.name = f"CWG_Prop_{index:02d}_{class_name}"
         obj["cwg_role"] = "prop"
+        _shade_as_bump(obj)
         for old in tuple(obj.users_collection):
             old.objects.unlink(obj)
         collection.objects.link(obj)

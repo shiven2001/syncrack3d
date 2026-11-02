@@ -211,6 +211,16 @@ def test_service_runs_span_either_axis():
         assert axes == {"side", "down"}, kind
 
 
+def test_parallel_and_loose_counts_cover_their_ranges():
+    from syncrack3d.structures import loose_cable_count, run_count
+    runs, cables = set(), set()
+    for seed in range(40):
+        runs.add(run_count(random.Random(seed)))
+        cables.add(loose_cable_count(random.Random(seed + 1000)))
+    assert runs == {2, 3, 4}
+    assert cables == {1, 2, 3}
+
+
 def test_auto_pool_and_mounting_heights():
     from syncrack3d.structures import INDOOR_KINDS
     seen = set()
@@ -222,7 +232,7 @@ def test_auto_pool_and_mounting_heights():
             if p.kind == 'door':
                 assert p.v_m == p.height_m * .5
     assert set(INDOOR_KINDS) <= seen
-    assert 'cable' not in seen  # the sagging overhead span is services/all only
+    assert 'cable' in seen  # loose cable is part of the indoor auto pool
 
 
 def test_boundary_fixture_cameras_stay_above_floor_and_below_ceiling():

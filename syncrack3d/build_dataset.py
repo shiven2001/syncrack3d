@@ -55,6 +55,7 @@ from syncrack3d.recipes import RECIPES, parse_style_mix, recipe_argv, wall_style
 from syncrack3d.structures import (  # noqa: E402
     PROFILES as STRUCTURE_PROFILES,
     KINDS as STRUCTURE_KINDS,
+    bind_window_masonry,
     build_structures,
     crack_regions,
     sample_structure_plan,
@@ -369,6 +370,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         poses = pose_cameras(structures)
         props, poses, blocked = place_foreground_props(poses)
         layout_record["cameras_dropped"] = blocked
+
+    # After the host material is final, including its displaced crack copy.
+    bind_window_masonry(wall, args.dicing_rate)
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
     # Partial white balance keeps a coloured wall coloured (opt-in; default full).

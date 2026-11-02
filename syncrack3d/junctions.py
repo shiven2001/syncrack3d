@@ -24,6 +24,7 @@ from dataclasses import replace
 import bpy
 
 from syncrack3d.defects import _EDGE_MARGIN_M, _STANDOFF_M
+from syncrack3d.structures import window_trim
 
 OPENINGS = ("window", "door", "vent", "access_panel")
 SALT = 0x4A554E43
@@ -40,7 +41,9 @@ def _anchors(plan, r):
     out = []
     if k in OPENINGS:
         if k == "window":
-            top, bot, half_w_top, half_w_bot = z + h / 2 + 0.12, z - h / 2 - 0.0675, w / 2 + 0.10, w / 2 + 0.08
+            trim = window_trim(plan.seed)
+            top, bot = z + h / 2 + trim.rise, z - h / 2 - trim.drop
+            half_w_top, half_w_bot = w / 2 + trim.overhang, w / 2 + trim.horn
         elif k == "door":
             top, bot, half_w_top, half_w_bot = z + h / 2, None, w / 2, w / 2
         else:

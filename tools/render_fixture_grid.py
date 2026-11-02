@@ -33,15 +33,15 @@ OUT = REPO / "outputs" / "fixture_grid"
 TILE = 640
 SAMPLES = 128
 SEED = 4
-COLUMNS = 5
+COLUMNS = 4
 LENS_MM = 50.0
 SENSOR_MM = 36.0
 
 # One tile per kind. Run direction is drawn inside the kind, not shown twice.
 KINDS = (
     "utility_box", "vent", "window", "door",
-    "access_panel", "trunking", "wall_cable", "conduit", "downpipe",
-    "plumbing", "panel_seam",
+    "access_panel", "trunking", "wall_cable", "cable",
+    "conduit", "downpipe", "plumbing", "panel_seam",
 )
 NAMES = {
     "utility_box": "utility box",
@@ -51,6 +51,7 @@ NAMES = {
     "access_panel": "access panel",
     "trunking": "trunking",
     "wall_cable": "wires",
+    "cable": "cable",
     "conduit": "conduit",
     "downpipe": "pipe",
     "plumbing": "plumbing",
@@ -65,6 +66,7 @@ WALL = {
     "door": (1.8, 2.5),
     "access_panel": (1.4, 1.4),
     "wall_cable": (2.2, 2.2),
+    "cable": (2.4, 1.4),
     "conduit": (2.2, 2.2),
     "trunking": (2.2, 2.2),
     "plumbing": (2.2, 2.2),
@@ -187,14 +189,20 @@ def _render(path: Path) -> None:
 
 
 def _frame(root, edge_to_edge: bool = False, margin_frac: float | None = None, fill: float = 0.92,
-           view_span: float | None = None) -> None:
+           view_span: float | None = None, crop_x: float | None = None, focus=None) -> None:
     """Look at the fixture from a slight three-quarter in front of the wall."""
     bpy.context.view_layer.update()
     bounds = _world_bounds(root)
     if bounds is None:
         raise RuntimeError("fixture has no mesh bounds")
-    lo, hi = bounds
-    if view_span is not None:
+    lo, hi = np.array(bounds[0], dtype=float), np.array(bounds[1], dtype=float)
+    if focus is not None:
+        lo, hi = np.array(focus[0], dtype=float), np.array(focus[1], dtype=float)
+    if crop_x is not None:
+        # A short length of a horizontal run, so the wires fill the tile.
+        mid = (float(lo[0]) + float(hi[0])) * 0.5
+        lo[0], hi[0] = mid - crop_x * 0.5, mid + crop_x * 0.5
+    elif view_span is not None:
         # Crop to a length of the run so clips and joints stay readable,
         # while the run still leaves the top and bottom of the tile.
         lo, hi = np.array(lo, dtype=float), np.array(hi, dtype=float)
@@ -210,7 +218,7 @@ def _frame(root, edge_to_edge: bool = False, margin_frac: float | None = None, f
     # own ends, so it reads as reaching the wall edges.
     span = max(float(size[0]), float(size[2]))
     narrow = min(float(size[0]), float(size[2]))
-    hairline = not edge_to_edge and (narrow < 0.045 or span / max(narrow, 1e-3) > 8.0)
+    hairline = crop_x is None and not edge_to_edge and (narrow < 0.045 or span / max(narrow, 1e-3) > 8.0)
     frac = 0.04 if edge_to_edge else 0.28 if hairline else 0.14
     if margin_frac is not None:
         frac = margin_frac
@@ -255,16 +263,47 @@ def _frame(root, edge_to_edge: bool = False, margin_frac: float | None = None, f
         constraint.up_axis = "UP_Y"
 
 
+def _font(size: int) -> ImageFont.ImageFont:
+    for path in (
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ):
+        if Path(path).is_file():
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
 def _blank() -> Image.Image:
     return Image.new("RGB", (TILE, TILE), (236, 236, 238))
 
 
-def _one(kind: str, path: Path) -> Image.Image:
+def _dress_window(seed: int) -> None:
+    """Sill and head take a real inspection-wall material, displaced as geometry."""
+    import numpy as np
+
+    from cwg_infinigen.core.util.math import int_hash
+    from syncrack3d.materials import enable_true_displacement
+    from syncrack3d.material_diversity import apply_diverse_wall_material
+    from syncrack3d.structures import bind_window_masonry
+
+    mesh = bpy.data.meshes.new("CWG_SillHost")
+    host = bpy.data.objects.new("CWG_SillHost", mesh)
+    bpy.context.scene.collection.objects.link(host)
+    np.random.seed(int_hash((seed, "window_sill")) % (2**32))
+    apply_diverse_wall_material(host, seed, palette="unified")
+    enable_true_displacement(host, 1.5)
+    bind_window_masonry(host, 1.5)
+    host.hide_render = True
+
+
+def _one(kind: str, path: Path, seed: int = SEED) -> Image.Image:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     configure_cycles(resolution=TILE, samples=SAMPLES, denoise=True, dicing_rate=1.0)
     width, height = WALL[kind]
     spec = SimpleNamespace(width_m=width, height_m=height, skirting=False)
-    plans = sample_structure_plan(SEED, spec, include_kinds=[kind])
+    plans = sample_structure_plan(seed, spec, include_kinds=[kind])
     if not plans:
         raise RuntimeError(f"no placement for {kind}")
     if kind in SPAN_KINDS:
@@ -275,34 +314,46 @@ def _one(kind: str, path: Path) -> Image.Image:
     records = build_structures(plans, host_height_m=height)
     if not records:
         raise RuntimeError(f"no geometry for {kind}")
+    if kind == "window":
+        _dress_window(seed)
     root = bpy.data.objects[records[0]["object_name"]]
     bpy.context.view_layer.update()
     bounds = _world_bounds(root)
     if bounds is None:
         raise RuntimeError(f"{kind} has no mesh bounds")
     _studio((bounds[0] + bounds[1]) * 0.5)
-    _frame(root, edge_to_edge=kind in SPAN_KINDS or kind == "utility_box",
-           margin_frac=0.0 if kind in SPAN_KINDS or kind == "utility_box" else None,
-           fill=1.0 if kind == "utility_box" else 0.9,
-           view_span=0.62 if kind in SPAN_KINDS else None)
+    focus = None
+    if kind == "utility_box":
+        # Frame the cabinet. The feed still leaves the top of the tile.
+        plan = plans[0]
+        focus = (
+            (plan.u_m - plan.width_m * 0.5, -0.2, plan.v_m - plan.height_m * 0.5),
+            (plan.u_m + plan.width_m * 0.5, 0.02, plan.v_m + plan.height_m * 0.5 + 0.07),
+        )
+    _frame(root, edge_to_edge=kind in SPAN_KINDS,
+           margin_frac=0.05 if kind == "cable" else 0.08 if kind == "utility_box" else 0.0 if kind in SPAN_KINDS else None,
+           fill=0.92 if kind == "utility_box" else 0.9,
+           view_span=0.62 if kind in SPAN_KINDS else None,
+           crop_x=0.42 if kind == "cable" else None,
+           focus=focus)
     _render(path)
     return Image.open(path).convert("RGB")
 
 
-def _grid(images: list[Image.Image], names: list[str], path: Path) -> None:
+def _grid(images: list[Image.Image], names: list[str], path: Path, columns: int = COLUMNS) -> None:
     gap = 8
     label_h = 36
-    rows = math.ceil(len(images) / COLUMNS)
+    rows = math.ceil(len(images) / columns)
     cell_h = TILE + label_h
     sheet = Image.new(
         "RGB",
-        (COLUMNS * TILE + (COLUMNS + 1) * gap, rows * cell_h + (rows + 1) * gap),
+        (columns * TILE + (columns + 1) * gap, rows * cell_h + (rows + 1) * gap),
         (255, 255, 255),
     )
     draw = ImageDraw.Draw(sheet)
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
+    font = _font(22)
     for index, image in enumerate(images):
-        col, row = index % COLUMNS, index // COLUMNS
+        col, row = index % columns, index // columns
         x = gap + col * (TILE + gap)
         y = gap + row * (cell_h + gap)
         sheet.paste(image.resize((TILE, TILE), Image.Resampling.LANCZOS), (x, y))
@@ -310,6 +361,13 @@ def _grid(images: list[Image.Image], names: list[str], path: Path) -> None:
                   fill=(30, 30, 30), anchor="mm")
     path.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(path)
+
+
+VARIED = (
+    "utility_box", "window", "access_panel", "vent", "trunking", "wall_cable", "cable",
+    "conduit", "downpipe", "plumbing", "panel_seam", "door",
+)
+VARIATION_SEEDS = (4, 18, 31)
 
 
 def main() -> None:
@@ -325,6 +383,21 @@ def main() -> None:
     grid = OUT / "grid.png"
     _grid(images, [NAMES[kind] for kind in KINDS], grid)
     print(grid, flush=True)
+
+    varied, names = [], []
+    for kind in VARIED:
+        for seed in VARIATION_SEEDS:
+            path = OUT / "tiles" / f"{kind}_{seed}.png"
+            print(f"rendering {kind} seed {seed}", flush=True)
+            try:
+                varied.append(_one(kind, path, seed))
+            except Exception:
+                traceback.print_exc()
+                varied.append(_blank())
+            names.append(f"{NAMES[kind]}  {seed}")
+    sheet = OUT / "variation.png"
+    _grid(varied, names, sheet, columns=len(VARIATION_SEEDS))
+    print(sheet, flush=True)
 
 
 if __name__ == "__main__":

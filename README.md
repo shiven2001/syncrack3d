@@ -582,6 +582,25 @@ test sets, none of which is mainly outdoor walls. The replacements include 4
 major-crack and 1 network wall where the facade walls were all legacy cracks.
 Script: `studies/syncrack3d_indoor_only_250.sh`.
 
+## v1.23.0 fixture surfaces
+
+Doors are raised panels with a ranged finish and fine grain. Access panels
+have no hinges. Vents, panel seams, and the service runs (wires, conduit,
+pipe, plumbing, trunking) draw a colour and a texture; those runs draw 2, 3
+or 4 in parallel. The loose cable is in the indoor pool and spans the wall.
+Utility cabinets are enclosed boxes: a hinged door, a screwed cover, a meter,
+or louvres, with a ranged paint or galvanized finish and a top feed.
+
+Window sills and heads use the inspection wall's own material, with real
+displacement. The pane is a pale mirror, so it reads as glass without lighting
+the frame; a dark backing still hides the host. Junction cracks sit on the
+drawn sill and head.
+
+Fixture surfaces use a fine bump. Props that already output a height stay
+bump, and a flat prop material gets a fine bump of its own. The inspection
+wall is still the only surface with real displacement, together with the
+window sill and head that share it.
+
 ## v1.22.0 indoor only
 
 SynCrack3D is now an indoor generator. The outdoor scene is removed:
@@ -646,7 +665,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.22.0)
+## Generate new data: the unified recipe (v1.23.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -665,6 +684,7 @@ tagged:
 | v1.20.0 | tag `v1.20.0` | every fixture placed by one rule: size, anchor and hardware per kind; on the wall and 3 cm clear of every other |
 | v1.21.0 | tag `v1.21.0` | one smaller fixture catalogue with full-length service runs; matched side walls always; rubble stone out of the unified palette |
 | v1.22.0 | tag `v1.22.0` | indoor only: the outdoor scene, facade style and recipe are removed; facade draws redraw |
+| v1.23.0 | tag `v1.23.0` | ranged indoor fixtures on a fine bump; window sill and head use the inspection wall, displaced |
 
 The three release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
@@ -1246,6 +1266,8 @@ v1.21.0: a door, framed windows with sills and lintels, vents, access panels,
 utility cabinets, and full-length runs (cables in clips, conduit, pipes,
 plumbing, trunking, sealant panel joints). The v1.5.0 list below it (ledges,
 gutters, outdoor kinds) is history; v1.22.0 removed the outdoor scene.
+v1.23.0 gives those fixtures ranged finishes and a fine bump, and builds the
+window sill and head from the inspection wall.
 v1.5.0 puts these beside the v1.4.0 crack networks by swapping the same
 162 views; see the v1.5.0 study above.
 
