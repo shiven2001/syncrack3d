@@ -582,6 +582,41 @@ test sets, none of which is mainly outdoor walls. The replacements include 4
 major-crack and 1 network wall where the facade walls were all legacy cracks.
 Script: `studies/syncrack3d_indoor_only_250.sh`.
 
+## v1.24.0 junction cracks by default
+
+`--recipe unified` now moves cracks to openings
+(`--crack-junction-fraction .5`): each crack token, with probability .5,
+moves to a corner of a window, door, vent or access panel and runs 30-60°
+off horizontal away from it, or lies along a door jamb or under a window sill
+on a near-straight path (`syncrack3d/junctions.py`, its own random stream).
+Walls without such an opening, and tokens not drawn, are unchanged. Up to
+v1.23 the step was used only on facade walls. `--recipe unified_v1.23` keeps
+the old flags.
+
+A moved crack now also keeps the plan's own spacing from every other crack
+(0.30 m, and the full patch extent for network cracks), not just 0.4 × their
+summed sizes. Without it, 2 of 30 network walls in the screen below had
+patches 0.35 and 0.54 m apart against the 0.63 m that keeps their instance
+ids from blending, and 3 of 128 other walls had cracks closer than 0.30 m.
+
+Screen on the v1.22.0 code, seeds 910000-910249, same protocol as v1.22.0
+(250 walls, U-Net R34, 4,000 steps, five seeds, zero-shot, 5 px): 143 walls
+carry 203 junction cracks (155 corner, 48 edge).
+
+| | v1.22.0 | + junctions .5 |
+|---|---|---|
+| BD3 F1 | 0.887 (sd .014) | **0.898** (sd .016) |
+| BD3 precision / recall | .944 / .836 | .940 / **.860** |
+| BD3 plain-wall false alarms | **.039** | .082 |
+| BD3 crack IoU | .581 | **.599** |
+| CUBIT F1 | .863 | .866 |
+| BuildCrack F1 | .640 (sd .037) | **.732** (sd .016) |
+
+BuildCrack gains on every seed (.713-.757 against .593-.695), from recall
+(.563 -> .711). The BD3 gain is within seed noise; false alarms on plain BD3
+walls double, on every seed. The v1.23.0 fixtures and this spacing rule have
+no screen of their own yet. Script: `studies/syncrack3d_v122_junctions_250.sh`.
+
 ## v1.23.0 fixture surfaces
 
 Doors are raised panels with a ranged finish and fine grain. Access panels
@@ -619,6 +654,15 @@ indoor in v1.21.0 keeps its style and settings (checked on seeds
 legacy, 140 major and 113 network walls. Outdoor walls rebuild only from the
 `v1.21.0` tag.
 
+Screen (250 walls, seeds 910000-910249, every wall rendered with this code;
+same protocol as v1.21.0): BD3 F1 .887 (sd .014), precision .944, recall
+.836, plain-wall false alarms .039, crack IoU .581; CUBIT .863; BuildCrack
+.640 (sd .037). Against v1.20.0 with indoor walls only (.875 / .046 / .859 /
+.683) BD3 is higher on 4 of 5 seeds and BuildCrack lower on 4 of 5, both
+about one seed sd. It includes the v1.21.0 fixture, side-wall and palette
+changes as well as the redrawn facade seeds. Script:
+`studies/syncrack3d_v122_250.sh`.
+
 ## v1.10.0 whole rooms for embodied inspection
 
 Close-up training cameras are aimed at the cracks, so a policy trained on
@@ -655,7 +699,7 @@ Two Python environments: one renders, one scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 77 tests, a few seconds
+python -m pytest syncrack3d/tests          # 79 tests, a few seconds
 
 # scoring (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
@@ -665,7 +709,7 @@ Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI)
 and otherwise on the CPU. Blender prints `Error: Not freed memory blocks`
 when a run exits; it is harmless. Run commands from this folder.
 
-## Generate new data: the unified recipe (v1.23.0)
+## Generate new data: the unified recipe (v1.24.0)
 
 For new data use one recipe for everything. The commits that built it are
 tagged:
@@ -684,7 +728,8 @@ tagged:
 | v1.20.0 | tag `v1.20.0` | every fixture placed by one rule: size, anchor and hardware per kind; on the wall and 3 cm clear of every other |
 | v1.21.0 | tag `v1.21.0` | one smaller fixture catalogue with full-length service runs; matched side walls always; rubble stone out of the unified palette |
 | v1.22.0 | tag `v1.22.0` | indoor only: the outdoor scene, facade style and recipe are removed; facade draws redraw |
-| v1.23.0 | tag `v1.23.0` | ranged indoor fixtures on a fine bump; window sill and head use the inspection wall, displaced |
+| v1.23.0 | tag `v1.23.0` | ranged indoor fixtures on a fine bump; window sill and head use the inspection wall, displaced (`--recipe unified_v1.23`) |
+| v1.24.0 | tag `v1.24.0` | half the cracks moved to window, door, vent and access-panel corners and edges (`--crack-junction-fraction .5`); moved cracks keep the plan's spacing |
 
 The three release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
@@ -760,7 +805,7 @@ other way round. Checks in the new order:
 |---|---|
 | fixtures | planned on their own stream, blind to cracks; footprints reserved between fixtures as before |
 | crack tokens | no centre under a large assembly (windows with sill and lintel, doors, boxes, vents, sockets, switches, lights), grown by 0.3 × the largest token size + 3 cm; 30% of tokens are tried 3–15 cm beside a cable, pipe or trunking run (`--crack-near-service-fraction`), so services partly cover some cracks; network tokens are spaced by their full patch size (extent × size), because overlapping patches blended instance ids |
-| junctions | as before: a share of tokens moves to fixture corners and edges |
+| junctions | a share of tokens (.5 in the unified recipe from v1.24) moves to opening corners and edges, keeping the plan's spacing from every other token (network: full patch extent) |
 | cameras | a ray along each view axis, ignoring the wall and crack cards: a camera with another object within 0.35 m and before half the way to the wall is dropped |
 | props | placed around the cameras (0.2 m boxes) and the fixture meshes, stepping out from the wall past them or dropped |
 
@@ -988,7 +1033,7 @@ lists every option.
 | `--crack-render` | geometry (real displacement), pbr (bump only) or albedo (colour only) |
 | `--crack-path-mode straight`, `--crack-axis-snap` | near-straight cracks. `--crack-axis-snap` has no effect: it turns the card, and the field never read the card's spin (see `--crack-orientation`) |
 | `--crack-orientation random` | each crack runs at its card's spin angle. By default (`vertical`, every release to v1.7.0) a crack runs along the wall's vertical with lateral wander: 79% of v1.2.0–v1.3.0 crack segments are near-vertical and 3–4% near-horizontal, against 31–49% near-horizontal in BD3, BuildCrack and CUBIT. Training rotates images by multiples of 90°, which hides most of this |
-| `--crack-junction-fraction` | share of cracks moved to structure edges (needs `--structures`): diagonal from the corners of windows, doors, vents and hatches, along sill and ledge undersides and tops, beside door jambs and along trims. Junction cracks set their own direction; edge cracks get a near-straight path (`syncrack3d/junctions.py`) |
+| `--crack-junction-fraction` | share of cracks moved to structure edges (needs `--structures`): diagonal from the corners of windows, doors, vents and access panels, under window sills and beside door jambs. Junction cracks set their own direction; edge cracks get a near-straight path; a moved crack keeps the plan's spacing (`syncrack3d/junctions.py`). Unified recipe: .5 from v1.24, 0 before |
 | `--light-profile hard_mix`, `--relight-per-view` | sun / bare bulb / raking torch among the regimes; a new light rig per view |
 | `--camera-isp`, `--awb-strength`, `--exposure-ev-range` | phone-camera processing, partial white balance, exposure spread |
 
