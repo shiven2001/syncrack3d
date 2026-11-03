@@ -1,12 +1,14 @@
 """Measure each view patch's displaced surface by rendering it, not by baking.
 
-    python bake_patch_height_ortho.py scene.blend patches_dir [--res 2048] [--dicing 1.0] [--hide-prefix PeelFlap]
+    python bake_patch_height_ortho.py scene.blend patches_dir [--res 2048] [--dicing 1.0]
 
 The shader-height bake under-reports relief (validate_relief.py: shape right,
 amplitude ~1/23), so this renders an orthographic camera square-on to each
 patch with Cycles' Position pass: the world y of the surface Cycles actually
-displaces. Writes <cam>_height_mm.npy in the same format as the bake (relief in
-mm along the outward normal, +50 offset, 0 where the ray missed the wall).
+displaces. Only the inspection wall is rendered, so fixtures, skirting and
+props in front of it are not read as relief. Writes <cam>_height_mm.npy in the
+same format as the bake (relief in mm along the outward normal from the patch
+median, +50 offset, 0 where the ray missed the wall).
 """
 import json
 import math
@@ -19,7 +21,7 @@ import numpy as np
 import OpenEXR
 
 argv = sys.argv[1:]
-opts = {"--res": 2048, "--dicing": 1.0, "--hide-prefix": ""}
+opts = {"--res": 2048, "--dicing": 1.0}
 for k in list(opts):
     if k in argv:
         i = argv.index(k); opts[k] = type(opts[k])(argv[i + 1]); del argv[i:i + 2]
@@ -48,12 +50,11 @@ cam_data.type = "ORTHO"
 cam = bpy.data.objects.new("height_cam", cam_data)
 scene.collection.objects.link(cam)
 scene.camera = cam
-# Overhanging geometry (peel flaps) cannot be a height field; it is exported as
-# meshes separately (dump_meshes.py) and hidden here.
-if opts["--hide-prefix"]:
-    for o in bpy.data.objects:
-        if o.name.startswith(opts["--hide-prefix"]):
-            o.hide_render = True
+# The patch is the wall's height field: everything else in front of it is hidden.
+wall = next(o for o in bpy.data.objects if o.type == "MESH" and "main.wall" in o.name)
+for o in bpy.data.objects:
+    if o not in (wall, cam):
+        o.hide_render = True
 for p in info["patches"]:
     cx, _, cz = p["center"]
     cam.location = (cx, -0.5, cz)
@@ -66,11 +67,13 @@ for p in info["patches"]:
     f = OpenEXR.InputFile(str(tmp))
     dw = f.header()["dataWindow"]
     w, h = dw.max.x - dw.min.x + 1, dw.max.y - dw.min.y + 1
-    key = next(k for k in f.header()["channels"] if k.endswith("Position.Y"))
-    y = np.frombuffer(f.channel(key, Imath.PixelType(Imath.PixelType.FLOAT)), np.float32).reshape(h, w)
-    rel0 = -(y - np.median(y)) * 1000.0
-    ok = (rel0 > -6) & (rel0 < 8)  # physical defect relief is within -4.2..+5.5 mm
-    relief = rel0 - np.median(rel0[ok])
+    pos = {k[-1]: np.frombuffer(f.channel(k, Imath.PixelType(Imath.PixelType.FLOAT)), np.float32).reshape(h, w)
+           for k in f.header()["channels"] if k[:-1].endswith("Position.")}
+    y = pos["Y"]
+    # A ray that misses the wall leaves Position at zero. No band on the height:
+    # masonry joints run up to ~40 mm deep (material_diversity.RELIEF_M).
+    ok = (pos["X"] != 0) | (pos["Y"] != 0) | (pos["Z"] != 0)
+    relief = -(y - np.median(y[ok])) * 1000.0
     out = np.where(ok, relief + 50.0, 0.0).astype(np.float32)
     np.save(pdir / f"{p['camera']}_height_mm.npy", out)
     print(p["camera"], "relief mm min %.3f max %.3f, miss %.1f%%" % (relief[ok].min(), relief[ok].max(), 100 * (~ok).mean()))

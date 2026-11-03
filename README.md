@@ -582,6 +582,25 @@ test sets, none of which is mainly outdoor walls. The replacements include 4
 major-crack and 1 network wall where the facade walls were all legacy cracks.
 Script: `studies/syncrack3d_indoor_only_250.sh`.
 
+## v1.25.0 Isaac port for the indoor generator
+
+The generator is unchanged; the Isaac Sim port is brought up to date and
+checked end to end on Isaac Sim 5.0.0: a v1.24.0 stone-block room (seed
+910004: export, compose, previews, embodied views) and close-up panels on a
+painted wall (seed 112000) and a stone-block wall (seed 112001).
+
+- Panel relief is measured with the inspection wall rendered alone, and every
+  sample whose ray hits it counts. The old -6..+8 mm band cut masonry joints
+  (down to -10.6 mm on stone block) out of the panel mesh. Baked against
+  rendered relief: correlation .97-.996, slope .95-1.02.
+- The Blender light references switch off every world background node. The
+  sky node is `CWG_Sky_Background`, so the old lookup of `Background` left it
+  on and the sky lit the wall evenly through the room's open side: the
+  crack's response to the side of the raking light was .009 in Blender
+  against .11-.36 in Isaac. It is now .11-.19.
+- `compose_room.py` drops its outdoor branches (every scene is indoor from
+  v1.22) and labels the skirting a fixture.
+
 ## v1.24.0 junction cracks by default
 
 `--recipe unified` now moves cracks to openings
@@ -730,6 +749,7 @@ tagged:
 | v1.22.0 | tag `v1.22.0` | indoor only: the outdoor scene, facade style and recipe are removed; facade draws redraw |
 | v1.23.0 | tag `v1.23.0` | ranged indoor fixtures on a fine bump; window sill and head use the inspection wall, displaced (`--recipe unified_v1.23`) |
 | v1.24.0 | tag `v1.24.0` | half the cracks moved to window, door, vent and access-panel corners and edges (`--crack-junction-fraction .5`); moved cracks keep the plan's spacing |
+| v1.25.0 | tag `v1.25.0` | Isaac port: wall-only panel relief without a band, isolated Blender light references, indoor-only room compose (generator unchanged) |
 
 The three release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
@@ -1150,8 +1170,10 @@ This solver integration has been assessed, not implemented or validated.
 Injected cracks exist only as shader displacement at Cycles render time, which
 Isaac cannot evaluate, so a wall is ported per close-up view: the region each
 close-up camera sees is baked to patch maps (true displaced relief measured with
-an orthographic Position-pass render, colour, roughness, normal map, class
-coverage) and the patches become displaced USD meshes with semantic labels.
+an orthographic Position-pass render of the wall alone, colour, roughness,
+normal map, class coverage) and the patches become displaced USD meshes with
+semantic labels. Every sample whose ray hits the wall counts, however deep:
+masonry joints reach several centimetres. The Isaac scripts need Isaac Sim 5.0.
 
 ```bash
 python isaac_port/port_wall.py --seed 112000 --material-category paint_neutral --out out/port --blender-only
@@ -1164,21 +1186,25 @@ Close-ups are posed at the cracks, so a policy trained on them never has to
 search. For embodied work, export the whole room instead, with no cameras:
 
 ```bash
-python syncrack3d/build_dataset.py --recipe legacy --max-props 3 --structures auto --structure-views 0 \
-  --seeds 190531 --output out/rooms --no-render --save-blend
-python isaac_port/export_room.py out/rooms/seed_190531 out/isaac/seed_190531            # Blender: bakes
-OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim-5/python isaac_port/compose_room.py out/isaac/seed_190531 --preview
+python syncrack3d/build_dataset.py --recipe unified --seeds 910004 --output out/rooms --no-render --save-blend
+python isaac_port/export_room.py out/rooms/seed_910004 out/isaac/seed_910004            # Blender: bakes
+OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim-5/python isaac_port/compose_room.py out/isaac/seed_910004 --preview
 ```
 
-Open `scene.usda` in Isaac Sim 5. It is in metres with Z up and the same frame
-as the Blender scene: test wall front at y = 0 facing -Y, floor at z = 0.
+Open `scene.usda` in Isaac Sim 5. It is in metres with Z up and the same
+frame as the Blender scene: test wall front at y = 0 facing -Y, floor at
+z = 0. Rooms are indoor only, as the generator is from v1.22.
 
 - **Test wall:** baked over its full face at about 0.6 mm per texel (capped at
   8192 px). Its height is the material's own displacement vector projected on
   the wall normal, so tile relief and cracks are both kept. The mesh holds the
   relief to 2.5 mm. Finer relief and the host bump are in the normal map.
 - **Labels:** wall faces are split into `crack` and `wall` prims. Furniture,
-  fixtures, floor and ceiling carry their own semantic class labels.
+  fixtures (skirting included), floor and ceiling carry their own semantic
+  class labels.
+- **Other surfaces:** only the test wall keeps real relief. Displacement
+  elsewhere, such as the window sill and head that share the wall's material
+  (v1.23), is baked into the normal map.
 - **Ground truth:** `gt.npz` holds 1 mm crack coverage for reward and
   evaluation. It is never a policy input. The `crack` prim covers any 2.5 mm
   cell a crack touches, so its rendered masks are slightly wider than the

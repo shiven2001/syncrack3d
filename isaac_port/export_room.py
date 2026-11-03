@@ -206,10 +206,10 @@ for obj in [o for o in bpy.data.objects if o.type == "MESH"]:
     mats = [s.material for s in obj.material_slots]
     if all(is_plain(m) for m in mats):
         continue
-    # A NORMAL bake leaves true displacement out. Facade slabs share the test
-    # wall's material and get their mortar/joint depth from displacement, so
-    # they baked flat and read as a brighter, flatter band around the wall.
-    # As bump, the displacement output enters the shading normal and the bake.
+    # A NORMAL bake leaves true displacement out. Window sills and heads share
+    # the test wall's material and get their joint depth from displacement
+    # (v1.23), so they would bake flat. As bump, the displacement output enters
+    # the shading normal and the bake.
     for m in mats:
         if m is not None and getattr(m, "displacement_method", "BUMP") != "BUMP":
             m.displacement_method = "BUMP"

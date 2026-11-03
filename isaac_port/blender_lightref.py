@@ -60,12 +60,14 @@ for cam in sorted((o for o in bpy.data.objects if o.type == "CAMERA" and "closeu
 for o in bpy.data.objects:
     if o.type == "LIGHT":
         o.hide_render = True
+# Every background node, whatever its name: the scene's sky is CWG_Sky_Background,
+# and left on it lit the wall evenly through the room's open side.
 if scene.world is None:
     scene.world = bpy.data.worlds.new("black")
 scene.world.use_nodes = True
-bg = scene.world.node_tree.nodes.get("Background")
-if bg is not None:
-    bg.inputs["Strength"].default_value = 0.0
+for n in scene.world.node_tree.nodes:
+    if n.bl_idname == "ShaderNodeBackground":
+        n.inputs["Strength"].default_value = 0.0
 scene.use_nodes = False
 scene.render.use_compositing = False
 scene.view_settings.view_transform = "Standard"
