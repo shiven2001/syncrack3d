@@ -4,7 +4,7 @@ from cwg_infinigen.assets.defect_fields import (
     adapt_crack_branches, adapt_crack_morphology, adapt_crack_path, sample_crack_morphology)
 
 
-def _straight(seed, profile='legacy'):
+def _straight(seed, profile='standard'):
     p = adapt_crack_morphology(sample_crack_morphology(seed, half=.12, profile=profile), fit_path=True)
     return adapt_crack_path(p, seed, 'straight')
 
@@ -19,7 +19,7 @@ def test_straight_is_reproducible_and_preserves_rng():
 
 
 def test_straight_run_and_forks():
-    for profile in ('legacy', 'major'):
+    for profile in ('standard', 'wide'):
         for seed in range(100):
             p = _straight(seed, profile)
             xs = [k[1] for k in p['path_knots']]

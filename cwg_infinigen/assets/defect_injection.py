@@ -380,7 +380,7 @@ def _inject_crack(
     crack_clean_fraction=0.30,
     crack_grime_focus=2.2,
     crack_width_scale=1.0,
-    crack_profile="legacy",
+    crack_profile="standard",
     crack_network_fraction=0.0,
     crack_network_spacing=(0.02, 0.06),
     crack_network_grime=(0.15, 0.60),
@@ -414,7 +414,7 @@ def _inject_crack(
     if not 0 <= crack_network_fraction <= 1:
         raise ValueError("network fraction must be 0..1")
     network_rng = np.random.default_rng(int_hash((int(seed), "network_selection_v1")))
-    network = crack_profile == "network" or network_rng.random() < crack_network_fraction
+    network = crack_profile == "crazing" or network_rng.random() < crack_network_fraction
     half = min(extent, 0.42) * 0.42
     if network:
         # Network field size relative to the card; the card, its placement and

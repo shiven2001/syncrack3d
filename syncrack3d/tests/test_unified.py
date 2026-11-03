@@ -8,7 +8,7 @@ from syncrack3d.material_diversity import (NEVER_CRACKED, PAINTED_CATEGORIES, UN
                                            is_clean_wall, sample_category)
 from syncrack3d.recipes import REDRAW, RECIPES, STYLES, UNIFIED_MIX, parse_style_mix, wall_style
 
-ARGS = Namespace(crack_style_mix=UNIFIED_MIX, material_category=None, crack_profile="legacy",
+ARGS = Namespace(crack_style_mix=UNIFIED_MIX, material_category=None, crack_profile="standard",
                  structures="off")
 
 
@@ -27,8 +27,8 @@ def test_style_sets_its_own_settings_and_leaves_the_rest():
         name, wall = wall_style(seed, ARGS)
         for key, value in STYLES[name].items():
             assert getattr(wall, key) == value
-        assert wall.crack_style == name and ARGS.crack_profile == "legacy"
-        if name == "network":
+        assert wall.crack_style == name and ARGS.crack_profile == "standard"
+        if name == "crazing":
             assert wall.material_category in PAINTED_CATEGORIES
 
 

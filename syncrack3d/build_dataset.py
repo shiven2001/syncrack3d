@@ -279,7 +279,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             substrate_finish=surface_finish,
             size_range_m=tuple(args.defect_size_range),
         )
-        if args.crack_profile == "network":
+        if args.crack_profile == "crazing":
             # Network patches reach crack_network_extent x the token size; spaced only
             # 0.30 m apart they overlapped and blended instance ids where they met.
             plan = replace(plan, min_separation_m=max(plan.min_separation_m,
@@ -566,10 +566,10 @@ def main():
                         help="additional views aimed at structural details (0 disables)")
     parser.add_argument("--structure-clean-fraction", type=float, default=0.0,
                         help="fraction of structure-enabled scenes forced defect-free (0..1)")
-    parser.add_argument("--crack-profile", choices=("legacy", "major", "mixed", "network"), default="legacy",
-                        help="legacy mix, broad cracks, 50%% of each, or hairline cellular networks")
+    parser.add_argument("--crack-profile", choices=("standard", "wide", "mixed", "crazing"), default="standard",
+                        help="standard: hairline to double-run; wide: open or branched; mixed: half of each; crazing: a fine crack network")
     parser.add_argument("--crack-network-fraction", type=float, default=0.0,
-                        help="replace this fraction of legacy/major/mixed instances with crazing (0..1)")
+                        help="replace this fraction of standard, wide, or mixed cracks with crazing (0..1)")
     parser.add_argument("--crack-network-spacing", type=float, nargs=2, default=(.02, .06),
                         metavar=("MIN", "MAX"), help="network cell spacing range in metres")
     parser.add_argument("--crack-network-grime", type=float, nargs=2, default=(.15, .60), metavar=("MIN", "MAX"),

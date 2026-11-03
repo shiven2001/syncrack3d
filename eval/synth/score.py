@@ -8,7 +8,7 @@ test-time upscale (eval/infer.py) and 5 px centreline tolerance
 (eval/metrics.py). Ignore masks are excluded except on crack pixels, as in
 training.
 
-Per subset (legacy, major, network, negatives), by wall material, and
+Per subset (standard, wide, crazing, negatives), by wall material, and
 pooled over the cracked subsets:
   centreline precision / recall / F1 on cracked views (pooled lengths), and F1 at
   3 px (f1_3px) as a secondary tolerance
@@ -33,7 +33,7 @@ from infer import load_model, predict  # noqa: E402
 from metrics import TOLERANCE_PX, _grow, centreline_counts, centreline_scores, cldice_counts  # noqa: E402
 
 ALARM_FRACTION = 0.001
-CRACKED = ("legacy", "major", "network")
+CRACKED = ("standard", "wide", "crazing")
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--set", type=Path, required=True, help="eval/synth/build.py output")

@@ -90,7 +90,7 @@ LIGHT_SETS = {
 LIGHTS = LIGHT_SETS["standard"]
 WALLS = {
     "unified": ["--recipe", "unified"],
-    "hairline": ["--recipe", "legacy", "--material-category", "paint_neutral", "--clean-wall-scale", "0",
+    "hairline": ["--recipe", "standard", "--material-category", "paint_neutral", "--clean-wall-scale", "0",
                  "--crack-width-scale", ".4", "--min-defects", "1", "--max-defects", "1"],
 }
 WALL = "unified"

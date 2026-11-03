@@ -1,6 +1,6 @@
 """Build the frozen SynCrack3D synthetic evaluation set.
 
-    python eval/synth/build.py --out OUT [--blender-py PY] [--only legacy major ...]
+    python eval/synth/build.py --out OUT [--blender-py PY] [--only standard wide ...]
 
 One held-out set from the v2 generator (the `unified` recipe: 15 crack-able
 materials drawn uniformly, one clean-wall table), covering every crack style plus
@@ -11,9 +11,9 @@ crack-free close-ups each subset's alarm rate is measured on. Seeds start at
 810000; every training wall so far used seeds below 200000. Each subset is
 exported with labels and checked with the label contract. Steps resume.
 
-  legacy     indoor walls, legacy cracks
-  major      indoor walls, broad open and branched cracks
-  network    indoor paint/stucco walls with crack networks beside indoor fixtures
+  standard   indoor walls, standard crack types
+  wide       indoor walls, wide open and wide branched cracks
+  crazing    indoor paint/stucco walls with crazing beside indoor fixtures
   negatives  crack-free walls with fixture views (doors, vents, cables, pipes,
              windows, ...) and plain close-ups
 
@@ -34,9 +34,9 @@ import cv2
 
 APP = Path(__file__).resolve().parents[2]
 SUBSETS = {
-    "legacy": ("unified", "810000-810049", ["--crack-style-mix", "legacy=1"]),
-    "major": ("unified", "811000-811039", ["--crack-style-mix", "major=1"]),
-    "network": ("unified", "812000-812049", ["--crack-style-mix", "network=1"]),
+    "standard": ("unified", "810000-810049", ["--crack-style-mix", "standard=1"]),
+    "wide": ("unified", "811000-811039", ["--crack-style-mix", "wide=1"]),
+    "crazing": ("unified", "812000-812049", ["--crack-style-mix", "crazing=1"]),
     "negatives": ("unified", "814000-814039", ["--crack-style-mix", "off",
                                                "--structures", "auto", "--structure-views", "2",
                                                "--structure-clean-fraction", "1"]),

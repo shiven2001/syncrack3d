@@ -1038,9 +1038,9 @@ protocol v1, 80% under v2); BD3 plain-wall alarms stay below 2%.
 
 ## Major cracks (experimental)
 
-`--crack-profile legacy` preserves the original default and seed morphology.
-`--crack-profile major` samples broad open and branched cracks equally;
-`--crack-profile mixed` chooses major or legacy with probability 0.5 per defect.
+`--crack-profile standard` draws the ordinary crack types.
+`--crack-profile wide` draws wide open and wide branched cracks equally;
+`--crack-profile mixed` chooses wide or standard with probability 0.5 per crack.
 These remain one **crack** class. No peeling/blister images are introduced.
 
 Major cracks use a spatially varying channel radius of 1.5–3.5 mm at narrow
@@ -1193,7 +1193,7 @@ crack-only edits; do that only after those edits have been ported, and pass
 
 ## Crack networks (v1.4.0)
 
-Use `--crack-profile network` for map cracking/crazing: connected, irregular
+Use `--crack-profile crazing` for map cracking: connected, irregular
 closed cells and shared junctions across each defect patch. A smoothly warped
 2-D Voronoi edge field drives both the shallow groove and its crack AOV.
 This is a procedural appearance model, not a fracture simulation.
@@ -1203,7 +1203,7 @@ From this repository's root, with the usual Blender Python environment:
 ```bash
 python -m syncrack3d.build_dataset --seeds 190010-190019 --output out/networks \
   --wall-materials diverse --material-category paint_neutral --clean-wall-scale 0 \
-  --crack-profile network --crack-network-edge organic --crack-network-extent 1.4 \
+  --crack-profile crazing --crack-network-edge organic --crack-network-extent 1.4 \
   --crack-network-spacing .02 .06 \
   --crack-width-scale 2 --crack-label-mode support \
   --defect-size-range .3 .45 --min-defects 1 --max-defects 2 --max-props 0 \
@@ -1211,7 +1211,7 @@ python -m syncrack3d.build_dataset --seeds 190010-190019 --output out/networks \
   --closeup-fill .9 1.1 --closeups-per-defect 2
 ```
 
-For a mixture, keep `--crack-profile legacy` (or `major`/`mixed`) and add
+For a mixture, keep `--crack-profile standard` (or `wide`/`mixed`) and add
 `--crack-network-fraction .3`. That replaces approximately 30% of defect
 instances, chosen deterministically from each instance seed. The default is
 zero; existing profile/seed behavior stays unchanged.

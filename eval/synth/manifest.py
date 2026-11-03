@@ -3,7 +3,7 @@
     python eval/synth/manifest.py SPLIT_DIR
 
 SPLIT_DIR holds build_dataset.py output in walls/ and its export in pack/.
-Views are grouped by the crack style each wall drew (legacy, major, network;
+Views are grouped by the crack style each wall drew (standard, wide, crazing;
 scene.json appearance_controls.crack_style), so score.py reports per
 style, per material and pooled. Writes SPLIT_DIR/manifest.json.
 """

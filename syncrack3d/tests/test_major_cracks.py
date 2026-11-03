@@ -7,7 +7,7 @@ from cwg_infinigen.assets.defect_fields import sample_crack_morphology
 def test_profiles_are_reproducible_and_preserve_rng():
     np.random.seed(42)
     before = np.random.get_state()
-    for profile in ('legacy', 'major', 'mixed'):
+    for profile in ('standard', 'wide', 'mixed'):
         for seed in range(30):
             assert sample_crack_morphology(seed, profile=profile) == sample_crack_morphology(seed, profile=profile)
     after = np.random.get_state()
@@ -19,15 +19,15 @@ def test_profiles_are_reproducible_and_preserve_rng():
 def test_major_and_mixed_ranges():
     major_count = 0
     for seed in range(100):
-        p = sample_crack_morphology(seed, profile='major')
-        assert p['style'] in ('major_open', 'major_branched')
+        p = sample_crack_morphology(seed, profile='wide')
+        assert p['style'] in ('wide_open', 'wide_branched')
         assert .0015 <= p['w_min'] <= .0035
         assert .005 <= p['w_max'] <= .012
         assert .008 <= p['crack_depth'] <= .018
         assert p['fork_specs']
         m = sample_crack_morphology(seed, profile='mixed')
-        major_count += m['style'].startswith('major_')
-        if not m['style'].startswith('major_'):
+        major_count += m['style'].startswith('wide_')
+        if not m['style'].startswith('wide_'):
             assert m == sample_crack_morphology(seed)
     assert 25 < major_count < 75
 

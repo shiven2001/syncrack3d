@@ -5,16 +5,16 @@ build_dataset parses the recipe first and the command line after it, so any
 flag given explicitly overrides the recipe. Material is not part of a recipe:
 pass --material-category, or let --wall-materials diverse draw one per seed.
 
-  legacy   indoor walls, legacy crack profile; some walls stay plain by material
+  standard indoor walls, the standard crack types; some walls stay plain by material
            (the v1.0.0-v1.3.0 base walls; v1.3.0's added walls used
            --clean-wall-scale 0, every wall cracked)
-  major    indoor walls, broad open and branched cracks, every wall cracked
-  network  indoor paint and stucco walls with visible crack networks (crazing),
+  wide     indoor walls, wide open and wide branched cracks, every wall cracked
+  crazing  indoor paint and stucco walls with crazing,
            organic outline, indoor structures beside the cracks (v1.7.0 on)
   unified_v1.16  the unified recipe as of v1.16.0 (legacy layout order), to
            rebuild those walls exactly
   unified  v2: one recipe for everything. Each wall draws a crack style
-           (legacy/major/network, STYLES) that sets only what defines that
+           (standard/wide/crazing, STYLES) that sets only what defines that
            kind of crack; materials (--wall-materials unified: 10 crack-able
            categories drawn uniformly, one plaster and one stucco whose coats
            are neutral, coloured, or mid-tone, no wood or irregular stone), capture and
@@ -52,15 +52,15 @@ COMMON = ("--substrate paint --max-props 1 --resolution 640 --samples 64 --wall-
           "--preserve-closeup-scale --closeups-per-defect 2 --crack-fit-path --crack-label-mode support "
           "--crack-path-mode angular --crack-branch-mode local_curved --wall-materials diverse "
           "--awb-strength 0 .5 --crack-layered-fraction .7")
-LEGACY = (COMMON + " --min-defects 2 --max-defects 3 --crack-width-scale 1.3 --crack-depth-scale .5 "
-          "--defect-size-range .20 .45 --crack-profile legacy")
+STANDARD = (COMMON + " --min-defects 2 --max-defects 3 --crack-width-scale 1.3 --crack-depth-scale .5 "
+          "--defect-size-range .20 .45 --crack-profile standard")
 
 RECIPES = {
-    "legacy": LEGACY + " --clean-wall-scale 1",
-    "major": (COMMON + " --min-defects 1 --max-defects 2 --crack-width-scale 1 --crack-depth-scale 1 "
-              "--defect-size-range .30 .45 --clean-wall-scale 0 --crack-profile major"),
-    "network": (COMMON + " --clean-wall-scale 0 --min-defects 2 --max-defects 3 --defect-size-range .20 .45 "
-                "--crack-profile network --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 "
+    "standard": STANDARD + " --clean-wall-scale 1",
+    "wide": (COMMON + " --min-defects 1 --max-defects 2 --crack-width-scale 1 --crack-depth-scale 1 "
+              "--defect-size-range .30 .45 --clean-wall-scale 0 --crack-profile wide"),
+    "crazing": (COMMON + " --clean-wall-scale 0 --min-defects 2 --max-defects 3 --defect-size-range .20 .45 "
+                "--crack-profile crazing --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 "
                 "--structures auto --structure-views 0 --crack-network-edge organic --crack-network-extent 1.4"),
 }
 
@@ -68,12 +68,12 @@ RECIPES = {
 # only what defines that kind of crack (and its setting), everything else -
 # capture, rendering, materials, clean-wall policy - is shared.
 STYLES = {
-    "legacy": dict(crack_profile="legacy", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
+    "standard": dict(crack_profile="standard", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
                    crack_width_scale=1.3, crack_depth_scale=.5, structures="off"),
-    "major": dict(crack_profile="major", min_defects=1, max_defects=2, defect_size_range=(.30, .45),
+    "wide": dict(crack_profile="wide", min_defects=1, max_defects=2, defect_size_range=(.30, .45),
                   crack_width_scale=1.0, crack_depth_scale=1.0, structures="off"),
     # Crazing is only visible on paint and stucco, so these walls draw one of those.
-    "network": dict(crack_profile="network", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
+    "crazing": dict(crack_profile="crazing", min_defects=2, max_defects=3, defect_size_range=(.20, .45),
                     crack_width_scale=2.0, crack_depth_scale=2.0, crack_network_grime=(.8, 1.0),
                     crack_network_edge="organic", crack_network_extent=1.4,
                     structures="auto", structure_views=0),
@@ -84,7 +84,7 @@ STYLES = {
 REDRAW = "redraw"
 # Close to the v1.9 training mix by view; major walls carry fewer cracks and so
 # fewer views per wall.
-UNIFIED_MIX = "legacy=.65,major=.15,network=.10,redraw=.10"
+UNIFIED_MIX = "standard=.65,wide=.15,crazing=.10,redraw=.10"
 RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
                             + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
 # v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
@@ -98,7 +98,7 @@ RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
 
 
 def parse_style_mix(text):
-    """'legacy=.65,major=.15,...' -> {style: probability}, normalised; may include REDRAW."""
+    """'standard=.65,wide=.15,...' -> {style: probability}, normalised; may include REDRAW."""
     mix = {}
     for part in text.split(","):
         name, _, value = part.partition("=")
@@ -134,7 +134,7 @@ def wall_style(seed, args):
         # Real rooms have doors and the other indoor fixtures whatever the crack;
         # the v1.x styles kept them to network walls only.
         wall.structures, wall.structure_views = "auto", 0
-    if style == "network" and not args.material_category:
+    if style == "crazing" and not args.material_category:
         wall.material_category = rng.choices(PAINTED_CATEGORIES, weights=PAINTED_WEIGHTS, k=1)[0]
     return style, wall
 
