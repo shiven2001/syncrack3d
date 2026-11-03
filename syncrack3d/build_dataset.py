@@ -300,7 +300,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         # The spin already drawn for each card becomes its crack direction; no new draws.
         for p in placements:
             bpy.data.objects[p.object_name]["cwg_crack_angle_deg"] = float(p.spin_deg % 180.0)
-    placements, junctions = snap_to_junctions(placements, structure_plans, spec, seed, args.crack_junction_fraction)
+    placements, junctions = snap_to_junctions(placements, structure_plans, spec, seed, args.crack_junction_fraction,
+                                              plan.min_separation_m)
 
     manifest_path = scene_dir / "defect_instances.json"
     import gin
@@ -580,7 +581,7 @@ def main():
                         help="vertical: every crack runs along the wall's vertical with lateral wander (all releases "
                              "to v1.7.0); random: each crack runs at its card's spin angle")
     parser.add_argument("--crack-junction-fraction", type=float, default=0.0,
-                        help="share of cracks moved to structure edges: opening corners, sill/ledge undersides, jambs, trims (needs --structures)")
+                        help="share of cracks moved to the corners of windows, doors, vents and access panels, under window sills and beside door jambs (needs --structures; the unified recipe uses .5 from v1.24)")
     parser.add_argument("--crack-network-extent", type=float, default=1.4,
                         help="network field size relative to its card (.5-2); 1.4 keeps organic crack length near a square patch. Cards and cameras are unchanged. Use 1 with --crack-network-edge square to reproduce v1.4.0-v1.5.0")
     parser.add_argument("--crack-width-scale", type=float, default=1.3,

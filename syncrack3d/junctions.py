@@ -62,8 +62,13 @@ def _anchors(plan, r):
     return out
 
 
-def snap_to_junctions(placements, structure_plans, spec, seed, fraction):
-    """Return (placements, records): a share of crack cards moved to structure anchors."""
+def snap_to_junctions(placements, structure_plans, spec, seed, fraction, min_separation_m=0.0):
+    """Return (placements, records): a share of crack cards moved to structure anchors.
+
+    A moved card keeps the plan's own spacing (min_separation_m) from every other card as
+    well as 0.4 x their summed sizes: network patches are spaced by their full extent, and
+    closer patches blend instance ids.
+    """
     if fraction <= 0 or not structure_plans or not placements:
         return placements, []
     r = random.Random(int(seed) ^ SALT)
@@ -84,7 +89,7 @@ def snap_to_junctions(placements, structure_plans, spec, seed, fraction):
             if not (-half_wall + reach <= cu <= half_wall - reach
                     and _EDGE_MARGIN_M + reach <= cv <= spec.height_m - _EDGE_MARGIN_M - reach):
                 continue
-            if any(j != i and math.hypot(cu - q.u_m, cv - q.v_m) < 0.4 * (p.size_m + q.size_m)
+            if any(j != i and math.hypot(cu - q.u_m, cv - q.v_m) < max(0.4 * (p.size_m + q.size_m), min_separation_m)
                    for j, q in enumerate(out)):
                 continue
             card = bpy.data.objects[p.object_name]

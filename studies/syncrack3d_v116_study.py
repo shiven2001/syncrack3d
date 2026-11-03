@@ -10,7 +10,9 @@ without wood-plank walls; syncrack3d_v2_noplanks.sh) or v117lp (v1.17.0 with
 every fixture placed by one rule; syncrack3d_fixture_rule_250.sh) or v120mc (that plus
 plaster and stucco each one unified category; syncrack3d_material_combine_250.sh) or v120nd
 (that without outdoor wall dirt or crack staining; syncrack3d_no_dirt_250.sh) or v120io (that
-with indoor walls only; syncrack3d_indoor_only_250.sh). Data live in
+with indoor walls only; syncrack3d_indoor_only_250.sh) or v122 (the v1.22.0
+indoor-only generator; syncrack3d_v122_250.sh) or v122jn (v122 with half the cracks moved to
+window, door, vent and access-panel junctions; syncrack3d_v122_junctions_250.sh). Data live in
 /mnt/nvme_storage/syncrack3d_<version>_dataset and models in
 outputs/domain_transfer/syncrack3d_<tag>_NAME.
 
@@ -52,7 +54,8 @@ VERSION = {"v116": "v1.16.0", "v117": "v1.17.0", "v200": "v2.0.0", "v200np": "v2
            "v117lp": "v1.17.0-looseprops", "v118fm": "v1.18.0-fixturemount",
            "v118fc": "v1.18.0-fixtureclear", "v119fr": "v1.19.0-fixturerule",
            "v120mc": "v1.20.0-matcombine", "v120nd": "v1.20.0-nodirt",
-           "v120io": "v1.20.0-indooronly"}[TAG]
+           "v120io": "v1.20.0-indooronly", "v122": "v1.22.0",
+           "v122jn": "v1.22.0-junctions"}[TAG]
 DATA = Path(f"/mnt/nvme_storage/syncrack3d_{VERSION}_dataset")
 DT = ROOT / "syncrack3d/outputs/domain_transfer"
 APP = ROOT / "syncrack3d"
@@ -122,7 +125,9 @@ def train(args):
         + (" (loose props, --fixture-mount relief, one fixture rule)" if TAG == "v119fr" else "")
         + (" (one fixture rule, plaster and stucco combined: 11 categories)" if TAG == "v120mc" else "")
         + (" (combined plaster and stucco, no outdoor dirt or crack staining)" if TAG == "v120nd" else "")
-        + (" (v120nd with indoor walls only: 22 outdoor walls replaced by 910250+ indoor walls)" if TAG == "v120io" else "")),
+        + (" (v120nd with indoor walls only: 22 outdoor walls replaced by 910250+ indoor walls)" if TAG == "v120io" else "")
+        + (" (indoor only; one fixture catalogue with full-length runs)" if TAG == "v122" else "")
+        + (" (v122 with --crack-junction-fraction .5)" if TAG == "v122jn" else "")),
         indent=1) + "\n")
     print(args.name, len(rows), "views", iters, "iters", flush=True)
     torch.set_num_threads(4)

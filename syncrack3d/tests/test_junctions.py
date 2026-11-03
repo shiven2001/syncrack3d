@@ -1,6 +1,11 @@
 """Junction cracks: off by default, and anchors sit on structure edges with sensible directions."""
+import math
 import random
+from types import SimpleNamespace
 
+import bpy
+
+from syncrack3d.defects import DefectPlacement
 from syncrack3d.junctions import _anchors, snap_to_junctions
 from syncrack3d.structures import StructurePlan
 
@@ -38,3 +43,24 @@ def test_door_jambs_are_vertical_and_trims_horizontal():
         jambs = [a for a in _anchors(_plan("door", v=1.05, w=0.9, h=2.1), r) if a[0] == "door_jamb"]
         assert len(jambs) == 2 and all(abs(a[2] - 90) <= 3 for a in jambs)
     assert _anchors(_plan("cable"), random.Random(0)) == []
+
+
+def test_moved_cracks_keep_the_plan_spacing():
+    spec = SimpleNamespace(width_m=4.0, height_m=2.7)
+    plans = [_plan("window", u=-0.8, w=0.9), _plan("door", u=1.0, v=1.05, w=0.9, h=2.1)]
+    cards = []
+    for i, (u, v) in enumerate(((-1.4, 0.6), (1.6, 2.0), (0.1, 0.6))):
+        bpy.data.objects.new(f"junction_test_{i}", None)
+        cards.append(DefectPlacement(index=i, defect_class="crack", factory_seed=i, u_m=u, v_m=v, size_m=0.3,
+                                     spin_deg=0.0, object_name=f"junction_test_{i}"))
+    moved = 0
+    for seed in range(40):
+        for sep in (0.30, 0.63):
+            out, records = snap_to_junctions(cards, plans, spec, seed, 1.0, sep)
+            moved += len(records)
+            for rec in records:
+                p = out[rec["index"]]
+                assert all(math.hypot(p.u_m - q.u_m, p.v_m - q.v_m) >= sep for q in out if q is not p)
+    assert moved  # the rule leaves room for some moves
+    out, records = snap_to_junctions(cards, plans, spec, 3, 1.0, 10.0)
+    assert out == cards and records == []  # nowhere far enough: every card stays put

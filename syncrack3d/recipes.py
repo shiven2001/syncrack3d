@@ -33,7 +33,11 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            From v1.22 every wall is indoor: the facade style and the outdoor
            scene are gone, and a draw that would have been a facade wall
            draws again (REDRAW), so every other wall keeps its style.
-  unified_v1.17, unified_v1.18  the unified recipe's flags as of that version.
+           From v1.24 each crack token moves, with probability .5, to a corner
+           or edge of a window, door, vent or access panel
+           (--crack-junction-fraction .5, junctions.py).
+  unified_v1.17, unified_v1.18, unified_v1.23  the unified recipe's flags as of
+           that version (unified_v1.23: no junction cracks).
            Prop and fixture placement no longer differ between them.
 
 The three release recipes keep the v1.x training walls' flags; use unified for
@@ -94,7 +98,10 @@ RECIPES["unified_v1.17"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-
 RECIPES["unified_v1.18"] = RECIPES["unified_v1.17"]
 # v1.19: fixtures mounted on the wall's relief. Keeping them clear of each other
 # is now the only fixture rule, so the recipe no longer carries a flag for it.
-RECIPES["unified"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
+RECIPES["unified_v1.23"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
+# v1.24: half the crack tokens move to a corner or edge of a window, door, vent or
+# access panel (junctions.py, its own stream), the setting of the v122jn screen.
+RECIPES["unified"] = RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
 
 
 def parse_style_mix(text):
