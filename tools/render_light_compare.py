@@ -250,7 +250,7 @@ def detect(images: dict, masks: dict) -> tuple[dict, dict]:
     """Mean centreline F1 over the model's seeds per tile, and seed 0's predictions."""
     import torch
 
-    sys.path.insert(0, str(REPO / "eval"))
+    sys.path.insert(0, str(REPO / "eval-syncrack3d"))
     from infer import load_model, predict
     from metrics import TOLERANCE_PX, centreline_counts, centreline_scores
 

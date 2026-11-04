@@ -12,12 +12,18 @@ lights, whichever other seeds run in the same process.
 ## Layout
 
 ```
-syncrack3d/      generator: wall, materials, cracks, fixtures, cameras, lighting, render
-cwg_infinigen/   modified subset of Infinigen (materials, crack injection, labels, sensor model, props)
-tools/           export to a training pack, and a label check
-isaac_port/      export walls and rooms to Isaac Sim (USD)
-eval/            scorers (BD3, CUBIT-InSeg, BuildCrack, synthetic sets), studies/ and NOTICE.md
+syncrack3d/        generator: wall, materials, cracks, fixtures, cameras, lighting, render
+cwg_infinigen/     modified subset of Infinigen (materials, crack injection, labels, sensor model, props)
+tools/             export to a training pack, and a label check
+isaac_port/        export walls and rooms to Isaac Sim (USD)
+eval-syncrack3d/   submodule: scorers (BD3, CUBIT-InSeg, BuildCrack, synthetic sets), studies/ and NOTICE.md
 ```
+
+`eval-syncrack3d` is a separate repository, private for now. With access, clone
+with `git clone --recurse-submodules`, or run `git submodule update --init
+eval-syncrack3d` in an existing checkout. The generator, export and Isaac port
+work without it; only the detector diagnostics `isaac_port/room_false_alarms.py`
+and `tools/render_light_compare.py` use its scorer code.
 
 ## Setup
 
@@ -29,7 +35,7 @@ pip install -r requirements.txt
 python -m pytest syncrack3d/tests          # 79 tests, a few seconds
 
 # training and scoring: any Python with CUDA PyTorch
-pip install -r eval/requirements.txt
+pip install -r eval-syncrack3d/requirements.txt
 ```
 
 Run every command from the repository root. Cycles renders on the first GPU it
@@ -103,19 +109,19 @@ boxes agree.
 
 ## 3. Train and score a crack model
 
-`eval/studies/seg_train.py` trains a 3-class U-Net, DeepLabV3+ or SegFormer
+`eval-syncrack3d/studies/seg_train.py` trains a 3-class U-Net, DeepLabV3+ or SegFormer
 (class 1 is crack). The scorers take a folder of checkpoints
 (`runs/s*/last.pt`):
 
 ```bash
-python eval/bd3/predict.py --model path/to/model_dir
-python eval/bd3/score.py --pred path/to/model_dir/pred_v2/s0
-python eval/cubit/score.py --model path/to/model_dir --data path/to/CUBIT-InSeg --out out/cubit
-python eval/buildcrack/score.py --model name=path/to/model_dir --data path/to/BuildCrack --out out/buildcrack
-python eval/synth/score.py --set out/my_synthetic_set --model path/to/model_dir --save out/synth.json
+python eval-syncrack3d/bd3/predict.py --model path/to/model_dir
+python eval-syncrack3d/bd3/score.py --pred path/to/model_dir/pred_v2/s0
+python eval-syncrack3d/cubit/score.py --model path/to/model_dir --data path/to/CUBIT-InSeg --out out/cubit
+python eval-syncrack3d/buildcrack/score.py --model name=path/to/model_dir --data path/to/BuildCrack --out out/buildcrack
+python eval-syncrack3d/synth/score.py --set out/my_synthetic_set --model path/to/model_dir --save out/synth.json
 ```
 
-The real benchmarks are not included. `eval/NOTICE.md` gives the evaluation
+The real benchmarks are not included. `eval-syncrack3d/NOTICE.md` gives the evaluation
 protocol, every version's results and the studies behind each design choice.
 
 ## 4. Export to Isaac Sim
@@ -142,4 +148,4 @@ meshes are labelled `crack` and `wall`.
 
 `cwg_infinigen/` is a modified subset of Infinigen (Princeton University, BSD
 3-Clause; see `LICENSE-INFINIGEN`). The notices for it and the other included
-third-party code are in `eval/NOTICE.md`.
+third-party code are in `eval-syncrack3d/NOTICE.md`.

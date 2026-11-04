@@ -5,12 +5,4 @@ __pycache__/
 .venv/
 outputs/
 *.blend
-
-# Real BD3 photos and masks. Their licence is separate from this code.
-eval/bd3/images/
-eval/bd3/gt/
-
-
-# Third-party crack benchmarks and reference code used by studies/.
-external/
 .DS_Store

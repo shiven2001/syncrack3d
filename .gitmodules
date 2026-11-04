@@ -2,3 +2,6 @@
 	path = paper-syncrack3d
 	url = https://github.com/shiven2001/paper-syncrack3d.git
 	branch = main
+[submodule "eval-syncrack3d"]
+	path = eval-syncrack3d
+	url = git@github.com:shiven2001/eval-syncrack3d.git

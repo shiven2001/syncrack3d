@@ -32,7 +32,7 @@ import cv2
 import numpy as np
 
 APP = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(APP / "eval"))
+sys.path.insert(0, str(APP / "eval-syncrack3d"))
 sys.path.insert(0, str(APP))
 from infer import load_model, predict  # noqa: E402
 
