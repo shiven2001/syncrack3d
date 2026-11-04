@@ -1,6 +1,6 @@
 """Export a whole SynCrack3D room for Isaac Sim (Blender stage).
 
-    python isaac_port/export_room.py scene_dir out_dir [--px-per-m 1600] [--prop-res 1024]
+    python isaac_port/export_room.py scene_dir out_dir [--px-per-m 1600] [--prop-res 1024] [--wall-only]
 
 scene_dir holds build_dataset.py --save-blend output (scene.blend, scene.json,
 defect_instances.json). Unlike port_wall.py, which bakes one patch per close-up,
@@ -17,6 +17,8 @@ Writes to out_dir:
   room.usdc      everything else - floor, ceiling, side returns, fixtures, props
                  and lights - with procedural materials baked to textures/
 compose_room.py (Isaac Sim python) then builds the displaced wall and scene.usda.
+--wall-only stops after wall/ (plus scene.json and defect_instances.json): the
+input of panel crops, which need no room.
 """
 import json
 import shutil
@@ -27,6 +29,9 @@ import bpy
 import numpy as np
 
 argv = sys.argv[1:]
+wall_only = "--wall-only" in argv
+if wall_only:
+    argv.remove("--wall-only")
 opts = {"--px-per-m": 1600.0, "--prop-res": 1024, "--max-px": 8192}
 for k in list(opts):
     if k in argv:
@@ -77,7 +82,6 @@ mat = wall.data.materials[0]
 nt = mat.node_tree
 mout = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputMaterial" and n.is_active_output)
 disp_out = mout.inputs["Displacement"].links[0].from_socket
-bsdf = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled")
 surface_link = mout.inputs["Surface"].links[0].from_socket
 
 
@@ -88,6 +92,30 @@ def source(sock, tree):
     node = tree.nodes.new("ShaderNodeRGB" if sock.type == "RGBA" else "ShaderNodeValue")
     node.outputs[0].default_value = sock.default_value
     return node.outputs[0]
+
+
+def bsdf_sources(keys):
+    """Sockets in nt carrying what feeds the Principled BSDF's `keys` inputs. Concrete keeps
+    its BSDF inside a node group; new group outputs bring those inputs out to nt."""
+    bsdf = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
+    if bsdf is not None:
+        return [source(bsdf.inputs[k], nt) for k in keys]
+    for g in (n for n in nt.nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree is not None):
+        tree = g.node_tree
+        inner = next((n for n in tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
+        if inner is None:
+            continue
+        gout = next(n for n in tree.nodes if n.bl_idname == "NodeGroupOutput")
+        out_socks = []
+        for k in keys:
+            name = f"port_{k}"
+            if name not in gout.inputs:
+                stype = "NodeSocketColor" if inner.inputs[k].type == "RGBA" else "NodeSocketFloat"
+                tree.interface.new_socket(name, in_out="OUTPUT", socket_type=stype)
+            tree.links.new(source(inner.inputs[k], tree), gout.inputs[name])
+            out_socks.append(g.outputs[name])
+        return out_socks
+    raise SystemExit(f"{mat.name}: no Principled BSDF, at the top level or inside a node group")
 
 
 def math_node(op, a, b):
@@ -124,9 +152,8 @@ nt.links.new(vec, dot.inputs[0]); nt.links.new(geo.outputs["Normal"], dot.inputs
 passes = {
     # +50 keeps the emission positive; removed again below
     "height_mm": math_node("ADD", math_node("MULTIPLY", dot.outputs["Value"], 1000.0), 50.0),
-    "color": source(bsdf.inputs["Base Color"], nt),
-    "roughness": source(bsdf.inputs["Roughness"], nt),
 }
+passes["color"], passes["roughness"] = bsdf_sources(("Base Color", "Roughness"))
 crack_aov = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputAOV" and n.aov_name == "DefectCrack"), None)
 if crack_aov is not None and crack_aov.inputs["Value"].is_linked:
     passes["crack"] = crack_aov.inputs["Value"].links[0].from_socket
@@ -174,6 +201,10 @@ np.save(out / "wall" / "crack.npy", (maps["crack"][..., 0] if "crack" in maps el
           "height_mm is displacement along the outward normal (cracks negative)",
     hit_fraction=round(float(hit.mean()), 5)), indent=1))
 print(f"wall baked: {nx} x {nz} px ({1000 / ppm:.2f} mm/px), hit {hit.mean():.4f}", flush=True)
+if wall_only:
+    shutil.copy(scene_dir / "scene.json", out / "scene.json")
+    shutil.copy(scene_dir / "defect_instances.json", out / "defect_instances.json")
+    sys.exit(0)
 
 # ---------------------------------------------------------------- the rest of the room
 # No cameras (nothing may be posed at a crack), no hidden crack cards, and the
