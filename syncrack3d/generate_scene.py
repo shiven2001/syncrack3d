@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a deterministic, defect-free controlled wall base scene.
+"""Generate a deterministic, defect-free wall base scene.
 
 This script must run in Blender or another Python environment that provides
 ``bpy``. It creates a front-facing camera, one area light, and a Nishita Sky
@@ -104,7 +104,7 @@ def generate(args):
 
 def main():
     output, manifest, validation = generate(parse_args())
-    print(f"Controlled wall scene: {output}")
+    print(f"Wall scene: {output}")
     print(f"Scene manifest: {manifest}")
     print(
         "Base-scene validation: "

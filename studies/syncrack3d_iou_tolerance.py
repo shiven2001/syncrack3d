@@ -32,13 +32,13 @@ import cv2
 import numpy as np
 from skimage.morphology import skeletonize
 
-ROOT = Path(__file__).resolve().parents[2]
-EVAL = ROOT / "syncrack3d/eval"
+APP = Path(__file__).resolve().parents[1]
+EVAL = APP / "eval"
 sys.path.insert(0, str(EVAL))
 from infer import TEST_SCALE, load_model, predict  # noqa: E402
 from metrics import TOLERANCE_PX, _grow  # noqa: E402
 
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+DT = APP / "outputs/domain_transfer"
 ZS = DT / "syncrack3d_v117_unet_w4000"
 RO = DT / "syncrack3d_real_only_v1"
 OUT = DT / "syncrack3d_v117_iou_tolerance_v1"

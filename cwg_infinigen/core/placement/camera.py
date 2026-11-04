@@ -226,7 +226,7 @@ def save_camera_rig_manifest(cam_rigs, path, room_rigs=()) -> dict:
     for rig in cam_rigs:
         suffix = rig.name.split(".")[-1]
         index = int(suffix) if suffix.isdigit() else 0
-        target = rig.get("syndefect_target")
+        target = rig.get("syncrack3d_target")
         record = {
             "rig": rig.name,
             "index": index,
@@ -236,14 +236,14 @@ def save_camera_rig_manifest(cam_rigs, path, room_rigs=()) -> dict:
             record.update(
                 {
                     "target": target,
-                    "pose_valid": bool(rig.get("syndefect_pose_valid", False)),
-                    "pose_reason": rig.get("syndefect_pose_reason"),
-                    "distance_m": rig.get("syndefect_view_distance_m"),
-                    "view_angle_deg": rig.get("syndefect_view_angle_deg"),
-                    "focal_mm": rig.get("syndefect_focal_mm"),
-                    "lens_equiv_mm": rig.get("syndefect_lens_equiv_mm"),
-                    "frame_fill": rig.get("syndefect_frame_fill"),
-                    "light_incidence_deg": rig.get("syndefect_light_incidence_deg"),
+                    "pose_valid": bool(rig.get("syncrack3d_pose_valid", False)),
+                    "pose_reason": rig.get("syncrack3d_pose_reason"),
+                    "distance_m": rig.get("syncrack3d_view_distance_m"),
+                    "view_angle_deg": rig.get("syncrack3d_view_angle_deg"),
+                    "focal_mm": rig.get("syncrack3d_focal_mm"),
+                    "lens_equiv_mm": rig.get("syncrack3d_lens_equiv_mm"),
+                    "frame_fill": rig.get("syncrack3d_frame_fill"),
+                    "light_incidence_deg": rig.get("syncrack3d_light_incidence_deg"),
                 }
             )
         elif rig.name in room_names:
@@ -251,7 +251,7 @@ def save_camera_rig_manifest(cam_rigs, path, room_rigs=()) -> dict:
         records.append(record)
 
     payload = {
-        "schema": "syndefect3d/camera_rigs/1",
+        "schema": "syncrack3d/camera_rigs/1",
         "counts": {
             "room_trajectory": sum(r["role"] == "room_trajectory" for r in records),
             "defect_closeup": sum(r["role"] == "defect_closeup" for r in records),
@@ -300,14 +300,14 @@ def room_view_balance(
 
 
 def sample_focus_targets(objs, seed: int, max_n: int):
-    """Pick up to ``max_n`` objects, round-robin across ``syndefect_kind`` / factory."""
+    """Pick up to ``max_n`` objects, round-robin across ``syncrack3d_kind`` / factory."""
     objs = [o for o in objs if o is not None]
     if max_n is None or max_n < 0 or len(objs) <= max_n:
         return objs
     rng = np.random.default_rng(int(seed) + 17)
 
     def bucket_key(obj):
-        kind = obj.get("syndefect_kind") if hasattr(obj, "get") else None
+        kind = obj.get("syncrack3d_kind") if hasattr(obj, "get") else None
         if kind:
             return str(kind)
         return (obj.name or "defect").split("(")[0]
@@ -901,7 +901,7 @@ def pose_defect_cameras(
     What this deliberately does not do is make a defect visible. Whether light
     rakes across relief is fixed by the light and the surface; a camera can only
     avoid shooting straight down the light axis and record the geometry it got.
-    ``syndefect_light_incidence_deg`` is written to every rig for that reason -
+    ``syncrack3d_light_incidence_deg`` is written to every rig for that reason -
     near 0 means the light is head-on and a dome-shaped defect will be a ghost
     whatever the camera does.
     """
@@ -942,7 +942,7 @@ def pose_defect_cameras(
             target = shuffled[idx % len(shuffled)]
         target_mat, target_loc, _geometry_normal = _defect_target_frame(target)
 
-        surface = target.get("syndefect_surface", "wall")
+        surface = target.get("syncrack3d_surface", "wall")
         # A defect may record the direction it actually faces. The local-axis
         # convention below only holds for planes built the wall/floor way, and
         # a decal seated on an arbitrary face has no reason to obey it.
@@ -951,7 +951,7 @@ def pose_defect_cameras(
         # the explicit placement normal or the factory's surface convention,
         # never raw polygon winding.
         world_normal = None
-        explicit = target.get("syndefect_normal")
+        explicit = target.get("syncrack3d_normal")
         if explicit is not None and len(explicit) == 3:
             cand = Vector(tuple(float(c) for c in explicit))
             if cand.length > 1e-6:
@@ -1169,15 +1169,15 @@ def pose_defect_cameras(
 
         cam_rig.location = cam_loc
         cam_rig.rotation_euler = rot_euler
-        cam_rig["syndefect_target"] = target.name
-        cam_rig["syndefect_target_point"] = tuple(float(v) for v in target_loc)
-        cam_rig["syndefect_pose_valid"] = bool(placed)
-        cam_rig["syndefect_pose_reason"] = reason
-        cam_rig["syndefect_view_distance_m"] = float(dist_to_target)
-        cam_rig["syndefect_view_angle_deg"] = view_angle
-        cam_rig["syndefect_focal_mm"] = float(focal_mm)
-        cam_rig["syndefect_lens_equiv_mm"] = float(lens_equiv)
-        cam_rig["syndefect_frame_fill"] = float(
+        cam_rig["syncrack3d_target"] = target.name
+        cam_rig["syncrack3d_target_point"] = tuple(float(v) for v in target_loc)
+        cam_rig["syncrack3d_pose_valid"] = bool(placed)
+        cam_rig["syncrack3d_pose_reason"] = reason
+        cam_rig["syncrack3d_view_distance_m"] = float(dist_to_target)
+        cam_rig["syncrack3d_view_angle_deg"] = view_angle
+        cam_rig["syncrack3d_focal_mm"] = float(focal_mm)
+        cam_rig["syncrack3d_lens_equiv_mm"] = float(lens_equiv)
+        cam_rig["syncrack3d_frame_fill"] = float(
             extent * (focal_mm / float(sensor_width_mm)) * res[0]
             / max(dist_to_target, 1e-6)
             / res[0]
@@ -1185,7 +1185,7 @@ def pose_defect_cameras(
         if incidence_deg is not None:
             # 90 deg is grazing and reveals relief; near 0 is head-on and will
             # flatten a dome whatever the camera does.
-            cam_rig["syndefect_light_incidence_deg"] = incidence_deg
+            cam_rig["syncrack3d_light_incidence_deg"] = incidence_deg
 
         for cam in cam_rig.children:
             if cam.type != "CAMERA":
@@ -1202,7 +1202,7 @@ def pose_defect_cameras(
             dist_to_target,
             lens_equiv,
             view_angle,
-            100.0 * cam_rig["syndefect_frame_fill"],
+            100.0 * cam_rig["syncrack3d_frame_fill"],
             f"{incidence_deg:.0f} deg" if incidence_deg is not None else "unknown",
         )
 
@@ -1703,7 +1703,7 @@ def autofocus_cameras(
         if (
             respect_defect_targets
             and rig is not None
-            and rig.get("syndefect_view_distance_m") is not None
+            and rig.get("syncrack3d_view_distance_m") is not None
         ):
             kept += 1
             continue

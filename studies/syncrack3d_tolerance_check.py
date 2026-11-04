@@ -15,13 +15,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-EVAL = ROOT / "syncrack3d/eval"
+APP = Path(__file__).resolve().parents[1]
+EVAL = APP / "eval"
 sys.path.insert(0, str(EVAL))
 from infer import load_model, predict  # noqa: E402
 from metrics import centreline_counts, centreline_scores  # noqa: E402
 
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+DT = APP / "outputs/domain_transfer"
 MODELS = {"v1.3.0": DT / "syncrack3d_tilestone_bd3_v1", "v1.4.0": DT / "syncrack3d_network2_bd3_v1"}
 TOLS = (1, 2, 3, 4, 5)
 OUT = DT / "syncrack3d_tolerance_check_v1.json"

@@ -1,4 +1,4 @@
-"""A minimal room around the controlled wall.
+"""A minimal room around the wall.
 
 The flat module on its own renders as a slab floating in sky. That is not a
 harmless simplification: a pulled-back frame shows the wall's silhouette against

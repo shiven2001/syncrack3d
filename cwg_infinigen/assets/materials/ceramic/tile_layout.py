@@ -37,14 +37,14 @@ def take_recorded_layout() -> dict:
 def dump_layout(mat, layout: dict) -> None:
     if mat is None or not layout:
         return
-    mat["syndefect_tile_layout"] = json.dumps(layout)
-    mat["syndefect_jointed"] = True
+    mat["syncrack3d_tile_layout"] = json.dumps(layout)
+    mat["syncrack3d_jointed"] = True
 
 
 def load_layout(mat) -> dict | None:
     if mat is None:
         return None
-    raw = mat.get("syndefect_tile_layout")
+    raw = mat.get("syncrack3d_tile_layout")
     if not raw:
         return None
     try:

@@ -582,6 +582,29 @@ test sets, none of which is mainly outdoor walls. The replacements include 4
 major-crack and 1 network wall where the facade walls were all legacy cracks.
 Script: `studies/syncrack3d_indoor_only_250.sh`.
 
+## v1.26.0 self-contained repository
+
+Everything needed to generate, train, score and port now lives in this
+repository; images and labels are unchanged (seed 910004 re-rendered: labels,
+instance AOVs and metadata identical, RGB within render noise).
+
+- `studies/seg_train.py` holds the segmentation trainer (U-Net R34,
+  DeepLabV3+ R50, SegFormer-B2) and `studies/near_duplicates.py` the
+  near-duplicate grouping for real-only folds; their training samples are
+  bit-identical to those of the code they replace. The probe studies use
+  `eval/infer.py` and `eval/metrics.py`. Studies find the repository from their
+  own location; `torchvision` joins `eval/requirements.txt`.
+- Blender custom properties are named `syncrack3d_*` and JSON schema tags
+  `syncrack3d/...` (e.g. `syncrack3d/defect_instances/2`,
+  `syncrack3d/wall_scene/1`). Scenes and manifests written by earlier versions
+  keep the old names.
+- `eval/synth/score.py` reads sets built before the crack-profile rename
+  (legacy, major, network) as standard, wide, crazing.
+- `studies/syncrack3d_dataset_render.sh` retries a crashed Blender up to 20
+  times and marks a chunk done only when every wall has its `scene.json`;
+  `studies/syncrack3d_dataset_study.sh` retries a failed training run once and
+  otherwise stops, and stops when the scaling decision cannot be computed.
+
 ## v1.25.0 Isaac port for the indoor generator
 
 The generator is unchanged; the Isaac Sim port is brought up to date and
@@ -705,10 +728,12 @@ reported here. The scored crack checkpoint stays
 
 ```
 syncrack3d/      generator (wall, materials, cracks, cameras, lighting, render, ISP, manifest)
-cwg_infinigen/   vendored subset of the Infinigen fork it builds on (materials, defect
-                 injection/fields, AOV labels, sensor model, props) - see NOTICE.md
+cwg_infinigen/   modified subset of Infinigen (materials, defect injection/fields,
+                 AOV labels, sensor model, props) - see NOTICE.md
 tools/           export (masks/splits/boxes/COCO) and label-contract check
 isaac_port/      wall -> displaced, labelled USD panels in Isaac Sim, checked against Blender
+eval/            zero-shot scorers: BD3, CUBIT-InSeg, BuildCrack, synthetic sets
+studies/         dataset renders, segmentation training (seg_train.py), screens
 ```
 
 ## Setup
@@ -720,7 +745,7 @@ Two Python environments: one renders, one scores.
 pip install -r requirements.txt
 python -m pytest syncrack3d/tests          # 79 tests, a few seconds
 
-# scoring (any Python with CUDA PyTorch)
+# scoring and training (any Python with CUDA PyTorch)
 pip install -r eval/requirements.txt
 ```
 
@@ -750,6 +775,7 @@ tagged:
 | v1.23.0 | tag `v1.23.0` | ranged indoor fixtures on a fine bump; window sill and head use the inspection wall, displaced (`--recipe unified_v1.23`) |
 | v1.24.0 | tag `v1.24.0` | half the cracks moved to window, door, vent and access-panel corners and edges (`--crack-junction-fraction .5`); moved cracks keep the plan's spacing |
 | v1.25.0 | tag `v1.25.0` | Isaac port: wall-only panel relief without a band, isolated Blender light references, indoor-only room compose (generator unchanged) |
+| v1.26.0 | tag `v1.26.0` | self-contained: segmentation training in `studies/`, `syncrack3d_*` property and schema names (images and labels unchanged) |
 
 The three release recipes stay on the plain shell, so the v1.0–v1.10 walls
 rebuild as released.
@@ -1253,15 +1279,6 @@ traced:
 - **Real-time renders** find more cracks (51% under soft light) at a similar
   false-alarm rate.
 
-## Maintainers
-
-This folder is a snapshot of the repository generator, then edited here.
-`controlled_wall_generator/` and `infinigen/` keep paint peeling and blistering,
-including the two-layer peel. Rebuilding this app from the repo with
-`python build_from_repo.py` would put that code back and overwrite the
-crack-only edits; do that only after those edits have been ported, and pass
-`--overwrite-local-edits` if you mean to discard them.
-
 ## Crack networks (v1.4.0)
 
 Use `--crack-profile crazing` for map cracking: connected, irregular
@@ -1322,7 +1339,7 @@ that is what ties the square networks in the v1.7.0 study. Pass
 `--crack-network-edge square --crack-network-extent 1` to reproduce the
 v1.4.0–v1.5.0 patches.
 
-Validation: 33 tests pass. The final controlled-wall pilot (seeds
+Validation: 33 tests pass. The final wall pilot (seeds
 190000–190002, 512 px) passes the label contract on six views, with two
 close-ups retained. A 1024 px textured painted-wall check (seed 190010,
 width scale 2, dicing rate 1) shows visible faint networks and passes the

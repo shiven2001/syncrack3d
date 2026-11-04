@@ -1951,7 +1951,7 @@ def _is_ceiling_defect(obj) -> bool:
     band. They are slid in XY rather than used to carve the beam - carving
     a hole around a flush film would punch through the beam.
     """
-    if obj.get("syndefect_surface") == "ceiling":
+    if obj.get("syncrack3d_surface") == "ceiling":
         return True
     n = obj.name or ""
     return any(tok in n for tok in ("CeilingCrack", "CeilingPeel", "CeilingBubble"))
@@ -1961,7 +1961,7 @@ def _follow_defect_cameras(target, dx, dy):
     """Keep close-up rigs on a defect that just slid off a beam."""
     tname = target.name
     for o in bpy.data.objects:
-        if o.get("syndefect_target") != tname:
+        if o.get("syncrack3d_target") != tname:
             continue
         o.location.x += dx
         o.location.y += dy

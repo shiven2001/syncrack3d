@@ -3,8 +3,7 @@
 
 One seed produces one wall, a sampled lighting regime, a few props, several
 phone-like cameras, and one rendered frame per camera with crack AOVs beside
-it. SynCrack3D places cracks only. Paint peeling and blistering stay in
-``controlled_wall_generator`` and ``infinigen``.
+it. SynCrack3D places cracks only.
 
     python syncrack3d/build_dataset.py --seeds 0-49 --output out/walls
 
@@ -169,7 +168,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     if args.wall_normal_mode == "explicit":
         # CWG's camera-facing plane is at y=0, with geometric normal -Y.
         # Positive height must move toward cameras at negative Y; no sign flip.
-        wall["syndefect_displacement_sign"] = 1
+        wall["syncrack3d_displacement_sign"] = 1
     # Shade the wall with Infinigen's own material, not the base generator's
     # stand-in. This is the surface apartment defects are injected into, so it
     # is the only choice under which the two datasets differ in one variable
@@ -390,7 +389,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     aov_names = setup_passes()
 
     record = {
-        "schema": "syndefect3d/cwg_scene/1",
+        "schema": "syncrack3d/cwg_scene/1",
         "seed": seed,
         "spec": spec.to_dict(),
         "defects_placed": [p.to_dict() for p in placements],
@@ -517,7 +516,7 @@ def main():
         help=(
             "Which shader the wall carries. 'infinigen' uses the same "
             "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
-            "so a controlled-wall dataset is comparable against the apartment "
+            "so a SynCrack3D dataset is comparable against the apartment "
             "one; 'controlled' keeps the base generator's deterministic stand-in; "
             "'diverse' is the v1.x palette; 'unified' (v2) draws the 10 crack-able "
             "categories uniformly with one clean-wall table, no wood or irregular stone."

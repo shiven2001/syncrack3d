@@ -1,4 +1,4 @@
-"""Use Infinigen's own wall materials on the controlled wall.
+"""Use Infinigen's own wall materials on the generated wall.
 
 The hand-written shaders in ``materials.py`` were built to give the base
 generator something deterministic and dependency-free. For a dataset meant to
@@ -6,7 +6,7 @@ be compared against the apartment set, they are the wrong choice on three
 counts:
 
 * **They are not the surface the apartment defects live on.** Apartment defects
-  are injected into ``ceramic.Plaster``. A controlled-wall dataset shaded with a
+  are injected into ``ceramic.Plaster``. A SynCrack3D dataset shaded with a
   different plaster differs from the apartment set in wall appearance *and* in
   defect appearance at once, so any difference in transfer cannot be attributed
   to either.

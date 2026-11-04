@@ -1,6 +1,6 @@
 """Does the SynCrack3D v1.2.0 crack model make false positives on synthetic walls?
 
-Probe set from fp_probe_render.py (outputs/controlled_walls/syncrack3d_fp_probe_v1):
+Probe set from fp_probe_render.py (outputs/walls/syncrack3d_fp_probe_v1):
   indoor_default  unseen walls, training-like soft lighting, up to 3 props
   indoor_hard     the same walls, props and cameras, a hard_mix rig per view
   outdoor         unseen facades, sun or overcast, eave/downpipe/corner
@@ -30,19 +30,21 @@ Run after: python studies/fp_probe_exr.py <batch dirs>  (Blender env).
 import argparse
 import json
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from domain_transfer.crack_metrics import centreline_counts, centreline_scores
-from domain_transfer.multiclass_seg import ROOT, load_model, predict
-from domain_transfer.segmentation import benchmark
+APP = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP / "eval"))
+from infer import load_model, predict  # noqa: E402
+from metrics import centreline_counts, centreline_scores  # noqa: E402
 
-PROBE = ROOT / "syncrack3d/outputs/controlled_walls/syncrack3d_fp_probe_v1"
-MODEL = ROOT / "syncrack3d/outputs/domain_transfer/syncrack3d_layergate_bd3_v1"
-OUT = ROOT / "syncrack3d/outputs/domain_transfer/syncrack3d_fp_probe_v1"
+PROBE = APP / "outputs/walls/syncrack3d_fp_probe_v1"
+MODEL = APP / "outputs/domain_transfer/syncrack3d_layergate_bd3_v1"
+OUT = APP / "outputs/domain_transfer/syncrack3d_fp_probe_v1"
 BATCHES = ("indoor_default", "indoor_hard", "outdoor")
 CAUSES = ("prop", "outdoor_structure", "other_scene", "object_edge", "cast_edge", "in_cast", "wall_surface")
 STEM = re.compile(r"seed_(\d+)_rig(\d+)_")
@@ -100,7 +102,6 @@ def main():
 
     out = a.out
     (out / "pred").mkdir(parents=True, exist_ok=True)
-    b = benchmark()
     allv = [v for bt in BATCHES for v in views(bt)]
     ckpts = sorted(a.model.glob("runs/s*/last.pt"))
     votes = {v["batch"] + "/" + v["stem"]: np.zeros((640, 640), np.uint8) for v in allv}
@@ -111,7 +112,7 @@ def main():
         for v in allv:
             key = v["batch"] + "/" + v["stem"]
             img = cv2.cvtColor(cv2.imread(str(v["image"])), cv2.COLOR_BGR2RGB)
-            pred = predict(b, model, img) == 1
+            pred = predict(model, img, scale=1) == 1
             votes[key] += pred
             crack, excluded, cause = regions(v)
             fp = pred & ~excluded

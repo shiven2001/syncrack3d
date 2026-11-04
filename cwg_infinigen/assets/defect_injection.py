@@ -249,13 +249,13 @@ def _host_normals_point_outward(host: bpy.types.Object) -> bool:
     solidified room volume's outward normals: the same negative height then
     moves toward the camera and the groove reads as a welt.
     """
-    # A controlled solid wall is not a room volume: its visible outward face
+    # A standalone solid wall is not a room volume: its visible outward face
     # points TOWARD the occupant. Allow the host owner to declare this explicitly
     # instead of interpreting the solid panel's centre as the room centre.
-    explicit_sign = host.get("syndefect_displacement_sign")
+    explicit_sign = host.get("syncrack3d_displacement_sign")
     if explicit_sign is not None:
         if explicit_sign not in (-1, 1):
-            raise ValueError("syndefect_displacement_sign must be -1 or +1")
+            raise ValueError("syncrack3d_displacement_sign must be -1 or +1")
         return explicit_sign == -1
     mw = host.matrix_world
     name = host.name
@@ -635,7 +635,7 @@ def inject_defect(
     The plane is not modified; the caller decides whether to delete it.
     """
     if kind not in _INJECTORS:
-        plane["syndefect_injection_error"] = "unsupported_kind"
+        plane["syncrack3d_injection_error"] = "unsupported_kind"
         return False
     frame_w = _plane_frame(plane)
     angle = plane.get("cwg_crack_angle_deg")
@@ -651,11 +651,11 @@ def inject_defect(
         frame_w = (origin, across, run)
     if frame_w is None:
         logger.warning("defect %s has no usable faces; skipping", plane.name)
-        plane["syndefect_injection_error"] = "invalid_plane_frame"
+        plane["syncrack3d_injection_error"] = "invalid_plane_frame"
         return False
     state = _host_injection(host)
     if state is None:
-        plane["syndefect_injection_error"] = "host_has_no_usable_material"
+        plane["syncrack3d_injection_error"] = "host_has_no_usable_material"
         return False
     extent = max(plane.dimensions.x, plane.dimensions.y, plane.dimensions.z)
     # Per-card overrides of the bound crack settings, e.g. a straight path for a
@@ -670,14 +670,14 @@ def inject_defect(
         logger.warning(
             "failed to inject %s %s into %s: %s", kind, plane.name, host.name, exc
         )
-        plane["syndefect_injection_error"] = f"injection_exception:{type(exc).__name__}"
+        plane["syncrack3d_injection_error"] = f"injection_exception:{type(exc).__name__}"
         return False
     logger.debug("injected %s (%s, seed %d) into %s", kind, style, seed, host.name)
-    plane["syndefect_style"] = str(style)
+    plane["syncrack3d_style"] = str(style)
     if metrics:
-        plane["syndefect_morphology"] = json.dumps(metrics)
-    if "syndefect_injection_error" in plane:
-        del plane["syndefect_injection_error"]
+        plane["syncrack3d_morphology"] = json.dumps(metrics)
+    if "syncrack3d_injection_error" in plane:
+        del plane["syncrack3d_injection_error"]
     return True
 
 
@@ -900,7 +900,7 @@ def _stored_morphology(plane) -> dict | None:
     claim about defect size has to rest on, and the ones a measurement-error
     metric would be scored against.
     """
-    raw = plane.get("syndefect_morphology")
+    raw = plane.get("syncrack3d_morphology")
     if not raw:
         return None
     try:
@@ -977,7 +977,7 @@ def validate_defect_support(
     parallel.  Normal sign is reported separately because old room meshes do
     not consistently orient their winding toward the room interior.
     """
-    surface = plane.get("syndefect_surface")
+    surface = plane.get("syncrack3d_surface")
     expected_suffix = _SURFACE_SUFFIX.get(surface)
     reasons = []
     if (
@@ -1074,7 +1074,7 @@ def resolve_host(plane, state, host_by_name):
     Prefers the solver relation that put it there; falls back to the nearest
     host, which is what the plane factories do for their colour lookup.
     """
-    surface = plane.get("syndefect_surface")
+    surface = plane.get("syncrack3d_surface")
     order = {
         "ceiling": (".ceiling", ".wall", ".floor"),
         "floor": (".floor", ".wall", ".ceiling"),
@@ -1095,7 +1095,7 @@ def resolve_host(plane, state, host_by_name):
                     stem = room_name.split(".")[0]
                     for suffix in suffixes:
                         if stem + suffix in host_by_name:
-                            plane["syndefect_host_resolution"] = "solver_relation"
+                            plane["syncrack3d_host_resolution"] = "solver_relation"
                             return host_by_name[stem + suffix]
             break
 
@@ -1107,7 +1107,7 @@ def resolve_host(plane, state, host_by_name):
         if best is None or d2 < best:
             best, nearest = d2, host
     if nearest is not None:
-        plane["syndefect_host_resolution"] = "nearest_fallback"
+        plane["syncrack3d_host_resolution"] = "nearest_fallback"
     return nearest
 
 
@@ -1125,11 +1125,11 @@ def _retarget_orphaned_defect_cameras(dropped_names, survivors) -> int:
     pool = [p for p in survivors if p.name not in dropped_names]
     moved = 0
     for rig in bpy.data.objects:
-        target_name = rig.get("syndefect_target")
+        target_name = rig.get("syncrack3d_target")
         if target_name is None or target_name not in dropped_names:
             continue
         if not pool:
-            rig["syndefect_orphaned"] = True
+            rig["syncrack3d_orphaned"] = True
             logger.warning(
                 "%s framed %s, which was dropped, and no injected defect is "
                 "available to re-aim it at",
@@ -1145,15 +1145,15 @@ def _retarget_orphaned_defect_cameras(dropped_names, survivors) -> int:
             continue
         centre, t_u, t_v = frame
         normal = t_u.cross(t_v).normalized()
-        offset = float(rig.get("syndefect_distance", 0.9))
+        offset = float(rig.get("syncrack3d_distance", 0.9))
         if (rig.matrix_world.translation - centre).dot(normal) < 0:
             normal = -normal
         rig.location = centre + normal * offset
         rig.rotation_euler = (
             (centre - rig.location).normalized().to_track_quat("-Z", "Y").to_euler()
         )
-        rig["syndefect_target"] = replacement.name
-        rig["syndefect_retargeted_from"] = target_name
+        rig["syncrack3d_target"] = replacement.name
+        rig["syncrack3d_retargeted_from"] = target_name
         moved += 1
     if moved:
         logger.info("re-aimed %d defect camera(s) off dropped defects", moved)
@@ -1164,11 +1164,11 @@ def _mark_orphaned_defect_cameras(dropped_names) -> int:
     """Keep dropped-target views as explicit negatives without moving cameras."""
     marked = 0
     for rig in bpy.data.objects:
-        target_name = rig.get("syndefect_target")
+        target_name = rig.get("syncrack3d_target")
         if target_name not in dropped_names:
             continue
-        rig["syndefect_orphaned"] = True
-        rig["syndefect_orphan_reason"] = "target_not_retained"
+        rig["syncrack3d_orphaned"] = True
+        rig["syncrack3d_orphan_reason"] = "target_not_retained"
         marked += 1
     if marked:
         logger.info("marked %d dropped-target camera rig(s) as negative views", marked)
@@ -1178,14 +1178,14 @@ def _mark_orphaned_defect_cameras(dropped_names) -> int:
 def _qa_camera_records(plane_name: str) -> list[dict]:
     views = []
     for rig in sorted(bpy.data.objects, key=lambda obj: obj.name):
-        if rig.get("syndefect_target") != plane_name:
+        if rig.get("syncrack3d_target") != plane_name:
             continue
         views.append(
             {
                 "rig": rig.name,
-                "pose_valid": bool(rig.get("syndefect_pose_valid", False)),
-                "pose_reason": rig.get("syndefect_pose_reason"),
-                "target_point": list(rig.get("syndefect_target_point", [])),
+                "pose_valid": bool(rig.get("syncrack3d_pose_valid", False)),
+                "pose_reason": rig.get("syncrack3d_pose_reason"),
+                "target_point": list(rig.get("syncrack3d_target_point", [])),
             }
         )
     return views
@@ -1193,13 +1193,13 @@ def _qa_camera_records(plane_name: str) -> list[dict]:
 
 def _set_disposition(plane, status: str, reason: str | None = None) -> None:
     """Stamp a render-safe disposition onto a solver placeholder."""
-    plane["syndefect_status"] = status
+    plane["syncrack3d_status"] = status
     if reason:
-        plane["syndefect_status_reason"] = reason
+        plane["syncrack3d_status_reason"] = reason
     if status != "retained":
         plane.hide_render = True
         plane.hide_viewport = True
-        plane["syndefect_dropped"] = True
+        plane["syncrack3d_dropped"] = True
 
 
 def _record_instance(
@@ -1220,12 +1220,12 @@ def _record_instance(
     """
     from cwg_infinigen.core.util.math import int_hash
 
-    plane["syndefect_instance_id"] = int(instance_id)
-    plane["syndefect_render_path"] = render_path
+    plane["syncrack3d_instance_id"] = int(instance_id)
+    plane["syncrack3d_render_path"] = render_path
     _set_disposition(plane, status, reason)
     # Only the blister factories set this themselves; stamp it for every kind so
     # render-time tooling does not have to re-derive it from material names.
-    plane["syndefect_kind"] = kind
+    plane["syncrack3d_kind"] = kind
 
     class_id, aov_name = DEFECT_AOV_CLASSES[KIND_PREFIX[kind]]
     frame = _plane_frame(plane)
@@ -1241,12 +1241,12 @@ def _record_instance(
         "factory": plane.name.split("(")[0],
         "object": plane.name,
         "seed": int(int_hash(plane.name)),
-        "style": plane.get("syndefect_style"),
+        "style": plane.get("syncrack3d_style"),
         "host_object": host.name if host else None,
-        "host_surface": plane.get("syndefect_surface"),
+        "host_surface": plane.get("syncrack3d_surface"),
         "host_material": None,
         "host_finish": classify_host_finish(host) if host else None,
-        "host_resolution": plane.get("syndefect_host_resolution"),
+        "host_resolution": plane.get("syncrack3d_host_resolution"),
         "extent_m": [round(float(v), 5) for v in plane.dimensions],
         "morphology": _stored_morphology(plane),
         "support_validation": support,
@@ -1332,7 +1332,7 @@ def write_defect_manifest(path, scene_id=None, scene_seed=None) -> int:
     # rule sees one scene as many, then scatters near-duplicate frames of the
     # same room across train, val and test.
     payload = {
-        "schema": "syndefect3d/defect_instances/2",
+        "schema": "syncrack3d/defect_instances/2",
         "scene_id": str(scene_id) if scene_id is not None else None,
         "scene_seed": int(scene_seed) if scene_seed is not None else None,
         "instance_aov": DEFECT_INSTANCE_AOV,
@@ -1448,7 +1448,7 @@ def run_injection(
             continue
         if (
             not allow_nearest_host_fallback
-            and plane.get("syndefect_host_resolution") != "solver_relation"
+            and plane.get("syncrack3d_host_resolution") != "solver_relation"
         ):
             reason = "unresolved_intended_host_relation"
             _record_instance(
@@ -1457,11 +1457,11 @@ def run_injection(
             dropped.append(plane)
             fatal_errors.append(f"{plane.name}:{reason}")
             continue
-        surface = plane.get("syndefect_surface")
+        surface = plane.get("syncrack3d_surface")
         compatible, finish, substrate_note = substrate_compatibility(
             kind, surface, host
         )
-        plane["syndefect_host_finish"] = finish
+        plane["syncrack3d_host_finish"] = finish
         if enforce_substrates and not compatible:
             _record_instance(
                 plane,
@@ -1609,7 +1609,7 @@ def run_injection(
                     )
                 else:
                     reason = str(
-                        plane.get("syndefect_injection_error", "injection_failed")
+                        plane.get("syncrack3d_injection_error", "injection_failed")
                     )
                     _record_instance(
                         plane,
@@ -1653,8 +1653,8 @@ def run_injection(
         for plane in consumed:
             plane.hide_render = True
             plane.hide_viewport = not preview_planes_in_viewport
-            plane["syndefect_injected"] = True
-            plane["syndefect_viewport_proxy"] = bool(preview_planes_in_viewport)
+            plane["syncrack3d_injected"] = True
+            plane["syncrack3d_viewport_proxy"] = bool(preview_planes_in_viewport)
 
     total = finalize_injections(dicing_rate=dicing_rate)
     logger.info(

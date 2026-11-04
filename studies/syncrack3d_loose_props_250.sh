@@ -5,15 +5,15 @@
 # linked and rendered them up to 910200 before this screen replaced the 1,000-wall run). Resumable.
 #   setsid nohup studies/syncrack3d_loose_props_250.sh >> /mnt/nvme_storage/syncrack3d_v1.17.0-looseprops_dataset/run250.log 2>&1 < /dev/null & disown
 set -u
-R=/home/shiven/syndefect3d
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
 CODE=/mnt/nvme_storage/syncrack3d_v1.17-looseprops_code
 D=/mnt/nvme_storage/syncrack3d_v1.17.0-looseprops_dataset
 C=$D/train_a
 BPY=/home/shiven/anaconda3/envs/infinigen_v2/bin/python
 PY=/home/shiven/anaconda3/bin/python
-S="nice -n 5 env PYTHONPATH=$R/syncrack3d $PY -m studies.syncrack3d_v116_study"
+S="nice -n 5 env PYTHONPATH=$APP $PY -m studies.syncrack3d_v116_study"
 SEEDS="0 1 2 3 4"
-cd $R
+cd $APP
 
 # v1.17.0 reference: seeds 0-1 exist at 250 walls, add 2-4
 (STUDY_TAG=v117 $S train unet_w250 --walls 250 --arch unet_r34 --seeds $SEEDS --iters 4000 \

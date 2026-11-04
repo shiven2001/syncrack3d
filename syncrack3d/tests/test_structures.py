@@ -68,7 +68,7 @@ def test_geometry_is_background_and_structure_cameras_have_no_crack_target():
         assert [c.index for c in cameras] == [6, 7]
         for c in cameras:
             assert c.target_index is None
-            assert 'syndefect_target' not in bpy.data.objects[c.object_name]
+            assert 'syncrack3d_target' not in bpy.data.objects[c.object_name]
     finally:
         clear_scene()
 

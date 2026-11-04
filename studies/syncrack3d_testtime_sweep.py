@@ -22,8 +22,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-EVAL = ROOT / "syncrack3d/eval"
+APP = Path(__file__).resolve().parents[1]
+EVAL = APP / "eval"
 sys.path.insert(0, str(EVAL))
 from infer import MEAN, STD, load_model  # noqa: E402
 from metrics import centreline_counts, centreline_scores  # noqa: E402
@@ -82,7 +82,7 @@ def datasets():
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", type=Path, required=True)
-    ap.add_argument("--out", type=Path, default=ROOT / "syncrack3d/outputs/domain_transfer/syncrack3d_testtime_sweep_v1.json")
+    ap.add_argument("--out", type=Path, default=APP / "outputs/domain_transfer/syncrack3d_testtime_sweep_v1.json")
     ap.add_argument("--scales", type=float, nargs="+", default=SCALES)
     ap.add_argument("--thresholds", type=float, nargs="+", default=THRESHOLDS)
     args = ap.parse_args()

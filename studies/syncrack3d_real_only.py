@@ -5,11 +5,11 @@ images and labels the zero-shot scorers use (syncrack3d/eval/{bd3,cubit,buildcra
 
 - BD3: 487 minor_crack + 355 plain photos, the manifest's frozen grouped folds;
 - CUBIT-InSeg: every labelled image at 1/3 scale, spalling (dilated) ignored as in
-  the scorer; groups are near-duplicates (bd3_real_cv rule);
+  the scorer; groups are near-duplicates (studies/near_duplicates.py);
 - BuildCrack: 358 tiles; a group is the source photo (scorer's bootstrap unit).
 
 Every image is predicted once by a model that never saw it or its group. Recipe is
-bd3_real_cv.train (U-Net R34, ImageNet, 3-class head, CE + Dice, AdamW 3e-4,
+seg_train.train (U-Net R34, ImageNet, 3-class head, CE + Dice, AdamW 3e-4,
 4000 steps, batch 8, 512 crops, no synthetic envelope or camera simulation, final
 checkpoint), seeds 0 1 2. Inference is at the training resolution (scale 1, no
 1.5x upscale: that upscale matches synthetic crack widths). Metrics and pooling
@@ -31,13 +31,15 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import domain_transfer.bd3_real_cv as real_cv
-from domain_transfer.segmentation import ROOT, benchmark
+from studies import near_duplicates
+from studies.seg_train import train as fit
 
-EVAL = ROOT / "syncrack3d/eval"
-OUT = ROOT / "syncrack3d/outputs/domain_transfer/syncrack3d_real_only_v1"
+APP = Path(__file__).resolve().parents[1]
+
+EVAL = APP / "eval"
+OUT = APP / "outputs/domain_transfer/syncrack3d_real_only_v1"
 CUBIT = Path(os.environ.get("SYNCRACK3D_CUBIT", "/mnt/nvme_storage/CUBIT-InSeg"))
-BUILDCRACK = Path(os.environ.get("SYNCRACK3D_BUILDCRACK", ROOT / "syncrack3d/external/BuildCrack"))
+BUILDCRACK = Path(os.environ.get("SYNCRACK3D_BUILDCRACK", APP / "external/BuildCrack"))
 FOLDS, SEEDS, SCALE = 5, (0, 1, 2), 1.0
 IGNORE = 255
 sys.path.insert(0, str(EVAL))
@@ -95,8 +97,8 @@ def prepare(name, out):
             cv2.imwrite(str(gt_dir / f"{k}.png"), gt)
             items[k] = [str(img_dir / f"{k}.png"), str(gt_dir / f"{k}.png"), None, k.startswith("CR")]
         ids = sorted(items)
-        group_of, links = real_cv.groups(ids, [items[i][0] for i in ids])
-        note = f"near-duplicate groups (cos >= {real_cv.COS} or pHash <= {real_cv.HAMMING}), {len(links)} links"
+        group_of, links = near_duplicates.groups(ids, [items[i][0] for i in ids])
+        note = f"near-duplicate groups (cos >= {near_duplicates.COS} or pHash <= {near_duplicates.HAMMING}), {len(links)} links"
     elif name == "buildcrack":
         sc = scorer("buildcrack")
         for p in sorted((BUILDCRACK / "images").glob("*.png")):
@@ -117,7 +119,7 @@ def prepare(name, out):
     return {k: tuple(v) for k, v in items.items()}
 
 
-def run(name, b):
+def run(name):
     out = OUT / name
     items = prepare(name, out)
     for seed in SEEDS:
@@ -129,8 +131,9 @@ def run(name, b):
                 continue
             ck = out / f"runs/s{seed}_f{fold}/last.pt"
             if not ck.exists():
-                train = [(k, v[0], v[1], True) for k, v in items.items() if v[2] != fold]
-                real_cv.train(b, train, ck.parent, seed)
+                # Real flag off: these label maps are read unchanged, not binarised.
+                train = [(k, v[0], v[1], False) for k, v in items.items() if v[2] != fold]
+                fit(train, ck.parent, seed, syn_envelope=0, syn_camera=False)
             model = load_model(ck)
             for k in held:
                 img = cv2.cvtColor(cv2.imread(items[k][0]), cv2.COLOR_BGR2RGB)
@@ -182,14 +185,13 @@ def main():
     ap.add_argument("--datasets", nargs="+", default=["bd3", "cubit", "buildcrack"])
     ap.add_argument("--prepare-only", action="store_true")
     args = ap.parse_args()
-    b = benchmark()
     for name in args.datasets:
         if args.prepare_only:
             prepare(name, OUT / name)
             split = json.loads((OUT / name / "split.json").read_text())
             print(name, {k: split[k] for k in ("grouping", "groups", "largest_group", "fold_sizes", "fold_positive")})
             continue
-        res = run(name, b)
+        res = run(name)
         print(json.dumps(res["results"], indent=1), flush=True)
     print("REAL_ONLY_DONE", flush=True)
 

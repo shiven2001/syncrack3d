@@ -1,4 +1,4 @@
-"""Infinigen props in front of the controlled wall.
+"""Infinigen props in front of the wall.
 
 Why a bare wall is not enough. A detector trained only on clean plaster with a
 defect in the middle learns "anomaly on flat surface", and then fires on every

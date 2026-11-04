@@ -13,3 +13,4 @@ eval/bd3/gt/
 
 # Third-party crack benchmarks and reference code used by studies/.
 external/
+.DS_Store

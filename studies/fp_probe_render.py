@@ -23,7 +23,7 @@ Usage (from the syncrack3d app root, Blender-as-python env):
 import sys
 from pathlib import Path
 
-APP = Path(__file__).resolve().parents[2] / "syncrack3d"
+APP = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP))
 
 import bpy  # noqa: E402
@@ -38,7 +38,7 @@ def _index(obj):
     top = obj
     while top.parent is not None:
         top = top.parent
-    if obj.get("syndefect_displacement_sign") is not None:
+    if obj.get("syncrack3d_displacement_sign") is not None:
         return 1
     if obj.name.startswith("CWG_Outdoor_Facade_"):
         return 2

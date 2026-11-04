@@ -1,7 +1,7 @@
 """Cracks on held-out synthetic stone block and large tile walls.
 
 Real benchmarks hardly contain these surfaces, so this measures what adding
-their cracks buys: 6 unseen walls (outputs/controlled_walls/
+their cracks buys: 6 unseen walls (outputs/walls/
 syncrack3d_tilestone_test_v1, seeds 176040-176045, legacy profile), never in any
 training set. Per surface and model (mean over five seeds): centreline P/R/F1
 at 3 px and crack IoU on cracked views, false-positive pixels per view more than
@@ -13,17 +13,19 @@ excluded, as in training.
 """
 
 import json
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from domain_transfer.crack_metrics import centreline_counts, centreline_scores
-from domain_transfer.multiclass_seg import ROOT, load_model, predict
-from domain_transfer.segmentation import benchmark
+APP = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP / "eval"))
+from infer import load_model, predict  # noqa: E402
+from metrics import centreline_counts, centreline_scores  # noqa: E402
 
-TEST = ROOT / "syncrack3d/outputs/controlled_walls/syncrack3d_tilestone_test_v1"
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+TEST = APP / "outputs/walls/syncrack3d_tilestone_test_v1"
+DT = APP / "outputs/domain_transfer"
 MODELS = {"v1.2.0": "syncrack3d_layergate_bd3_v1", "null": "syncrack3d_straightnull_bd3_v1",
           "tilestone": "syncrack3d_tilestone_bd3_v1", "hostcrack": "syncrack3d_hostcrack_bd3_v1"}
 OUT = DT / "syncrack3d_synth_surface_v1.json"
@@ -45,7 +47,6 @@ def views():
 def main():
     import torch
 
-    b = benchmark()
     vs = views()
     near = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
     imgs = [cv2.cvtColor(cv2.imread(str(v["image"])), cv2.COLOR_BGR2RGB) for v in vs]
@@ -59,7 +60,7 @@ def main():
             model = load_model(ck)
             acc = {}
             for v, img in zip(vs, imgs):
-                pred = (predict(b, model, img) == 1) & v["valid"]
+                pred = (predict(model, img, scale=1) == 1) & v["valid"]
                 a = acc.setdefault(v["surface"], {"cl": np.zeros(4), "iou": np.zeros(3), "fp": [], "alarm": []})
                 far = pred & ~(cv2.dilate(v["crack"].astype(np.uint8), near) > 0)
                 if v["crack"].any():

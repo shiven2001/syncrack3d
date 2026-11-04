@@ -9,9 +9,9 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
-sys.path.insert(0, str(ROOT / "syncrack3d/eval"))
+APP = Path(__file__).resolve().parents[1]
+DT = APP / "outputs/domain_transfer"
+sys.path.insert(0, str(APP / "eval"))
 from metrics import centreline_scores  # noqa: E402
 
 name = sys.argv[1]

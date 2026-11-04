@@ -41,29 +41,26 @@ import argparse
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-ROOT = Path("/home/shiven/syndefect3d")
-sys.path.insert(0, str(ROOT))
+APP = Path(__file__).resolve().parents[1]
 TAG = os.environ.get("STUDY_TAG", "v116")
 VERSION = {"v116": "v1.16.0", "v117": "v1.17.0", "v200": "v2.0.0", "v200np": "v2.0.0-noplanks",
            "v117lp": "v1.17.0-looseprops", "v118fm": "v1.18.0-fixturemount",
            "v118fc": "v1.18.0-fixtureclear", "v119fr": "v1.19.0-fixturerule",
            "v120mc": "v1.20.0-matcombine", "v120nd": "v1.20.0-nodirt",
            "v120io": "v1.20.0-indooronly", "v122": "v1.22.0",
-           "v122jn": "v1.22.0-junctions"}[TAG]
+           "v122jn": "v1.22.0-junctions", "v125": "v1.25.0"}[TAG]
 DATA = Path(f"/mnt/nvme_storage/syncrack3d_{VERSION}_dataset")
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
-APP = ROOT / "syncrack3d"
+DT = APP / "outputs/domain_transfer"
 PY = "/home/shiven/anaconda3/bin/python"
 TRAIN_CHUNKS = ("train_a", "train_b", "train_c", "train_d")
 LR = {"unet_r34": 3e-4, "deeplabv3plus_r50": 3e-4, "segformer_b2": 6e-5}
 ENV = {**os.environ, "SYNCRACK3D_CUBIT": "/mnt/nvme_storage/CUBIT-InSeg",
-       "SYNCRACK3D_BUILDCRACK": str(ROOT / "syncrack3d/external/BuildCrack")}
+       "SYNCRACK3D_BUILDCRACK": str(APP / "external/BuildCrack")}
 
 
 def labels(chunk):
@@ -108,8 +105,7 @@ def train_rows(walls):
 def train(args):
     import torch
 
-    from domain_transfer.multiclass_seg import train as fit
-    from domain_transfer.segmentation import benchmark
+    from studies.seg_train import train as fit
 
     rows = train_rows(args.walls)
     iters = args.iters or max(4000, len(rows))
@@ -127,16 +123,16 @@ def train(args):
         + (" (combined plaster and stucco, no outdoor dirt or crack staining)" if TAG == "v120nd" else "")
         + (" (v120nd with indoor walls only: 22 outdoor walls replaced by 910250+ indoor walls)" if TAG == "v120io" else "")
         + (" (indoor only; one fixture catalogue with full-length runs)" if TAG == "v122" else "")
-        + (" (v122 with --crack-junction-fraction .5)" if TAG == "v122jn" else "")),
+        + (" (v122 with --crack-junction-fraction .5)" if TAG == "v122jn" else "")
+        + (" (full dataset: junction cracks, ranged fixtures, indoor only)" if TAG == "v125" else "")),
         indent=1) + "\n")
     print(args.name, len(rows), "views", iters, "iters", flush=True)
     torch.set_num_threads(4)
     cv2.setNumThreads(1)
-    b = benchmark()
     for seed in args.seeds:
         run = out / "runs" / f"s{seed}"
         if not (run / "last.pt").exists():
-            fit(b, rows, run, seed, iters=iters, arch=args.arch, lr=LR[args.arch])
+            fit(rows, run, seed, iters=iters, arch=args.arch, lr=LR[args.arch])
         torch.cuda.empty_cache()
 
 

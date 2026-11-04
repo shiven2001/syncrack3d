@@ -17,7 +17,7 @@ modifiers, or true displacement. Defect injection can add true displacement late
 Every host:
 
 - has a unique name ending in `.wall`;
-- records `surface_finish` and `syndefect_surface`;
+- records `surface_finish` and `syncrack3d_surface`;
 - has one unique Principled material with linked Base Color;
 - is a manifold rectangular box with no modifiers;
 - is listed in the scene manifest.
@@ -29,7 +29,7 @@ From the repository root:
 ```bash
 blender --factory-startup --background \
   --python syncrack3d/generate_scene.py -- \
-  --output outputs/controlled_walls/seed_0001/scene.blend \
+  --output outputs/walls/seed_0001/scene.blend \
   --seed 1 --module flat --substrate paint
 ```
 
@@ -45,7 +45,7 @@ Generate an exact preset:
 ```bash
 blender --factory-startup --background \
   --python syncrack3d/generate_scene.py -- \
-  --output outputs/controlled_walls/simple_painted_wall/scene.blend \
+  --output outputs/walls/simple_painted_wall/scene.blend \
   --spec syncrack3d/presets/simple_painted_wall.json
 ```
 

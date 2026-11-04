@@ -1,4 +1,4 @@
-"""A boolean-free, uninterrupted controlled wall surface."""
+"""A boolean-free, uninterrupted wall surface."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def _make_wall(spec, host_collection, root, material):
     wall["cwg_module_id"] = module_id
     wall["cwg_panel"] = "main"
     wall["cwg_generator_version"] = GENERATOR_VERSION
-    wall["syndefect_surface"] = "wall"
+    wall["syncrack3d_surface"] = "wall"
     wall["surface_finish"] = spec.material.finish
     wall["cwg_injection_ready"] = True
     return wall

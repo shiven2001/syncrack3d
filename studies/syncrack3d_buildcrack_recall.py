@@ -21,14 +21,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "syncrack3d/eval"))
+APP = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP / "eval"))
 from infer import TEST_SCALE, _probs, load_model  # noqa: E402
 from metrics import TOLERANCE_PX, _grow  # noqa: E402
 
 from studies.syncrack3d_iou_tolerance import contrast, label_widths  # noqa: E402
 
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+DT = APP / "outputs/domain_transfer"
 RO = DT / "syncrack3d_real_only_v1/buildcrack"
 OUT = DT / "syncrack3d_buildcrack_recall_v1"
 MODELS = {"v1.8.0": DT / "syncrack3d_facade2_bd3_v1", "v1.17 500 walls": DT / "syncrack3d_v117_unet_w500",

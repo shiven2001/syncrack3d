@@ -1,15 +1,16 @@
-"""Build rig panel assets (USD + ground truth) from SynDefect3D view patches.
+"""Build rig panel assets (USD + ground truth) from SynCrack3D view patches.
 
     OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim/python \
-        scripts/build_panels.py --spec scripts/panels_v1.json --out assets/panels_v2
+        isaac_port/build_panels.py --spec PORT/panels_spec.json --out PORT/panels
 
-Only crack and paint-peel panels are built (rig/panels.py SCOPE_CLASSES); a
-panel whose source region contains any blister coverage is refused.
+port_wall.py runs this as its panels stage. Only crack and paint-peel panels are
+built (SCOPE_CLASSES); a panel whose source region contains any blister coverage
+is refused.
 
-Inputs are the patch maps produced by the SynDefect3D Isaac port check
-(syndefect3d/isaac_port_check): per patch `<cam>_height_mm.npy` (true displaced
-relief from Cycles' Position pass, +50 mm offset, 0 = no wall), `_color.npy`,
-`_roughness.npy`, `_normal.png` (tangent-space bump), and class coverage
+Inputs are the patch maps written by port_wall.py's Blender stages: per patch
+`<cam>_height_mm.npy` (true displaced relief from Cycles' Position pass, +50 mm
+offset, 0 = no wall), `_color.npy`, `_roughness.npy`, `_normal.png`
+(tangent-space bump), and class coverage
 `_DefectCrack/_DefectPaintPeel/_DefectPaintBubble.npy`; optional overhanging peel
 flaps from `dump_meshes.py`.
 
@@ -27,7 +28,7 @@ import json
 import shutil
 from pathlib import Path
 
-# Inlined from active_sensing_rig/rig/panels.py so the port has no rig dependency.
+# Defect classes a panel may carry.
 SCOPE_CLASSES = ("crack", "paint_peel")
 
 ap = argparse.ArgumentParser()

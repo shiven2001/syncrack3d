@@ -6,7 +6,7 @@
 # 22 new walls render with v120nd's frozen code.
 #   setsid nohup studies/syncrack3d_indoor_only_250.sh >> /mnt/nvme_storage/syncrack3d_v1.20.0-indooronly_dataset/run250.log 2>&1 < /dev/null & disown
 set -u
-R=/home/shiven/syndefect3d
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
 CODE=/mnt/nvme_storage/syncrack3d_v1.20-nodirt_code
 OLD_D=/mnt/nvme_storage/syncrack3d_v1.20.0-nodirt_dataset
 OLD=$OLD_D/train_a/walls
@@ -14,12 +14,12 @@ D=/mnt/nvme_storage/syncrack3d_v1.20.0-indooronly_dataset
 C=$D/train_a
 BPY=/home/shiven/anaconda3/envs/infinigen_v2/bin/python
 PY=/home/shiven/anaconda3/bin/python
-S="nice -n 5 env PYTHONPATH=$R/syncrack3d $PY -m studies.syncrack3d_v116_study"
+S="nice -n 5 env PYTHONPATH=$APP $PY -m studies.syncrack3d_v116_study"
 mkdir -p $C/walls/frames
 git -C $CODE rev-parse HEAD > $D/code_commit.txt
 git -C $CODE diff > $D/code_diff.patch
 # the next 22 seeds whose style draw is indoor (not facade)
-(cd $R/syncrack3d && $PY -c "
+(cd $APP && $PY -c "
 import json
 from argparse import Namespace
 from syncrack3d.recipes import UNIFIED_MIX, wall_style
@@ -55,7 +55,7 @@ if [ ! -f $C/done ]; then
   echo "=== done train_a $(cat $C/done) $(date -Is)"
 fi
 
-cd $R
+cd $APP
 STUDY_TAG=v120io $S train unet_w250 --walls 250 --arch unet_r34 --seeds 0 1 2 3 4 --iters 4000
 STUDY_TAG=v120io $S eval unet_w250 --splits --real
 echo INDOOR_ONLY_250_DONE $(date -Is)

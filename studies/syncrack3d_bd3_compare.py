@@ -17,9 +17,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-BD3 = ROOT / "syncrack3d/eval/bd3"
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+APP = Path(__file__).resolve().parents[1]
+BD3 = APP / "eval/bd3"
+DT = APP / "outputs/domain_transfer"
 MODELS = {"v1.2.0": "syncrack3d_layergate_bd3_v1", "amount": "syncrack3d_amount_bd3_v1",
           "hostcrack": "syncrack3d_hostcrack_bd3_v1", "null": "syncrack3d_straightnull_bd3_v1",
           "straight": "syncrack3d_straight_bd3_v1",

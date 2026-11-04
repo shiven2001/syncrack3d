@@ -1,4 +1,4 @@
-"""Allow ``python -m controlled_wall_generator`` in a bpy-enabled Python."""
+"""Allow ``python -m syncrack3d`` in a bpy-enabled Python."""
 
 from syncrack3d.generate_scene import main
 

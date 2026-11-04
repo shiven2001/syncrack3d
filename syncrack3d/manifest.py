@@ -53,7 +53,7 @@ def validate_base_scene(build: BuildResult, capture: CaptureSetup) -> dict:
         if bsdf is None or not bsdf.inputs["Base Color"].is_linked:
             errors.append(f"host material lacks linked Principled Base Color: {host.name}")
     if errors:
-        raise RuntimeError("Controlled wall validation failed: " + "; ".join(errors))
+        raise RuntimeError("Wall validation failed: " + "; ".join(errors))
     return {
         "valid": True,
         "host_count": len(build.hosts),
@@ -80,7 +80,7 @@ def write_scene_manifest(
         hosts.append(
             {
                 "name": host.name,
-                "surface": host.get("syndefect_surface"),
+                "surface": host.get("syncrack3d_surface"),
                 "finish": host.get("surface_finish"),
                 "module_id": host.get("cwg_module_id"),
                 "panel": host.get("cwg_panel"),
@@ -91,7 +91,7 @@ def write_scene_manifest(
             }
         )
     payload = {
-        "schema": "syndefect3d/controlled_wall_scene/1",
+        "schema": "syncrack3d/wall_scene/1",
         "generator_version": GENERATOR_VERSION,
         "spec": spec.to_dict(),
         "hosts": hosts,

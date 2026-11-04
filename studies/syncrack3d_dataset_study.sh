@@ -8,14 +8,17 @@
 set -u
 VERSION=$1
 D=/mnt/nvme_storage/syncrack3d_${VERSION}_dataset
-R=/home/shiven/syndefect3d
-DT=$R/syncrack3d/outputs/domain_transfer
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
+DT=$APP/outputs/domain_transfer
 PY=/home/shiven/anaconda3/bin/python
-S="nice -n 5 env PYTHONPATH=$R/syncrack3d $PY -m studies.syncrack3d_v116_study"
-cd $R
+S="nice -n 5 env PYTHONPATH=$APP $PY -m studies.syncrack3d_v116_study"
+cd $APP
 wait_chunk() { until [ -f $D/$1/done ]; do sleep 120; done; echo "chunk $1 ready $(date -Is)"; }
+# A dataloader worker can segfault while Blender renders alongside; finished seeds are kept, so retry once.
+fit() { $S train "$@" || $S train "$@" || { echo "STUDY_FAILED train $1"; exit 1; }; }
 point() {
-  $S train unet_w$1 --walls $1 --arch unet_r34 --seeds 0 1 && $S eval unet_w$1 --splits val --real
+  fit unet_w$1 --walls $1 --arch unet_r34 --seeds 0 1
+  $S eval unet_w$1 --splits val --real
   echo "point $1 done $(date -Is)"
 }
 gain() {
@@ -30,14 +33,14 @@ wait_chunk train_a; wait_chunk val
 point 250; point 500
 wait_chunk train_b; point 1000
 wait_chunk train_c; point 2000
-DECISION=$(gain 1000 2000); echo "decision 1000->2000: $DECISION" | tee -a $D/scaling_decision.txt
+DECISION=$(gain 1000 2000) || { echo "STUDY_FAILED no scaling decision"; exit 1; }; echo "decision 1000->2000: $DECISION" | tee -a $D/scaling_decision.txt
 if [[ $DECISION == *continue ]]; then
   wait_chunk train_d; point 4000
   echo "decision 2000->4000: $(gain 2000 4000)" | tee -a $D/scaling_decision.txt
   N=4000
 else
   wait_chunk test
-  for p in $(ps -eo pid,args | grep -E "syncrack3d_dataset_render.sh $VERSION|build_dataset.py --recipe unified --seeds 912000" | grep -v grep | awk '{print $1}'); do kill $p; done
+  pkill -f "syncrack3d_dataset_render.sh $VERSION"; pkill -f "build_dataset.py .*--output $D/train_d/walls"
   echo "stopped train_d rendering" | tee -a $D/scaling_decision.txt
   N=2000
 fi
@@ -45,10 +48,10 @@ echo "N=$N" | tee -a $D/scaling_decision.txt
 wait_chunk test
 for arch in unet_r34 deeplabv3plus_r50 segformer_b2; do
   name=$([ $arch = unet_r34 ] && echo unet_w$N || echo ${arch}_w$N)
-  $S train $name --walls $N --arch $arch --seeds 0 1 2
+  fit $name --walls $N --arch $arch --seeds 0 1 2
   $S eval $name --splits val test --real
   M=$DT/syncrack3d_${STUDY_TAG}_$name
-  [ -f $M/results/synth_evalset_v2.json ] || (cd $R/syncrack3d && $PY eval/synth/score.py --set $R/syncrack3d/outputs/syncrack3d_evalset_v2 \
+  [ -f $M/results/synth_evalset_v2.json ] || (cd $APP && $PY eval/synth/score.py --set $APP/outputs/syncrack3d_evalset_v2 \
       --model $M --save $M/results/synth_evalset_v2.json > /dev/null 2>&1)
   echo "final $name done $(date -Is)"
 done

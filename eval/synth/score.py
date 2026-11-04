@@ -34,6 +34,8 @@ from metrics import TOLERANCE_PX, _grow, centreline_counts, centreline_scores, c
 
 ALARM_FRACTION = 0.001
 CRACKED = ("standard", "wide", "crazing")
+# Sets built before the rename (e.g. the frozen evalset v2) name these legacy, major, network.
+RENAMED = {"legacy": "standard", "major": "wide", "network": "crazing"}
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--set", type=Path, required=True, help="eval/synth/build.py output")
@@ -64,6 +66,7 @@ def finish(a):
 
 views = []
 for v in manifest["views"]:
+    v["subset"] = RENAMED.get(v["subset"], v["subset"])
     mask = cv2.imread(str(args.set / v["mask"]), 0)
     ign_path = args.set / v["mask"].replace("masks/", "ignore_masks/")
     crack = mask == 60

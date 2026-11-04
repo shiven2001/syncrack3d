@@ -5,13 +5,13 @@
 # the v2.0.0 renders and only the former plank walls are rendered. Resumable.
 #   setsid nohup studies/syncrack3d_v2_noplanks.sh >> /mnt/nvme_storage/syncrack3d_v2.0.0-noplanks_dataset/run.log 2>&1 < /dev/null & disown
 set -u
-R=/home/shiven/syndefect3d
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
 CODE=/mnt/nvme_storage/syncrack3d_v2.0.0-noplanks_code
 SRC=/mnt/nvme_storage/syncrack3d_v2.0.0_dataset
 D=/mnt/nvme_storage/syncrack3d_v2.0.0-noplanks_dataset
 BPY=/home/shiven/anaconda3/envs/infinigen_v2/bin/python
 PY=/home/shiven/anaconda3/bin/python
-S="nice -n 5 env PYTHONPATH=$R/syncrack3d $PY -m studies.syncrack3d_v116_study"
+S="nice -n 5 env PYTHONPATH=$APP $PY -m studies.syncrack3d_v116_study"
 mkdir -p $D
 git -C $CODE rev-parse HEAD > $D/code_commit.txt
 git -C $CODE diff > $D/code_diff.patch
@@ -44,7 +44,7 @@ print(','.join(str(s) for s in range(lo, hi + 1) if md.sample_category(s) == 'wa
   echo "=== done $name $(cat $C/done) $(date -Is)"
 done
 
-cd $R
+cd $APP
 STUDY_TAG=v200np $S train unet_w1000_it4000 --walls 1000 --arch unet_r34 --seeds 0 1 2 --iters 4000
 STUDY_TAG=v200np $S eval unet_w1000_it4000 --splits --real
 echo NOPLANKS_DONE $(date -Is)

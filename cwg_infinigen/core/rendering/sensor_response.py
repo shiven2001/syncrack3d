@@ -1,4 +1,4 @@
-# Copyright (C) 2025, SynDefect3D.
+# Copyright (C) 2025, SynCrack3D.
 # This source code is licensed under the BSD 3-Clause license found in the LICENSE file in the root directory of this source tree.
 
 """A camera sensor between the render and the compositor look.
@@ -100,7 +100,7 @@ def _noise_image(width: int, height: int, seed: int) -> bpy.types.Image:
     distribution is actually Gaussian, the seed is recorded, and the same
     values can be reproduced in numpy when checking a render.
     """
-    name = f"SynDefectSensorNoise_{seed:08x}"
+    name = f"SynCrack3DSensorNoise_{seed:08x}"
     existing = bpy.data.images.get(name)
     if existing is not None:
         if tuple(existing.size) == (width, height):
@@ -293,7 +293,7 @@ def apply_sensor_response(
                 (
                     int(scene.frame_current),
                     cam.name if cam else "nocam",
-                    int(scene.get("syndefect_resample_idx", 0)),
+                    int(scene.get("syncrack3d_resample_idx", 0)),
                 )
             ) % (2**31)
         noise_node = nw.new_node(

@@ -1,9 +1,9 @@
-"""Place defect cards on a controlled wall and inject them into its material.
+"""Place defect cards on the wall and inject them into its material.
 
 The apartment pipeline reaches defects through the constraint solver: a card is
 a solver placeholder, its position is a by-product of scoring, and the framing a
 camera gets is whatever the solve happened to allow. That is the right design
-for furnished rooms and the wrong one here. On a controlled wall the position,
+for furnished rooms and the wrong one here. Here the position,
 size, spacing and class mix are the *experiment*, so they are sampled directly
 and recorded in the manifest.
 
@@ -224,7 +224,7 @@ def build_defects(
             if legacy_names  # v1 naming, kept only to reproduce it
             else f"CWG_Defect_{index:02d}_{defect_class}_{factory_seed}"
         )
-        card["syndefect_surface"] = "wall"
+        card["syncrack3d_surface"] = "wall"
         card["cwg_defect_class"] = defect_class
         bpy.context.view_layer.update()
 

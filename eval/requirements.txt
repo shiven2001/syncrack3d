@@ -1,6 +1,8 @@
-# Scoring environment (separate from the Blender generator environment).
+# Scoring and training environment (separate from the Blender generator environment);
+# studies/ train with it too.
 # Versions used for every result in README.md.
 torch==2.7.0
+torchvision==0.22.0
 segmentation-models-pytorch==0.5.0
 opencv-python==4.11.0.86
 numpy

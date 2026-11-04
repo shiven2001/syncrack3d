@@ -12,19 +12,17 @@ four-thousand-step, five-seed budget, trained from scratch on the 200 walls.
 """
 
 import json
-import sys
 from pathlib import Path
 
 import cv2
 
-ROOT = Path("/home/shiven/syndefect3d")
-sys.path.insert(0, str(ROOT))
+APP = Path(__file__).resolve().parents[1]
 
 from studies.syncrack3d_cleanpolicy_study import write_label  # noqa: E402
 
-CONTROL = ROOT / "syncrack3d/outputs/controlled_walls/syncrack3d_cleanpolicy_v1/cracked"
-TREAT = ROOT / "syncrack3d/outputs/controlled_walls/syncrack3d_shellmatch_v1/matched"
-OUT = ROOT / "syncrack3d/outputs/domain_transfer/syncrack3d_shellmatch_bd3_v1"
+CONTROL = APP / "outputs/walls/syncrack3d_cleanpolicy_v1/cracked"
+TREAT = APP / "outputs/walls/syncrack3d_shellmatch_v1/matched"
+OUT = APP / "outputs/domain_transfer/syncrack3d_shellmatch_bd3_v1"
 SEEDS = [0, 1, 2, 3, 4]
 SAME = ("cameras", "defects_placed", "lighting", "props", "spec")
 
@@ -49,8 +47,7 @@ def check_pairs():
 def main():
     import torch
 
-    from domain_transfer.multiclass_seg import train
-    from domain_transfer.segmentation import benchmark
+    from studies.seg_train import train
 
     finishes = check_pairs()
     pack = TREAT / "pack"
@@ -66,11 +63,10 @@ def main():
     print(record, flush=True)
     torch.set_num_threads(4)
     cv2.setNumThreads(1)
-    b = benchmark()
     for seed in SEEDS:
         run_dir = OUT / "runs" / f"s{seed}"
         if not (run_dir / "last.pt").exists():
-            train(b, rows, run_dir, seed, iters=4000)
+            train(rows, run_dir, seed, iters=4000)
         torch.cuda.empty_cache()
     print("trained", flush=True)
 

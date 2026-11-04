@@ -4,23 +4,23 @@
 set -u
 NAME=$1
 PY=/home/shiven/anaconda3/bin/python
-R=/home/shiven/syndefect3d
-DT=$R/syncrack3d/outputs/domain_transfer
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
+DT=$APP/outputs/domain_transfer
 M=$DT/syncrack3d_${NAME}_bd3_v1
 LOG=$M/logs
 mkdir -p $LOG
-cd "$R"
+cd "$APP"
 echo "=== train $NAME $(date -Is) ==="
 nice -n 5 $PY $M/train_eval.py > $LOG/train.log 2>&1; echo "train_exit=$?"
 [ -f $M/runs/s4/last.pt ] || exit 1
 for base in tilestone networkctl network; do
-  env PYTHONPATH=$R/syncrack3d $PY -c "
+  env PYTHONPATH=$APP $PY -c "
 from studies import syncrack3d_bd3_compare as c
 c.MODELS={'${base}':'syncrack3d_${base}_bd3_v1','$NAME':'syncrack3d_${NAME}_bd3_v1'}
 c.OUT=c.DT/'syncrack3d_bd3_compare_${NAME}_vs_${base}.json'
 c.main()" > $LOG/bd3_vs_$base.log 2>&1; echo "bd3_vs_${base}_exit=$?"
 done
-cd $R/syncrack3d
+cd $APP
 $PY eval/cubit/score.py --model $M --out $DT/cubit_eval_${NAME}_v1 > $LOG/cubit.log 2>&1; echo "cubit_exit=$?"
 for base in tilestone networkctl network; do
   $PY eval/cubit/compare.py --a $DT/cubit_eval_${base}_v1 --b $DT/cubit_eval_${NAME}_v1 --out $DT/cubit_compare_${NAME}_vs_${base}.json >> $LOG/cubit_compare.log 2>&1

@@ -26,14 +26,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-ROOT = Path("/home/shiven/syndefect3d")
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "syncrack3d"))
+APP = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(APP))
 
 from syncrack3d.material_diversity import _rng, is_clean_wall  # noqa: E402
 
-WALLS = ROOT / "syncrack3d/outputs/controlled_walls/syncrack3d_cleanpolicy_v1"
-DT = ROOT / "syncrack3d/outputs/domain_transfer"
+WALLS = APP / "outputs/walls/syncrack3d_cleanpolicy_v1"
+DT = APP / "outputs/domain_transfer"
 ARMS = ("cleanmat", "cleannone", "cleanuni")
 SEEDS = [0, 1, 2, 3, 4]
 
@@ -96,8 +95,7 @@ def rows_for(arm, clean, cats):
 def main():
     import torch
 
-    from domain_transfer.multiclass_seg import train
-    from domain_transfer.segmentation import benchmark
+    from studies.seg_train import train
 
     cats = walls()
     if len(cats) != 200:
@@ -105,14 +103,13 @@ def main():
     clean = assign(cats)
     torch.set_num_threads(4)
     cv2.setNumThreads(1)
-    b = benchmark()
     for arm in ARMS:
         rows, record = rows_for(arm, clean[arm], cats)
         print(arm, {k: record[k] for k in ("n", "with_crack", "clean_walls")}, flush=True)
         for seed in SEEDS:
             run_dir = DT / f"syncrack3d_{arm}_bd3_v1" / "runs" / f"s{seed}"
             if not (run_dir / "last.pt").exists():
-                train(b, rows, run_dir, seed, iters=4000)
+                train(rows, run_dir, seed, iters=4000)
             torch.cuda.empty_cache()
         print(arm, "trained", flush=True)
 

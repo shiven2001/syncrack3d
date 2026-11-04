@@ -6,13 +6,13 @@
 # Which walls get a prop comes from a scene-only build (--no-render). Resumable.
 #   setsid nohup studies/syncrack3d_loose_props.sh >> /mnt/nvme_storage/syncrack3d_v1.17.0-looseprops_dataset/run.log 2>&1 < /dev/null & disown
 set -u
-R=/home/shiven/syndefect3d
+APP=${APP:-$(cd "$(dirname "$0")/.." && pwd)}  # this repository
 CODE=/mnt/nvme_storage/syncrack3d_v1.17-looseprops_code
 SRC=/mnt/nvme_storage/syncrack3d_v1.17.0_dataset
 D=/mnt/nvme_storage/syncrack3d_v1.17.0-looseprops_dataset
 BPY=/home/shiven/anaconda3/envs/infinigen_v2/bin/python
 PY=/home/shiven/anaconda3/bin/python
-S="nice -n 5 env PYTHONPATH=$R/syncrack3d $PY -m studies.syncrack3d_v116_study"
+S="nice -n 5 env PYTHONPATH=$APP $PY -m studies.syncrack3d_v116_study"
 FLAGS="--recipe unified --prop-placement loose"
 mkdir -p $D
 git -C $CODE rev-parse HEAD > $D/code_commit.txt
@@ -50,7 +50,7 @@ print(','.join(redo))")
   echo "=== done $name $(cat $C/done) $(date -Is)"
 done
 
-cd $R
+cd $APP
 STUDY_TAG=v117lp $S train unet_w1000_it4000 --walls 1000 --arch unet_r34 --seeds 0 1 2 --iters 4000
 STUDY_TAG=v117lp $S eval unet_w1000_it4000 --splits --real
 echo LOOSE_PROPS_DONE $(date -Is)

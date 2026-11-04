@@ -1,4 +1,4 @@
-"""Phone-like capture poses for the controlled wall.
+"""Phone-like capture poses for the wall.
 
 The real test set is phone close-ups of a defect, usually handheld, usually not
 square to the wall. The apartment pipeline approximated that with
@@ -168,7 +168,7 @@ def sample_camera_poses(
             cam["cwg_role"] = closeup_role
             if closeup_role == "closeup":
                 cam["cwg_target_index"] = placement.index
-                cam["syndefect_target"] = placement.object_name
+                cam["syncrack3d_target"] = placement.object_name
             else:
                 cam["cwg_structure_target"] = placement.object_name
             poses.append(
