@@ -394,9 +394,11 @@ def _inject_crack(
     crack_path_mode="original",
     layered_fraction=0.0,
     crack_render="geometry",
+    crack_edge_profile="original",
 ):
     """Inject one crack. Opt-in: layered_fraction > 0 gives that share of cracks
-    a two-layer look (see below).
+    a two-layer look (see below). crack_edge_profile="strong" makes that edge
+    larger, and gives crazing an edge of its own (defect_fields.EDGE_PROFILES).
 
     crack_render (ablation of how the crack is built, labels identical):
       "geometry" - groove, chips, lips and offset are real displacement (default);
@@ -441,8 +443,9 @@ def _inject_crack(
     # Chips stay labelled crack, matching the BD3 paint polygons
     # (e.g. minor_crack_0401/0304).
     gen = state.host.get("cwg_material_generator")
-    lay = sample_crack_layer(seed, crack_layer_mode(gen, state.host.get("surface_finish")), layered_fraction)
-    if network:
+    lay = sample_crack_layer(seed, crack_layer_mode(gen, state.host.get("surface_finish")), layered_fraction,
+                             edge_profile=crack_edge_profile, network=network)
+    if network and crack_edge_profile == "original":
         lay = None  # Crazing is shallow: no broad chips or one-sided wall step.
     chips = None
     if lay is not None:
@@ -605,6 +608,7 @@ def _inject_crack(
         "path_knots_m": p.get("path_knots"),
         "label_mode": crack_label_mode,
         "render": crack_render,
+        "edge_profile": crack_edge_profile,
         "label_support_profile_floor": .02 if crack_label_mode == "support" else None,
         "lip_width_m": round(float(p.get("w_lip", 0.0)), 6),
         "lip_height_m": round(float(p.get("h_lip", 0.0)), 6),

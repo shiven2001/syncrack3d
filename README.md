@@ -85,13 +85,14 @@ Useful options (`python syncrack3d/build_dataset.py --help` lists all):
 | `--crack-profile`, `--min-defects`, `--max-defects`, `--defect-size-range` | crack type, number and size (with `--crack-style-mix off`) |
 | `--crack-width-scale`, `--crack-depth-scale` | crack width (also changes the labels) and depth |
 | `--crack-junction-fraction 0` | keep cracks away from fixture corners |
+| `--crack-edge-profile original` | the smaller crack edges from before v1.29, none on crazing (unified: `strong`) |
 | `--resolution`, `--samples` | image size and Cycles samples (unified: 640 px, 64 samples) |
 | `--no-render --save-blend` | build and save the scene without rendering (for the Isaac export) |
 | `--crack-render pbr` or `albedo` | ablation: crack as a normal map only, or as colour only |
 
 Later flags override the recipe's own. Older walls rebuild with their version's
 tag (`git tag`), or with `--recipe unified_v1.16`, `unified_v1.17`,
-`unified_v1.18` or `unified_v1.23`.
+`unified_v1.18`, `unified_v1.23` or `unified_v1.28`.
 
 ## 2. Export a training pack
 

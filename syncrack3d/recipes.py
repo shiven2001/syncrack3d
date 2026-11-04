@@ -36,8 +36,12 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            From v1.24 each crack token moves, with probability .5, to a corner
            or edge of a window, door, vent or access panel
            (--crack-junction-fraction .5, junctions.py).
-  unified_v1.17, unified_v1.18, unified_v1.23  the unified recipe's flags as of
-           that version (unified_v1.23: no junction cracks).
+           From v1.29 crack edges on plaster and stucco are larger, and crazing
+           has an edge of its own (--crack-edge-profile strong). Only the edge
+           changes: a seed keeps its layout, cracks and cameras.
+  unified_v1.17, unified_v1.18, unified_v1.23, unified_v1.28  the unified recipe's
+           flags as of that version (unified_v1.23: no junction cracks; unified_v1.28:
+           the smaller edges, none on crazing).
            Prop and fixture placement no longer differ between them.
 
 The three release recipes keep the v1.x training walls' flags; use unified for
@@ -101,7 +105,9 @@ RECIPES["unified_v1.18"] = RECIPES["unified_v1.17"]
 RECIPES["unified_v1.23"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
 # v1.24: half the crack tokens move to a corner or edge of a window, door, vent or
 # access panel (junctions.py, its own stream), the setting of the v122jn screen.
-RECIPES["unified"] = RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
+RECIPES["unified_v1.28"] = RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
+# v1.29: larger crack edges on plaster and stucco, and an edge on crazing.
+RECIPES["unified"] = RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
 
 
 def parse_style_mix(text):

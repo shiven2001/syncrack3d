@@ -311,6 +311,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             gin.bind_parameter("_inject_crack.crack_render", args.crack_render)
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
+        gin.bind_parameter("_inject_crack.crack_edge_profile", args.crack_edge_profile)
         gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
         gin.bind_parameter("_inject_crack.crack_network_fraction", args.crack_network_fraction)
         gin.bind_parameter("_inject_crack.crack_network_spacing", tuple(args.crack_network_spacing))
@@ -433,6 +434,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "network_extent": args.crack_network_extent,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
+            "edge_profile": args.crack_edge_profile,
             "render": args.crack_render,
             "jitter_scale": args.crack_jitter_scale,
         },
@@ -546,6 +548,8 @@ def main():
                         help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
     parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
                         help="share of coated-host cracks with an edge: paint film lips/chips, or a broken stucco coat. Brick, stone, concrete and tile stay a groove (0 disables)")
+    parser.add_argument("--crack-edge-profile", choices=("original", "strong"), default="original",
+                        help="size of that edge. strong (v1.29): lips of 2-5 mm and chips 3-5x larger on ordinary and wide cracks, and a small edge on crazing")
     parser.add_argument("--light-profile", choices=LIGHT_PROFILES, default="default",
                         help="hard_mix adds sun, bare-bulb and raking-torch sources (opt-in)")
     parser.add_argument("--relight-per-view", action="store_true",

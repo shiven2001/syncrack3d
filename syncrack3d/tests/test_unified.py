@@ -63,7 +63,8 @@ def test_bad_mix_is_rejected():
     assert "--prop-placement" not in RECIPES["unified_v1.17"]
     assert "--fixture-mount" not in RECIPES["unified_v1.18"]
     assert RECIPES["unified_v1.18"] == RECIPES["unified_v1.17"]
-    assert RECIPES["unified"] == RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
+    assert RECIPES["unified_v1.28"] == RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
+    assert RECIPES["unified"] == RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
     assert "--crack-junction-fraction" not in RECIPES["unified_v1.23"]
 
 

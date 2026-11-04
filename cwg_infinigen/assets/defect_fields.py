@@ -345,14 +345,49 @@ def crack_layer_mode(generator, surface_finish=None) -> str:
     return "none"
 
 
-def sample_crack_layer(seed, mode, fraction):
+# v1.29 "strong" crack edges (--crack-edge-profile strong). Ordinary and wide
+# cracks: a lip of 2-5 mm, and chips 3-5x the historical size (blobs that much
+# larger, in a band that much wider). Chip depth keeps its historical draw.
+# Crazing: its own small edge, because the ordinary band and chips are several
+# times wider and deeper than a crazing groove. Lengths are metres.
+EDGE_PROFILES = ("original", "strong")
+STRONG_LIP_M = (0.002, 0.005)
+STRONG_CHIP_FACTOR = (3.0, 5.0)
+CRAZING_LIP_M = {"paint": (0.0005, 0.002), "stucco": (0.0005, 0.001)}
+CRAZING_MARGIN_M = (0.0004, 0.0008)
+CRAZING_FILM_M = (0.00007, 0.00014)
+CRAZING_CHIP_SCALE = (300.0, 500.0)
+
+
+def _strong_crack_layer(lay, seed, network):
+    """The historical edge with its sizes redrawn from their own stream.
+
+    Which cracks get an edge, and every other draw of the edge, stay as they
+    were, so one seed compares like for like under both profiles.
+    """
+    rng = np.random.default_rng(int_hash((seed, "crack_edge_strong_v1")))
+    if network:
+        # A net has no single path, so the one-sided step does not apply to it.
+        return dict(lay, lip=float(rng.uniform(*CRAZING_LIP_M[lay["mode"]])),
+                    margin=float(rng.uniform(*CRAZING_MARGIN_M)), film=float(rng.uniform(*CRAZING_FILM_M)),
+                    chip_scale=float(rng.uniform(*CRAZING_CHIP_SCALE)), offset=0.0)
+    factor = float(rng.uniform(*STRONG_CHIP_FACTOR))
+    return dict(lay, lip=float(rng.uniform(*STRONG_LIP_M)), margin=lay["margin"] * factor,
+                chip_scale=lay["chip_scale"] / factor)
+
+
+def sample_crack_layer(seed, mode, fraction, edge_profile="original", network=False):
     """Coating-edge parameters, or None. Own RNG, so the crack shape is unchanged.
 
     Paint keeps the historical film, lip and chip draws. Stucco uses a thicker
     broken coat and no lifted film. ``mode="none"`` never samples an edge.
+    ``edge_profile="strong"`` resizes the edge (see _strong_crack_layer), and
+    gives stucco a lip too; ``network`` says the crack is crazing.
     """
     if mode not in ("paint", "stucco", "none"):
         raise ValueError("crack layer mode must be paint, stucco or none")
+    if edge_profile not in EDGE_PROFILES:
+        raise ValueError(f"crack edge profile must be one of {EDGE_PROFILES}")
     if mode == "none" or fraction <= 0.0:
         return None
     lr = np.random.default_rng(int_hash((seed, "crack_layered")))
@@ -380,18 +415,19 @@ def sample_crack_layer(seed, mode, fraction):
             side=float(lr.choice([-1.0, 1.0])),
         )
         lay["dark"] = float(lr.uniform(0.45, 0.70))
-        return lay
-    return dict(
-        mode="stucco", core=core, core_rgb=core_rgb,
-        margin=float(lr.uniform(0.003, 0.008)),
-        film=float(lr.uniform(0.001, 0.003)),
-        lip=0.0,
-        chip_scale=float(lr.uniform(70.0, 160.0)),
-        chip_thr=float(lr.uniform(0.52, 0.66)),
-        offset=float(lr.uniform(0.0004, 0.0016)) if lr.random() < 0.35 else 0.0,
-        side=float(lr.choice([-1.0, 1.0])),
-        dark=float(lr.uniform(0.62, 0.82)),
-    )
+    else:
+        lay = dict(
+            mode="stucco", core=core, core_rgb=core_rgb,
+            margin=float(lr.uniform(0.003, 0.008)),
+            film=float(lr.uniform(0.001, 0.003)),
+            lip=0.0,
+            chip_scale=float(lr.uniform(70.0, 160.0)),
+            chip_thr=float(lr.uniform(0.52, 0.66)),
+            offset=float(lr.uniform(0.0004, 0.0016)) if lr.random() < 0.35 else 0.0,
+            side=float(lr.choice([-1.0, 1.0])),
+            dark=float(lr.uniform(0.62, 0.82)),
+        )
+    return _strong_crack_layer(lay, seed, network) if edge_profile == "strong" else lay
 
 
 def adapt_crack_branches(p, mode="original"):
