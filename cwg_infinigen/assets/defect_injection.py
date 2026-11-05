@@ -36,7 +36,10 @@ from mathutils import Vector
 
 from cwg_infinigen.assets.defect_fields import (
     build_crack_field,
+    LIP_KEEPOUT_FADE_M,
     crack_layer_mode,
+    fit_strong_band,
+    keepout_in_crack_frame,
     sample_crack_layer,
     sample_crack_morphology,
 )
@@ -337,6 +340,35 @@ def _math(nt, op, a=None, b=None, clamp=False):
     return n.outputs["Value"]
 
 
+def _lip_keepout(nt, uv, host, frame, p, lay, rects, mrange):
+    """1 - (fixture footprints near this crack), faded over LIP_KEEPOUT_FADE_M, in
+    the crack's uv; or None when no footprint is near. Also returns their count."""
+    mw = host.matrix_world
+    origin, t_u, t_v = mw @ frame[0], (mw.to_3x3() @ frame[1]), (mw.to_3x3() @ frame[2])
+    plane = lambda vec: np.array([vec.x, vec.z]) / max(math.hypot(vec.x, vec.z), 1e-9)
+    reach = max(float(p.get("half_u", 0.0)), float(p.get("half_v", 0.0))) * math.sqrt(2) + lay["margin"]
+    near = keepout_in_crack_frame(rects, (origin.x, origin.z), plane(t_u), plane(t_v), reach)
+    if not near:
+        return None, 0
+    inside = None
+    for cu, cv, a, b, hu, hv in near:
+        sub = nt.nodes.new("ShaderNodeVectorMath")
+        sub.operation = "SUBTRACT"
+        nt.links.new(uv, sub.inputs[0])
+        sub.inputs[1].default_value = (cu, cv, 0.0)
+        box = None
+        for axis, half in ((a, hu), (b, hv)):
+            d = nt.nodes.new("ShaderNodeVectorMath")
+            d.operation = "DOT_PRODUCT"
+            nt.links.new(sub.outputs["Vector"], d.inputs[0])
+            d.inputs[1].default_value = (axis[0], axis[1], 0.0)
+            side = mrange(_math(nt, "ABSOLUTE", d.outputs["Value"]), half, half + LIP_KEEPOUT_FADE_M, 1.0, 0.0,
+                          "SMOOTHSTEP")
+            box = side if box is None else _math(nt, "MULTIPLY", box, side, clamp=True)
+        inside = box if inside is None else _math(nt, "MAXIMUM", inside, box, clamp=True)
+    return _math(nt, "SUBTRACT", 1.0, inside, clamp=True), len(near)
+
+
 def _mix_rgb(nt, fac, c1, c2):
     n = nt.nodes.new("ShaderNodeMixRGB")
     n.blend_type = "MIX"
@@ -395,10 +427,13 @@ def _inject_crack(
     layered_fraction=0.0,
     crack_render="geometry",
     crack_edge_profile="original",
+    lip_keepout=(),
 ):
     """Inject one crack. Opt-in: layered_fraction > 0 gives that share of cracks
     a two-layer look (see below). crack_edge_profile="strong" makes that edge
     larger, and gives crazing an edge of its own (defect_fields.EDGE_PROFILES).
+    lip_keepout: world (x0, x1, z0, z1) footprints of fixtures on the wall (the
+    y = 0 plane), under which a strong edge's lip fades out.
 
     crack_render (ablation of how the crack is built, labels identical):
       "geometry" - groove, chips, lips and offset are real displacement (default);
@@ -447,6 +482,8 @@ def _inject_crack(
                              edge_profile=crack_edge_profile, network=network)
     if network and crack_edge_profile == "original":
         lay = None  # Crazing is shallow: no broad chips or one-sided wall step.
+    if lay is not None and not network:
+        lay = fit_strong_band(lay, p["w_max"])
     chips = None
     if lay is not None:
         from cwg_infinigen.assets.defect_fields import _nodes
@@ -464,6 +501,10 @@ def _inject_crack(
         lifted = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", mrange(band_prof, 0.02, 0.30, 0.0, 1.0, "SMOOTHSTEP"),
                                              outside, clamp=True),
                        _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", 1.0, chips), runs, clamp=True), clamp=True)
+        if crack_edge_profile == "strong" and lip_keepout:
+            keep, lay["lip_keepout_rects"] = _lip_keepout(nt, uv, state.host, frame, p, lay, lip_keepout, mrange)
+            if keep is not None:
+                lifted = _math(nt, "MULTIPLY", lifted, keep, clamp=True)
         height = _math(nt, "ADD", height, _math(nt, "SUBTRACT", _math(nt, "MULTIPLY", lifted, lay["lip"]),
                                                 _math(nt, "MULTIPLY", chips, lay["film"])))
         if lay["offset"] > 0.0:
@@ -618,7 +659,8 @@ def _inject_crack(
             "mode": lay.get("mode"),
             "core": lay["core"], "margin_m": round(lay["margin"], 6), "film_m": round(lay["film"], 6),
             "lip_m": round(lay["lip"], 6), "offset_m": round(lay["offset"], 6),
-            "painted_host": lay.get("painted_host")},
+            "painted_host": lay.get("painted_host"),
+            "lip_keepout_rects": lay.get("lip_keepout_rects", 0)},
     }
 
 

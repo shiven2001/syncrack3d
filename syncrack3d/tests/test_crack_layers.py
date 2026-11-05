@@ -1,6 +1,13 @@
 """Coating edges follow the host. Single-material walls stay a groove."""
 import pytest
-from cwg_infinigen.assets.defect_fields import crack_layer_mode, sample_crack_layer
+from cwg_infinigen.assets.defect_fields import (
+    LIP_KEEPOUT_GROW_M,
+    STRONG_MARGIN_PER_WIDTH,
+    crack_layer_mode,
+    fit_strong_band,
+    keepout_in_crack_frame,
+    sample_crack_layer,
+)
 
 MASONRY = (
     "Brick", "Concrete", "NonWoodTile", "LargeTile", "Marble", "MarbleRegular",
@@ -70,6 +77,40 @@ def test_strong_edges_land_on_the_same_cracks():
                 base = sample_crack_layer(seed, mode, 0.7)
                 strong = sample_crack_layer(seed, mode, 0.7, edge_profile="strong", network=network)
                 assert (base is None) == (strong is None)
+
+
+def test_strong_band_fits_the_crack_width():
+    for seed in range(200):
+        for mode in ("paint", "stucco"):
+            base = sample_crack_layer(seed, mode, 1.0)
+            strong = sample_crack_layer(seed, mode, 1.0, edge_profile="strong")
+            hairline = fit_strong_band(strong, 0.0001)
+            assert hairline["margin"] == pytest.approx(base["margin"])  # never below the historical band
+            assert hairline["chip_scale"] == pytest.approx(base["chip_scale"])
+            assert fit_strong_band(strong, 1.0) == strong  # an open crack keeps the whole band
+            mid = fit_strong_band(strong, strong["margin"] / STRONG_MARGIN_PER_WIDTH / 2)
+            assert base["margin"] <= mid["margin"] <= strong["margin"]
+            assert mid["margin"] * mid["chip_scale"] == pytest.approx(base["margin"] * base["chip_scale"])
+            for key in ("lip", "film", "chip_thr", "offset", "side", "core"):
+                assert mid[key] == strong[key]
+    crazing = sample_crack_layer(0, "paint", 1.0, edge_profile="strong", network=True)
+    assert fit_strong_band(crazing, 0.0001) == crazing
+    assert fit_strong_band(None, 0.001) is None
+
+
+def test_lip_keepout_rectangles_in_the_crack_frame():
+    rects = [(0.10, 0.30, 1.00, 1.20), (2.0, 2.2, 1.0, 1.2)]
+    # Crack at (0, 1.1), running along the wall's u: only the near rectangle counts.
+    near = keepout_in_crack_frame(rects, (0.0, 1.1), (1.0, 0.0), (0.0, 1.0), reach=0.2)
+    assert len(near) == 1
+    cu, cv, a, b, hu, hv = near[0]
+    assert (cu, cv) == pytest.approx((0.2, 0.0))
+    assert (hu, hv) == pytest.approx((0.1 + LIP_KEEPOUT_GROW_M, 0.1 + LIP_KEEPOUT_GROW_M))
+    # The same crack turned 90 degrees: its u is the wall's v.
+    (cu, cv, a, b, _, _), = keepout_in_crack_frame(rects, (0.0, 1.1), (0.0, 1.0), (-1.0, 0.0), reach=0.2)
+    assert (cu, cv) == pytest.approx((0.0, -0.2))
+    assert a == pytest.approx((0.0, -1.0)) and b == pytest.approx((1.0, 0.0))
+    assert keepout_in_crack_frame(rects, (0.0, 1.1), (1.0, 0.0), (0.0, 1.0), reach=0.01) == []
 
 
 def test_original_edges_are_the_default():

@@ -32,7 +32,7 @@ Two Python environments: one renders, one trains and scores.
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
-python -m pytest syncrack3d/tests          # 79 tests, a few seconds
+python -m pytest syncrack3d/tests          # 85 tests, a few seconds
 
 # training and scoring: any Python with CUDA PyTorch
 pip install -r eval-syncrack3d/requirements.txt

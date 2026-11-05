@@ -17,6 +17,8 @@ the geometry - which matters here, because these defects are meant to become
 invisible under some lighting while staying correctly annotated.
 """
 
+import math
+
 import numpy as np
 
 from cwg_infinigen.core.util.math import FixedSeed, int_hash
@@ -357,6 +359,14 @@ CRAZING_LIP_M = {"paint": (0.0005, 0.002), "stucco": (0.0005, 0.001)}
 CRAZING_MARGIN_M = (0.0004, 0.0008)
 CRAZING_FILM_M = (0.00007, 0.00014)
 CRAZING_CHIP_SCALE = (300.0, 500.0)
+# The strong band is at most this many crack half-widths (w_max) past the crack,
+# and never narrower than the historical band, so a hairline does not get chips
+# sized for an open crack.
+STRONG_MARGIN_PER_WIDTH = 6.0
+# The lip fades out under fixtures (rectangles grown by LIP_KEEPOUT_GROW_M), over
+# LIP_KEEPOUT_FADE_M: they are mounted on the wall's relief, below a 2-5 mm lip.
+LIP_KEEPOUT_GROW_M = 0.002
+LIP_KEEPOUT_FADE_M = 0.008
 
 
 def _strong_crack_layer(lay, seed, network):
@@ -373,7 +383,45 @@ def _strong_crack_layer(lay, seed, network):
                     chip_scale=float(rng.uniform(*CRAZING_CHIP_SCALE)), offset=0.0)
     factor = float(rng.uniform(*STRONG_CHIP_FACTOR))
     return dict(lay, lip=float(rng.uniform(*STRONG_LIP_M)), margin=lay["margin"] * factor,
-                chip_scale=lay["chip_scale"] / factor)
+                chip_scale=lay["chip_scale"] / factor, factor=factor)
+
+
+def fit_strong_band(lay, w_max):
+    """Narrow a strong edge's band to the crack it surrounds (STRONG_MARGIN_PER_WIDTH).
+
+    The chips shrink by the same factor, so they keep their size relative to the
+    band. Edges without a factor (original profile, crazing) are returned as given.
+    """
+    if lay is None or "factor" not in lay:
+        return lay
+    base = lay["margin"] / lay["factor"]
+    margin = min(lay["margin"], max(base, STRONG_MARGIN_PER_WIDTH * float(w_max)))
+    if margin == lay["margin"]:
+        return lay
+    factor = margin / base
+    return dict(lay, margin=margin, chip_scale=lay["chip_scale"] * lay["factor"] / factor, factor=factor)
+
+
+def keepout_in_crack_frame(rects, centre, axis_u, axis_v, reach):
+    """Wall rectangles in a crack's (u, v) frame, for those within `reach` of it.
+
+    rects: (u0, u1, v0, v1) in the wall's own axes. centre: the crack origin in those
+    axes; axis_u, axis_v: the crack tangents in them (unit). Returns
+    (cu, cv, a, b, half_a, half_b): the rectangle centre in the crack frame, its two
+    axes in the crack frame, and half sizes grown by LIP_KEEPOUT_GROW_M.
+    """
+    out = []
+    for u0, u1, v0, v1 in rects:
+        hu, hv = (u1 - u0) / 2 + LIP_KEEPOUT_GROW_M, (v1 - v0) / 2 + LIP_KEEPOUT_GROW_M
+        du, dv = (u0 + u1) / 2 - centre[0], (v0 + v1) / 2 - centre[1]
+        # Gap between the rectangle and the crack origin, along the wall axes.
+        gap = math.hypot(max(abs(du) - hu, 0.0), max(abs(dv) - hv, 0.0))
+        if gap > reach + LIP_KEEPOUT_FADE_M:
+            continue
+        cu, cv = du * axis_u[0] + dv * axis_u[1], du * axis_v[0] + dv * axis_v[1]
+        a, b = (axis_u[0], axis_v[0]), (axis_u[1], axis_v[1])  # wall u and v axes in the crack frame
+        out.append((cu, cv, a, b, hu, hv))
+    return out
 
 
 def sample_crack_layer(seed, mode, fraction, edge_profile="original", network=False):

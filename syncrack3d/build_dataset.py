@@ -137,6 +137,35 @@ def clear_scene():
     reset_registry()
 
 
+def fixture_footprints(mount_m: float) -> tuple:
+    """World (x0, x1, z0, z1) of every fixture and skirting part whose back is
+    within reach of a strong crack lip, which stands on the wall's relief (the
+    wall is the y = 0 plane, the room at -y). Parts standing further out are clear."""
+    from cwg_infinigen.assets.defect_fields import STRONG_LIP_M
+
+    reach = mount_m + STRONG_LIP_M[1] + 0.002
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    rects = []
+    for root in bpy.data.objects:
+        if root.get("cwg_role") != "structure" and root.get("cwg_hard_negative") != "skirting":
+            continue
+        for part in (root, *root.children_recursive):
+            if part.type not in ("MESH", "CURVE"):
+                continue
+            evaluated = part.evaluated_get(depsgraph)
+            mesh = evaluated.to_mesh()
+            if len(mesh.vertices):
+                co = np.empty(len(mesh.vertices) * 3)
+                mesh.vertices.foreach_get("co", co)
+                m = np.array(evaluated.matrix_world)
+                world = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+                lo, hi = world.min(0), world.max(0)
+                if hi[1] > -reach:
+                    rects.append(tuple(round(float(x), 5) for x in (lo[0], hi[0], lo[2], hi[2])))
+            evaluated.to_mesh_clear()
+    return tuple(sorted(set(rects)))
+
+
 def build_one(seed: int, args, out_root: Path) -> dict:
     t_start, t_render = time.perf_counter(), None
     shell_finish = {"finish": "plain"} if args.shell_finish == "plain" else None
@@ -303,6 +332,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
                                               plan.min_separation_m)
 
     manifest_path = scene_dir / "defect_instances.json"
+    lip_keepout = (fixture_footprints(layout_record.get("fixture_mount_m", 0.0))
+                   if args.crack_edge_profile == "strong" else ())
+    layout_record["lip_keepout_parts"] = len(lip_keepout)
     import gin
     import cwg_infinigen.assets.defect_injection  # noqa: F401
 
@@ -312,6 +344,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
         gin.bind_parameter("_inject_crack.crack_edge_profile", args.crack_edge_profile)
+        # Bound for every wall (an empty tuple included): gin outlives one seed.
+        gin.bind_parameter("_inject_crack.lip_keepout", lip_keepout)
         gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
         gin.bind_parameter("_inject_crack.crack_network_fraction", args.crack_network_fraction)
         gin.bind_parameter("_inject_crack.crack_network_spacing", tuple(args.crack_network_spacing))
