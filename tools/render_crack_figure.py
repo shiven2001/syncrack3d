@@ -38,10 +38,11 @@ OUT = REPO / "outputs" / "crack_figure"
 TOKEN_SIZE_M = 0.36
 CRACK_SEED = 309
 CRAZING_SEED = 2060
+EDGE_SEED = 762  # chosen from a contact sheet of seeds for its tall lips and heavy chipping on plaster and stucco
 
 # The unified recipe's values (syncrack3d/recipes.py: COMMON and STYLES).
 COMMON = dict(crack_fit_path=True, crack_label_mode="support", crack_path_mode="angular",
-              crack_branch_mode="local_curved", layered_fraction=0.7)
+              crack_branch_mode="local_curved", layered_fraction=0.7, crack_edge_profile="strong")
 STANDARD = dict(COMMON, crack_profile="standard", crack_width_scale=1.3, crack_depth_scale=0.5)
 CRAZING = dict(COMMON, crack_profile="crazing", crack_width_scale=2.0, crack_depth_scale=2.0,
                crack_network_grime=(0.8, 1.0), crack_network_edge="organic", crack_network_extent=1.4)
@@ -49,7 +50,7 @@ CRAZING = dict(COMMON, crack_profile="crazing", crack_width_scale=2.0, crack_dep
 # Case: wall category, wall seed, crack seed, crack settings, window (centre u, centre v, size; m),
 # image size, light (incidence, azimuth, size, distance, power, world).
 RAKING = (72.0, 0.0, 0.10, 1.2, 60.0, 0.02)
-EDGE_WINDOW = (0.03, 0.035, 0.085)  # the upper run of the crack and its Y-split
+EDGE_WINDOW = (-0.036, 0.0, 0.24)  # most of the crack, with wall around it
 CASES = {
     "ordinary": dict(category="concrete", wall_seed=12, crack_seed=CRACK_SEED, settings=STANDARD,
                      window=(0.0, 0.0, 0.32), size=1400, light=RAKING),
@@ -57,11 +58,11 @@ CASES = {
                     window=(0.0, 0.0, 0.45), size=1400, light=RAKING),
     "crazing_zoom": dict(category="plaster", wall_seed=12, crack_seed=CRAZING_SEED, settings=CRAZING,
                          window=(0.0, 0.0, 0.11), size=1000, light=RAKING),
-    "edge_plaster": dict(category="plaster", wall_seed=12, crack_seed=CRACK_SEED, settings=STANDARD,
+    "edge_plaster": dict(category="plaster", wall_seed=12, crack_seed=EDGE_SEED, settings=STANDARD,
                          window=EDGE_WINDOW, size=1200, light=RAKING),
-    "edge_stucco": dict(category="stucco", wall_seed=12, crack_seed=CRACK_SEED, settings=STANDARD,
+    "edge_stucco": dict(category="stucco", wall_seed=12, crack_seed=EDGE_SEED, settings=STANDARD,
                         window=EDGE_WINDOW, size=1200, light=RAKING),
-    "edge_brick": dict(category="brick", wall_seed=21, crack_seed=CRACK_SEED, settings=STANDARD,
+    "edge_brick": dict(category="brick", wall_seed=21, crack_seed=EDGE_SEED, settings=STANDARD,
                        window=EDGE_WINDOW, size=1200, light=RAKING),
 }
 PASSES = ("Image", "Position", "FigProf", "FigHeight", "FigLabel", "FigPath", "FigRadius", "FigAlong")
@@ -242,6 +243,12 @@ FIGURE_DPI = 600
 FONT_PT = 6.5
 INK = "#1A1A1A"
 BLUE, GREEN, ORANGE = "#0072B2", "#009E73", "#D55E00"
+# Text, text position, then the feature it points at, in the crack's coordinates (mm).
+# Text placed on its feature gets no line.
+CALLOUTS = {"edge_plaster": (("Chip", (-122.0, 58.0), (-73.7, 57.9)), ("Lip", (32.0, -54.0), (-25.1, -54.1))),
+            "edge_stucco": (("Lip", (-125.0, 52.0), (-77.7, 52.1)), ("Chip", (-125.0, -42.0), (-58.7, -42.7)),
+                            ("Step", (40.0, 10.0), (40.0, 10.0))),
+            "edge_brick": ()}
 SHAPE_FIGURE = OUT / "crack_shape.png"
 EDGE_FIGURE = OUT / "crack_edges.png"
 LEFT_IN, GAP_IN, RIGHT_IN = 0.15, 0.045, 0.012
@@ -311,7 +318,15 @@ def _section_row(arrays: dict, half_mm: float) -> int:
     return best
 
 
-def _check(ordinary: dict, edges: dict) -> None:
+def _at(arrays: dict, name: str, target: tuple[float, float]) -> tuple[float, float]:
+    """Height (mm) and profile at a point in the crack's coordinates (mm)."""
+    x0, x1, y0, y1 = _extent(_load(name)[1])
+    rows, cols = arrays["height"].shape
+    row, col = int((y1 - target[1]) / (y1 - y0) * rows), int((target[0] - x0) / (x1 - x0) * cols)
+    return float(arrays["height"][row, col]), float(arrays["prof"][row, col])
+
+
+def _check(ordinary: dict, crazing: dict, edges: dict) -> None:
     """Fail loudly if the figure would claim something the passes do not show."""
     arrays, case = ordinary
     cut = arrays["prof"] > 0.8
@@ -325,6 +340,13 @@ def _check(ordinary: dict, edges: dict) -> None:
     modes = {name: (c["metrics"]["layered"] or {}).get("mode") for name, (_, c) in edges.items()}
     if modes != {"edge_plaster": "paint", "edge_stucco": "stucco", "edge_brick": None}:
         raise RuntimeError(f"unexpected edge modes: {modes}")
+    if (crazing[1]["metrics"]["layered"] or {}).get("mode") != "paint":
+        raise RuntimeError("the crazing example should have its own edge")
+    for name, (other, _) in edges.items():
+        for text, _, target in CALLOUTS[name]:
+            value, groove = _at(other, name, target)
+            if groove > 0.02 or (value > -0.1 if text == "Chip" else value < 0.3):
+                raise RuntimeError(f"{name}: the {text} callout points at h {value:.2f} mm, P {groove:.2f}")
     base = edges["edge_brick"][0]
     for name, (other, _) in edges.items():
         path = np.abs(other["path"] - base["path"]).max()
@@ -405,11 +427,21 @@ def plot_shape(ordinary: dict, crazing: dict, zoom: dict) -> None:
     ax.add_patch(Rectangle((zx0, zy0), zx1 - zx0, zy1 - zy0, fill=False, ec=ORANGE, lw=0.7))
     ax.set_title("(d) $P$, whole patch", fontsize=FONT_PT, pad=1.5)
     ax = axes_at(columns[1], row2, tile, tile)
-    _tile(ax, fine["prof"], fine_case, cmap=cmap, vmin=0, vmax=1)
+    edge_cmap = LinearSegmentedColormap.from_list("edge", ["#0B1F3A", BLUE, "#FFFFFF", "#F2A65A", "#8A2F00"])
+    _tile(ax, fine["height"], fine_case, cmap=edge_cmap, vmin=-0.6, vmax=0.6)
     _scale_bar(ax, fine_case, 20.0, "2 cm")
+    key = ax.inset_axes((0.10, 0.89, 0.34, 0.045))
+    key.imshow(np.linspace(-0.6, 0.6, 128)[None, :], cmap=edge_cmap, vmin=-0.6, vmax=0.6, aspect="auto",
+               extent=(-0.6, 0.6, 0, 1))
+    key.set_yticks([])
+    key.set_xticks([-0.6, 0, 0.6], ["-0.6", "0", "+0.6"], fontsize=FONT_PT - 1,
+                   path_effects=[patheffects.withStroke(linewidth=1.2, foreground="white")])
+    key.tick_params(length=1, width=0.3, pad=0.5)
+    for spine in key.spines.values():
+        spine.set_linewidth(0.3)
     ax.text(0.96, 0.05, rf"$d_i$ = {d_c:.2f} mm", transform=ax.transAxes, ha="right", va="bottom", fontsize=FONT_PT - 0.5,
-            path_effects=[patheffects.withStroke(linewidth=1.6, foreground="white")])
-    ax.set_title("(e) $P$, boxed area", fontsize=FONT_PT, pad=1.5)
+            bbox=dict(facecolor="white", edgecolor="none", pad=0.6))
+    ax.set_title("(e) $h$ (mm), boxed area", fontsize=FONT_PT, pad=1.5)
     ax = axes_at(columns[2], row2, tile, tile)
     _tile(ax, _display(fine["image"]), fine_case)
     ax.set_title("(f) Render", fontsize=FONT_PT, pad=1.5)
@@ -448,11 +480,11 @@ def plot_shape(ordinary: dict, crazing: dict, zoom: dict) -> None:
     ax.annotate("", xy=(w, 0.28), xytext=(-w, 0.28), arrowprops=dict(arrowstyle="<|-|>", lw=0.5, color=INK,
                                                                      mutation_scale=4, shrinkA=0, shrinkB=0))
     ax.text(0, 0.34, r"$2w$", ha="center", va="bottom", fontsize=FONT_PT - 0.5)
-    ax.set(xlim=(-1.6 * w, 1.6 * w), ylim=(-d_i - 0.45, 1.0), xlabel=r"Across the crack, $\xi-c$ (mm)",
+    ax.set(xlim=(-1.6 * w, 1.6 * w), ylim=(-d_i - 0.45, 1.75), xlabel=r"Across the crack, $\xi-c$ (mm)",
            xticks=[-10, -5, 0, 5, 10], yticks=[-3, -2, -1, 0])
     ax.set_ylabel("Height (mm)", labelpad=1.5)
-    ax.legend(loc="center left", bbox_to_anchor=(0.0, 0.42), frameon=False, handlelength=1.0, labelspacing=0.1,
-              borderaxespad=0.05, borderpad=0.1, fontsize=FONT_PT - 0.5, handletextpad=0.35)
+    ax.legend(loc="upper center", ncols=2, frameon=False, handlelength=1.0, columnspacing=1.0, borderaxespad=0.1,
+              borderpad=0.1, fontsize=FONT_PT - 0.5, handletextpad=0.35)
     ax.set_title(f"(h) Section at $\\eta$ = {eta[row]:.0f} mm", fontsize=FONT_PT, pad=1.5)
     print(f"section at eta {eta[row]:.1f} mm, w {w:.2f} mm", flush=True)
     fig.savefig(SHAPE_FIGURE, dpi=FIGURE_DPI, facecolor="white")
@@ -465,11 +497,11 @@ def plot_edges(edges: dict) -> None:
     from matplotlib.cm import ScalarMappable
     from matplotlib.colors import FuncNorm, LinearSegmentedColormap
 
-    stops = (-3.2, -1.0, -0.25, 0.0, 0.25)
-    place = (0.0, 0.25, 0.42, 0.58, 1.0)
+    stops = (-2.4, -0.5, 0.0, 1.0, 6.0)
+    place = (0.0, 0.3, 0.5, 0.7, 1.0)
     norm = FuncNorm((lambda v: np.interp(v, stops, place), lambda t: np.interp(t, place, stops)), vmin=stops[0], vmax=stops[-1])
-    cmap = LinearSegmentedColormap.from_list("cut", [(0.0, "#0B1F3A"), (0.25, BLUE), (0.42, "#BFDDF0"), (0.58, "#FFFFFF"),
-                                                     (1.0, ORANGE)])
+    cmap = LinearSegmentedColormap.from_list("cut", [(0.0, "#0B1F3A"), (0.3, BLUE), (0.5, "#FFFFFF"), (0.7, "#F2A65A"),
+                                                     (1.0, "#8A2F00")])
     tile = (COLUMN_WIDTH_IN - LEFT_IN - 2 * GAP_IN - RIGHT_IN) / 3
     title, bar_h, bottom = 0.125, 0.065, 0.235
     height = title + 2 * tile + GAP_IN + 0.05 + bar_h + bottom
@@ -479,9 +511,6 @@ def plot_edges(edges: dict) -> None:
         return fig.add_axes((x / COLUMN_WIDTH_IN, 1 - (top + h) / height, w / COLUMN_WIDTH_IN, h / height))
 
     columns = (("edge_plaster", "Plaster: torn film"), ("edge_stucco", "Stucco: broken coat"), ("edge_brick", "Brick: groove only"))
-    # Text position, then the feature it points at, in the crack's coordinates (mm).
-    callouts = {"edge_plaster": (("Lip", (10.0, 22.0), (28.6, 26.0)), ("Chip", (10.0, 55.0), (34.8, 61.2))),
-                "edge_stucco": (("Chip", (10.0, 40.0), (29.8, 36.2)),), "edge_brick": ()}
     for i, (name, label) in enumerate(columns):
         arrays, case = edges[name]
         x = LEFT_IN + i * (tile + GAP_IN)
@@ -490,17 +519,17 @@ def plot_edges(edges: dict) -> None:
         ax.set_title(label, fontsize=FONT_PT, pad=1.5)
         ax = axes_at(x, title + tile + GAP_IN, tile, tile)
         _tile(ax, arrays["height"], case, cmap=cmap, norm=norm)
-        for text, at, target in callouts[name]:
+        for text, at, target in CALLOUTS[name]:
             ax.annotate(text, xy=target, xytext=at, ha="center", va="center", fontsize=FONT_PT - 0.5,
-                        arrowprops=dict(arrowstyle="-", lw=0.4, color=INK, shrinkA=1, shrinkB=0.5))
-        if i == 0:
-            _scale_bar(ax, case, 20.0, "2 cm")
+                        arrowprops=None if at == target else dict(arrowstyle="-", lw=0.4, color=INK, shrinkA=1, shrinkB=0.5))
+        if i == 2:
+            _scale_bar(ax, case, 50.0, "5 cm")
     for top, text in ((title, "Render"), (title + tile + GAP_IN, "Height $h$")):
         fig.text(0.075 / COLUMN_WIDTH_IN, 1 - (top + tile / 2) / height, text, rotation=90, ha="center", va="center")
     bar = axes_at(LEFT_IN, title + 2 * tile + GAP_IN + 0.05, COLUMN_WIDTH_IN - LEFT_IN - 0.13, bar_h)
     colorbar = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), cax=bar, orientation="horizontal")
-    colorbar.set_ticks([-3, -2, -1, -0.25, 0, 0.25])
-    colorbar.set_ticklabels(["-3", "-2", "-1", "-0.25", "0", "+0.25"])
+    colorbar.set_ticks([-2, -1, -0.5, 0, 1, 2, 3, 4, 5, 6])
+    colorbar.set_ticklabels(["-2", "-1", "-0.5", "0", "+1", "+2", "+3", "+4", "+5", "+6"])
     colorbar.minorticks_off()
     colorbar.outline.set_linewidth(0.4)
     colorbar.ax.tick_params(length=1.5, width=0.4, pad=1)
@@ -521,10 +550,10 @@ def plot() -> None:
                          "ytick.color": INK, "axes.linewidth": 0.4, "xtick.major.width": 0.4, "ytick.major.width": 0.4,
                          "xtick.major.size": 1.5, "ytick.major.size": 1.5, "xtick.major.pad": 1, "ytick.major.pad": 1,
                          "axes.labelpad": 1, "axes.spines.top": True, "axes.spines.right": True})
-    ordinary = _load("ordinary")
+    ordinary, crazing = _load("ordinary"), _load("crazing")
     edges = {name: _load(name) for name in ("edge_plaster", "edge_stucco", "edge_brick")}
-    _check(ordinary, edges)
-    plot_shape(ordinary, _load("crazing"), _load("crazing_zoom"))
+    _check(ordinary, crazing, edges)
+    plot_shape(ordinary, crazing, _load("crazing_zoom"))
     plot_edges(edges)
 
 
