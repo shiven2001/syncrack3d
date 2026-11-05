@@ -6,7 +6,7 @@ COMMON = (
     "--wall-normal-mode explicit --dicing-rate .75 "
     "--exposure-ev-range .4 1.3 --closeup-fill .6 1.5 --closeup-aim-jitter .3 "
     "--preserve-closeup-scale --closeups-per-defect 1 --crack-fit-path --crack-label-mode support "
-    "--crack-path-mode angular --crack-branch-mode local_curved --crack-width-scale 1.3 "
+    "--crack-path-mode angular_bounded --crack-branch-mode local_curved --crack-width-scale 1.3 "
     "--crack-depth-scale .5 --defect-size-range .20 .45 --wall-materials diverse "
     "--clean-wall-scale 0 --crack-layered-fraction .7"
 ).split()

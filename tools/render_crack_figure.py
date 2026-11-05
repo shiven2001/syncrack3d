@@ -41,7 +41,7 @@ CRAZING_SEED = 2060
 EDGE_SEED = 762  # chosen from a contact sheet of seeds for its tall lips and heavy chipping on plaster and stucco
 
 # The unified recipe's values (syncrack3d/recipes.py: COMMON and STYLES).
-COMMON = dict(crack_fit_path=True, crack_label_mode="support", crack_path_mode="angular",
+COMMON = dict(crack_fit_path=True, crack_label_mode="support", crack_path_mode="angular_bounded",
               crack_branch_mode="local_curved", layered_fraction=0.7, crack_edge_profile="strong")
 STANDARD = dict(COMMON, crack_profile="standard", crack_width_scale=1.3, crack_depth_scale=0.5)
 CRAZING = dict(COMMON, crack_profile="crazing", crack_width_scale=2.0, crack_depth_scale=2.0,

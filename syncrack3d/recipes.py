@@ -31,17 +31,23 @@ pass --material-category, or let --wall-materials diverse draw one per seed.
            (--fixture-mount relief). From v1.20 every fixture is placed by one
            rule (structures.sample_structure_plan): clear of every other.
            From v1.22 every wall is indoor: the facade style and the outdoor
-           scene are gone, and a draw that would have been a facade wall
-           draws again (REDRAW), so every other wall keeps its style.
+           scene are gone. A wall draws standard .72, wide .17 or crazing .11,
+           so a seed's style differs from the versions that kept a slot for
+           the facade style, and the unified_v* recipes below no longer rebuild
+           those walls' styles: use that version's tag.
            From v1.24 each crack token moves, with probability .5, to a corner
            or edge of a window, door, vent or access panel
            (--crack-junction-fraction .5, junctions.py).
            From v1.29 crack edges on plaster and stucco are larger, and crazing
            has an edge of its own (--crack-edge-profile strong). Only the edge
            changes: a seed keeps its layout, cracks and cameras.
-  unified_v1.17, unified_v1.18, unified_v1.23, unified_v1.28  the unified recipe's
+           From v1.30 a crack's coarse path has no segment steeper than slope 3 or
+           shorter than the crack's full opening (--crack-path-mode angular_bounded),
+           because such a segment pinched or sheared the groove. Only the path
+           changes: a seed keeps its layout, crack types and cameras.
+  unified_v1.17, unified_v1.18, unified_v1.23, unified_v1.28, unified_v1.29  the unified recipe's
            flags as of that version (unified_v1.23: no junction cracks; unified_v1.28:
-           the smaller edges, none on crazing).
+           the smaller edges, none on crazing; unified_v1.29: the unbounded path).
            Prop and fixture placement no longer differ between them.
 
 The three release recipes keep the v1.x training walls' flags; use unified for
@@ -86,13 +92,9 @@ STYLES = {
                     crack_network_edge="organic", crack_network_extent=1.4,
                     structures="auto", structure_views=0),
 }
-# A draw that lands on REDRAW draws again from the same stream. The unified mix
-# keeps the retired facade style's 10% slot under this name, so every wall that
-# was indoor before v1.22 keeps its style; the rest split .65:.15:.10.
-REDRAW = "redraw"
 # Close to the v1.9 training mix by view; major walls carry fewer cracks and so
 # fewer views per wall.
-UNIFIED_MIX = "standard=.65,wide=.15,crazing=.10,redraw=.10"
+UNIFIED_MIX = "standard=.72,wide=.17,crazing=.11"
 RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
                             + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
 # v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
@@ -107,19 +109,21 @@ RECIPES["unified_v1.23"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
 # access panel (junctions.py, its own stream), the setting of the v122jn screen.
 RECIPES["unified_v1.28"] = RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
 # v1.29: larger crack edges on plaster and stucco, and an edge on crazing.
-RECIPES["unified"] = RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
+RECIPES["unified_v1.29"] = RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
+# v1.30: no path segment steep or short enough to pinch or shear the groove. A later flag wins.
+RECIPES["unified"] = RECIPES["unified_v1.29"] + " --crack-path-mode angular_bounded"
 
 
 def parse_style_mix(text):
-    """'standard=.65,wide=.15,...' -> {style: probability}, normalised; may include REDRAW."""
+    """'standard=.72,wide=.17,...' -> {style: probability}, normalised."""
     mix = {}
     for part in text.split(","):
         name, _, value = part.partition("=")
-        if name.strip() not in (*STYLES, REDRAW) or not value:
+        if name.strip() not in STYLES or not value:
             raise ValueError(f"crack style mix needs style=weight pairs from {sorted(STYLES)}: {text}")
         mix[name.strip()] = float(value)
     total = sum(mix.values())
-    if total - mix.get(REDRAW, 0) <= 0 or any(v < 0 for v in mix.values()):
+    if total <= 0 or any(v < 0 for v in mix.values()):
         raise ValueError(f"crack style weights must be non-negative and not all zero: {text}")
     return {k: v / total for k, v in mix.items()}
 
@@ -139,9 +143,7 @@ def wall_style(seed, args):
 
     rng = random.Random(int(hashlib.md5(f"{int(seed)}:crack_style".encode()).hexdigest()[:16], 16))
     mix = parse_style_mix(args.crack_style_mix)
-    style = REDRAW
-    while style == REDRAW:
-        style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
+    style = rng.choices(list(mix), weights=list(mix.values()), k=1)[0]
     wall = Namespace(**{**vars(args), **STYLES[style], "crack_style": style})
     if getattr(args, "layout_order", "legacy") == "fixtures-first" and wall.structures == "off":
         # Real rooms have doors and the other indoor fixtures whatever the crack;

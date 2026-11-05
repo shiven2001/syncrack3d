@@ -279,6 +279,12 @@ def adapt_crack_morphology(p, *, width_scale=1.0, jitter_scale=1.0,
     return adjusted
 
 
+# --crack-path-mode angular_bounded: the steepest path segment, as sideways per along, and
+# the shortest, as a multiple of the crack's widest radius (2 = its full opening).
+ANGULAR_MAX_SLOPE = 3.0
+ANGULAR_MIN_SEGMENT_RADII = 2.0
+
+
 def adapt_crack_path(p, seed, mode="original"):
     """Opt-in dimension-normalized broad bends; no global RNG consumption.
 
@@ -288,7 +294,7 @@ def adapt_crack_path(p, seed, mode="original"):
     """
     if mode == "original":
         return p
-    if mode not in ("meander", "angular", "straight"):
+    if mode not in ("meander", "angular", "angular_bounded", "straight"):
         raise ValueError(f"Unknown crack path mode: {mode}")
     rng = np.random.default_rng(int(seed) ^ 0x4D45414E)
     if mode == "straight":
@@ -305,15 +311,31 @@ def adapt_crack_path(p, seed, mode="original"):
                     fork_specs=forks, kink_specs=[], crack_offset=0., wander_amp=0.,
                     jag_amp=float(rng.uniform(.002, .006))*p["half_u"], jag_freq=35/max(2*p["half_v"], .01),
                     micro_amp=.002*p["half_u"])
-    if mode == "angular":
+    if mode in ("angular", "angular_bounded"):
         # Uneven piecewise-linear turns, not smooth periodic strands. Keep
         # short secondary branches sparse so they do not duplicate the trunk.
         count = int(rng.integers(10, 22))
         vs = np.r_[-p["half_v"], np.sort(rng.uniform(-.94, .94, count-2))*p["half_v"], p["half_v"]]
         x = float(rng.uniform(-.15, .15)*p["half_u"])
         knots = []
-        for v in vs:
-            x = float(np.clip(x + rng.normal(0, .12)*p["half_u"], -.45*p["half_u"], .45*p["half_u"]))
+        min_segment = ANGULAR_MIN_SEGMENT_RADII * p["w_max"]
+        for i, v in enumerate(vs):
+            step = rng.normal(0, .12)*p["half_u"]
+            if mode == "angular_bounded" and knots:
+                # The groove's radius is measured across the crack, so a segment of
+                # slope s narrows it to 1/sqrt(1+s^2), and one shorter than the groove
+                # is wide shears it. Two knots drawn close together did both: slope 20,
+                # a 5% neck that reads as a break. The draws match "angular", so what
+                # remains of the path is that of the same seed.
+                if float(v) - knots[-1][0] < min_segment:
+                    if i < len(vs) - 1:
+                        continue
+                    if len(knots) > 1:
+                        knots.pop()  # the far tip stays, so the path still spans the card
+                    x = knots[-1][1]
+                limit = ANGULAR_MAX_SLOPE * (float(v) - knots[-1][0])
+                step = float(np.clip(step, -limit, limit))
+            x = float(np.clip(x + step, -.45*p["half_u"], .45*p["half_u"]))
             knots.append([float(v), x])
         forks = [dict(s, length=min(s["length"], float(rng.uniform(.25, .6))*p["half_v"]))
                  for s in p["fork_specs"][:int(rng.choice([0, 1, 2], p=[.45, .45, .10]))]]

@@ -91,8 +91,9 @@ Useful options (`python syncrack3d/build_dataset.py --help` lists all):
 | `--crack-render pbr` or `albedo` | ablation: crack as a normal map only, or as colour only |
 
 Later flags override the recipe's own. Older walls rebuild with their version's
-tag (`git tag`), or with `--recipe unified_v1.16`, `unified_v1.17`,
-`unified_v1.18`, `unified_v1.23` or `unified_v1.28`.
+tag (`git tag`). `--recipe unified_v1.16`, `unified_v1.17`, `unified_v1.18`,
+`unified_v1.23`, `unified_v1.28` and `unified_v1.29` keep those versions' flags but draw each
+wall's crack style from the current mix.
 
 ## 2. Export a training pack
 

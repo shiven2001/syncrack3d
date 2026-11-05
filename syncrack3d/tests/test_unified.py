@@ -6,7 +6,7 @@ import pytest
 
 from syncrack3d.material_diversity import (NEVER_CRACKED, PAINTED_CATEGORIES, UNIFIED_CATEGORIES,
                                            is_clean_wall, sample_category)
-from syncrack3d.recipes import REDRAW, RECIPES, STYLES, UNIFIED_MIX, parse_style_mix, wall_style
+from syncrack3d.recipes import RECIPES, STYLES, UNIFIED_MIX, parse_style_mix, wall_style
 
 ARGS = Namespace(crack_style_mix=UNIFIED_MIX, material_category=None, crack_profile="standard",
                  structures="off")
@@ -16,10 +16,10 @@ def test_style_draw_is_deterministic_and_follows_the_mix():
     assert [wall_style(s, ARGS)[0] for s in range(50)] == [wall_style(s, ARGS)[0] for s in range(50)]
     counts = collections.Counter(wall_style(s, ARGS)[0] for s in range(4000))
     mix = parse_style_mix(UNIFIED_MIX)
-    kept = 1 - mix.pop(REDRAW)
-    assert set(counts) == set(mix)  # a redraw slot never becomes a wall's style
+    assert mix == {"standard": .72, "wide": .17, "crazing": .11}  # the family table in the paper
+    assert set(counts) == set(mix)
     for name, p in mix.items():
-        assert abs(counts[name] / 4000 - p / kept) < 0.03
+        assert abs(counts[name] / 4000 - p) < 0.03
 
 
 def test_style_sets_its_own_settings_and_leaves_the_rest():
@@ -50,6 +50,30 @@ def test_unified_clean_table_cracks_stone_block_and_large_tile():
         assert all(is_clean_wall(s, category, 1.0, "diverse") for s in range(50))  # v1.x unchanged
 
 
+def _path(seed, mode):
+    from cwg_infinigen.assets.defect_fields import adapt_crack_morphology, adapt_crack_path, sample_crack_morphology
+
+    p = sample_crack_morphology(seed, half=0.12)
+    return adapt_crack_path(adapt_crack_morphology(p, width_scale=1.3, depth_scale=0.5, fit_path=True), seed, mode)
+
+
+def test_bounded_path_has_no_pinch_or_shear():
+    from cwg_infinigen.assets.defect_fields import ANGULAR_MAX_SLOPE, ANGULAR_MIN_SEGMENT_RADII
+
+    steep = 0
+    for seed in range(1500):
+        bounded = _path(seed, "angular_bounded")
+        knots = bounded["path_knots"]
+        assert (knots[0][0], knots[-1][0]) == (-bounded["half_v"], bounded["half_v"])  # still spans the card
+        for (v0, x0), (v1, x1) in zip(knots, knots[1:]):
+            assert v1 - v0 >= ANGULAR_MIN_SEGMENT_RADII * bounded["w_max"] - 1e-9
+            assert abs(x1 - x0) <= ANGULAR_MAX_SLOPE * (v1 - v0) + 1e-9
+        old = _path(seed, "angular")
+        assert bounded["fork_specs"] == old["fork_specs"]  # the same draws, so the rest of the crack is kept
+        steep += any(abs(b[1] - a[1]) > ANGULAR_MAX_SLOPE * (b[0] - a[0]) for a, b in zip(old["path_knots"], old["path_knots"][1:]))
+    assert steep > 500  # the unbounded mode is what this guards against
+
+
 def test_bad_mix_is_rejected():
     for text in ("legacy", "nope=1", "legacy=0", "redraw=1", "facade=1"):
         with pytest.raises(ValueError):
@@ -57,6 +81,9 @@ def test_bad_mix_is_rejected():
     assert "--crack-style-mix" in RECIPES["unified"] and "--wall-materials unified" in RECIPES["unified"]
     assert "--clean-wall-scale 0" in RECIPES["unified"] and "--shell-finish matched" in RECIPES["unified"]
     assert "--layout-order fixtures-first" in RECIPES["unified"]
+    assert RECIPES["unified"].split().count("--crack-path-mode") == 2  # the later flag wins
+    assert RECIPES["unified"].endswith("--crack-path-mode angular_bounded")
+    assert "angular_bounded" not in RECIPES["unified_v1.29"]
     assert "--layout-order" not in RECIPES["unified_v1.16"]
     assert "--prop-placement" not in RECIPES["unified"]
     assert "--fixture-mount relief" in RECIPES["unified"]
@@ -64,7 +91,7 @@ def test_bad_mix_is_rejected():
     assert "--fixture-mount" not in RECIPES["unified_v1.18"]
     assert RECIPES["unified_v1.18"] == RECIPES["unified_v1.17"]
     assert RECIPES["unified_v1.28"] == RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
-    assert RECIPES["unified"] == RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
+    assert RECIPES["unified_v1.29"] == RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
     assert "--crack-junction-fraction" not in RECIPES["unified_v1.23"]
 
 

@@ -574,7 +574,7 @@ def main():
     parser.add_argument("--crack-fit-path", action="store_true")
     parser.add_argument("--crack-label-mode", choices=("profile", "support"), default="profile")
     parser.add_argument("--crack-branch-mode", choices=("original", "bounded_curved", "local_curved"), default="original")
-    parser.add_argument("--crack-path-mode", choices=("original", "meander", "angular", "straight"), default="original")
+    parser.add_argument("--crack-path-mode", choices=("original", "meander", "angular", "angular_bounded", "straight"), default="original")
     parser.add_argument("--crack-axis-snap", type=float, default=0.0,
                         help="share of cracks turned to run along a wall axis (+-2 deg), like joint cracks")
     parser.add_argument("--defect-size-range", type=float, nargs=2, default=(.10, .45))
@@ -660,7 +660,7 @@ def main():
                         help="one clean-wall probability for every material instead of the per-category "
                              "table (same per-wall draw); 1 renders every wall crack-free")
     parser.add_argument("--crack-style-mix", default=None,
-                        help="per-wall crack styles, e.g. legacy=.65,major=.15,network=.10 "
+                        help="per-wall crack styles, e.g. standard=.72,wide=.17,crazing=.11 "
                              "(recipes.STYLES); a wall's style overrides the flags that define it; "
                              "'off' disables it, e.g. to override the unified recipe")
     parser.add_argument("--recipe", choices=sorted(RECIPES),
