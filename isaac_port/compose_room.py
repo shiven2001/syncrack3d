@@ -38,9 +38,13 @@ from isaacsim import SimulationApp  # noqa: E402
 
 app = SimulationApp({"headless": True, "width": args.res, "height": args.res})
 
+import carb  # noqa: E402
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdLux, UsdSemantics, UsdShade, Vt  # noqa: E402
+
+# Streamed textures are still at low mips when a headless render reads its frames.
+carb.settings.get_settings().set("/rtx-transient/resourcemanager/enableTextureStreaming", False)
 
 
 def add_labels(prim, labels, instance_name="class"):
@@ -215,7 +219,7 @@ for prim in stage.Traverse():
     cls = ("crack" if name == "crack" else "wall" if name == "wall" or "Return" in name
            else "floor" if "Floor" in name else "ceiling" if "Ceiling" in name
            else "fixture" if name.startswith(("CWG_Structure", "CWG_Skirting"))
-           else "furniture" if name.startswith("CWG_Prop") else None)
+           else "prop" if name.startswith("CWG_Prop") else None)
     if cls:
         add_labels(prim, labels=[cls], instance_name="class")
         labels[path] = cls
@@ -238,7 +242,7 @@ def free_spawn(radius=0.35, eye_z=1.5):
     cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
     boxes = []
     for path, cls in labels.items():
-        if cls == "furniture":
+        if cls == "prop":
             r = cache.ComputeWorldBound(stage.GetPrimAtPath(path)).ComputeAlignedRange()
             lo, hi = r.GetMin(), r.GetMax()
             if hi[2] - lo[2] > 0.05:  # rugs do not block
@@ -259,7 +263,7 @@ def obstacles():
     cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
     out = []
     for path, cls in labels.items():
-        if cls in ("furniture", "fixture"):
+        if cls in ("prop", "fixture"):
             r = cache.ComputeWorldBound(stage.GetPrimAtPath(path)).ComputeAlignedRange()
             lo, hi = [round(float(v), 4) for v in r.GetMin()], [round(float(v), 4) for v in r.GetMax()]
             if hi[2] - lo[2] > 0.05 and lo[1] < -0.03:  # rugs and flush plates do not block

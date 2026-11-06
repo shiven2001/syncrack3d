@@ -37,10 +37,14 @@ from isaacsim import SimulationApp  # noqa: E402
 
 app = SimulationApp({"headless": True, "width": args.res, "height": args.res})
 
+import carb  # noqa: E402
 import numpy as np  # noqa: E402
 import omni.replicator.core as rep  # noqa: E402
 import omni.usd  # noqa: E402
 from pxr import Gf, Usd, UsdGeom, UsdSemantics  # noqa: E402
+
+# Streamed textures are still at low mips when a headless render reads its frames.
+carb.settings.get_settings().set("/rtx-transient/resourcemanager/enableTextureStreaming", False)
 
 root = Path(args.export_dir)
 out = Path(args.out)
@@ -76,7 +80,7 @@ if args.hard_light:
 cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), ["default", "render"])
 boxes = []
 for path, cls in meta["labels"].items():
-    if cls == "furniture":
+    if cls in ("prop", "furniture"):  # exports composed before the rename say "furniture"
         r = cache.ComputeWorldBound(stage.GetPrimAtPath(path)).ComputeAlignedRange()
         if r.GetMax()[2] - r.GetMin()[2] > 0.05:
             boxes.append((np.array(r.GetMin()), np.array(r.GetMax())))
@@ -132,7 +136,7 @@ if args.shadow_only:
     for prim in stage.Traverse():
         if prim.GetTypeName() in ("DiskLight", "RectLight", "DomeLight"):
             UsdGeom.Imageable(prim).MakeInvisible()
-    casters = [stage.GetPrimAtPath(pth) for pth, c in meta["labels"].items() if c in ("furniture", "fixture")]
+    casters = [stage.GetPrimAtPath(pth) for pth, c in meta["labels"].items() if c in ("prop", "furniture", "fixture")]
 
     def lamp_only(i):
         for _ in range(8):

@@ -126,6 +126,21 @@ python eval-syncrack3d/synth/score.py --set out/my_synthetic_set --model path/to
 The real benchmarks are not included. `eval-syncrack3d/NOTICE.md` gives the evaluation
 protocol, every version's results and the studies behind each design choice.
 
+### How many walls a model needs
+
+From v1.30 the question is measured as a learning curve: a U-Net R34 on the first
+100, 250, 500 and 1,000 training walls (nested in seed order), five seeds each. Every
+size trains for 4,000 steps, so only the amount of data changes, and the last checkpoint
+is scored. Earlier sweeps trained longer on larger sets, which mixed the two: at 4,000
+walls, real scores fall as steps rise from 4,000 to 23,982. The full curve is reported;
+no size is picked from it.
+
+```bash
+CHUNKS="train_a val train_b test" CODE=path/to/frozen_checkout \
+  eval-syncrack3d/studies/syncrack3d_dataset_render.sh v1.30.0
+STUDY_TAG=v130 eval-syncrack3d/studies/syncrack3d_learning_curve.sh v1.30.0
+```
+
 ## 4. Export to Isaac Sim
 
 Cracks exist as shader displacement at render time, so the Isaac Sim 5 export
