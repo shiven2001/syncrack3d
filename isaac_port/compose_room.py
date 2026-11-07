@@ -216,10 +216,11 @@ for prim in stage.Traverse():
     if path.count("/") != 3 or not path.startswith(("/World/Room/", "/World/TestWall/")):
         continue
     name = prim.GetName()
-    cls = ("crack" if name == "crack" else "wall" if name == "wall" or "Return" in name
+    # Props first: a factory name can contain a shell word, as FloorLampFactory does.
+    cls = ("prop" if name.startswith("CWG_Prop") else "crack" if name == "crack"
+           else "wall" if name == "wall" or "Return" in name
            else "floor" if "Floor" in name else "ceiling" if "Ceiling" in name
-           else "fixture" if name.startswith(("CWG_Structure", "CWG_Skirting"))
-           else "prop" if name.startswith("CWG_Prop") else None)
+           else "fixture" if name.startswith(("CWG_Structure", "CWG_Skirting")) else None)
     if cls:
         add_labels(prim, labels=[cls], instance_name="class")
         labels[path] = cls
