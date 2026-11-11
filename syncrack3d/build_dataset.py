@@ -137,6 +137,31 @@ def clear_scene():
     reset_registry()
 
 
+def hide_context(which: str) -> dict:
+    """Ablation: drop fixtures and/or props from the render after the whole layout is
+    made, so cracks, cameras, lights and every random stream stay as in the full scene.
+    Lights are kept, a floor lamp's bulb included, so the illumination is unchanged; the
+    hidden objects no longer cast shadows or occlude the wall. Returns hidden counts."""
+    import bpy
+
+    roles = {"off": (), "fixtures": ("structure",), "props": ("prop",), "all": ("structure", "prop")}[which]
+    hidden = {role: 0 for role in roles}
+
+    def role_of(obj):
+        while obj is not None:
+            if obj.get("cwg_role") in roles:
+                return obj["cwg_role"]
+            obj = obj.parent
+        return None
+
+    for obj in bpy.data.objects:
+        role = role_of(obj) if roles else None
+        if role and obj.type not in ("LIGHT", "CAMERA") and not obj.hide_render:
+            obj.hide_render = True
+            hidden[role] += 1
+    return hidden
+
+
 def fixture_footprints(mount_m: float) -> tuple:
     """World (x0, x1, z0, z1) of every fixture and skirting part whose back is
     within reach of a strong crack lip, which stands on the wall's relief (the
@@ -408,6 +433,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
     # After the host material is final, including its displaced crack copy.
     bind_window_masonry(wall, args.dicing_rate)
+    if args.hide_context != "off":
+        layout_record["context_hidden"] = hide_context(args.hide_context)
 
     exposure_evs = sample_exposure_evs(seed, len(poses), args.exposure_ev_range)
     # Partial white balance keeps a coloured wall coloured (opt-in; default full).
@@ -596,6 +623,9 @@ def main():
                         help="plane: fixtures and skirting stand on the wall plane, so stone and brick relief "
                              "pokes through them; relief (with --layout-order fixtures-first): stand them out "
                              "by the wall's displaced relief")
+    parser.add_argument("--hide-context", choices=("off", "fixtures", "props", "all"), default="off",
+                        help="ablation: build the full layout, then leave fixtures, props or both out of "
+                             "the render (lights kept); everything else is unchanged")
     parser.add_argument("--structures", choices=STRUCTURE_PROFILES, default="off",
                         help="background fixtures: doors, windows, vents, boxes, cables, pipes, joints")
     parser.add_argument("--structure-kinds", nargs="+", choices=STRUCTURE_KINDS,

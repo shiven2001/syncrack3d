@@ -386,6 +386,46 @@ def _principled(nt):
     )
 
 
+def _surface_bsdfs(nt):
+    """Every Principled BSDF shading the surface, as (tree, bsdf, group node or None).
+
+    Tile mixes two BSDFs, and concrete's BSDF sits inside a node group, which is
+    given its own copy here so that editing it leaves other materials alone.
+    """
+    found, seen = [], set()
+
+    def walk(node):
+        if node.name in seen:
+            return
+        seen.add(node.name)
+        if node.bl_idname == "ShaderNodeBsdfPrincipled":
+            found.append((nt, node, None))
+        elif node.bl_idname == "ShaderNodeGroup" and any(s.type == "SHADER" for s in node.outputs):
+            if node.node_tree.users > 1:
+                node.node_tree = node.node_tree.copy()
+            found.extend((node.node_tree, n, node) for n in node.node_tree.nodes
+                         if n.bl_idname == "ShaderNodeBsdfPrincipled")
+        for socket in node.inputs:
+            if socket.type == "SHADER":
+                for link in socket.links:
+                    walk(link.from_node)
+
+    for output in nt.nodes:
+        if output.bl_idname == "ShaderNodeOutputMaterial" and output.is_active_output:
+            walk(output)
+    return found
+
+
+def _into_tree(nt, tree, group, socket, name):
+    """A float socket of `nt` as seen from `tree`, passed through `group`'s inputs if there is one."""
+    if group is None:
+        return socket
+    name = f"{name}_{len(tree.interface.items_tree)}"
+    tree.interface.new_socket(name=name, in_out="INPUT", socket_type="NodeSocketFloat")
+    nt.links.new(socket, group.inputs[name])
+    return tree.nodes.new("NodeGroupInput").outputs[name]
+
+
 def _record(
     state: HostInjection, kind: str, height_socket, label_socket, instance_id: int
 ) -> None:
@@ -437,9 +477,11 @@ def _inject_crack(
 
     crack_render (ablation of how the crack is built, labels identical):
       "geometry" - groove, chips, lips and offset are real displacement (default);
-      "pbr"      - the same height drives a bump/normal map only, like a PBR decal;
+      "pbr"      - the same height drives a bump/normal map only, like a PBR decal,
+                   on every BSDF the surface uses;
       "albedo"   - colour only (grime, exposed core), flat: a pasted crack image
-                   that is still lit by the scene but has no relief at all.
+                   that is still lit by the scene but has no relief at all. Every
+                   crack gets grime on every BSDF, or it would not be drawn.
     """
     if crack_render not in ("geometry", "pbr", "albedo"):
         raise ValueError("crack_render must be geometry, pbr or albedo")
@@ -567,6 +609,8 @@ def _inject_crack(
 
     clean_cut = int(round(max(0.0, min(1.0, float(crack_clean_fraction))) * 1000))
     grimy = (int_hash(("crack_grime", int(seed))) % 1000) >= clean_cut
+    if crack_render == "albedo":
+        grimy = True  # with no relief, a clean crack would be labelled but not drawn at all
     strength = float(crack_grime_strength) if grimy else 0.0
     if network:
         # Shallow crazing needs weak pigment evidence even in the clean bucket.
@@ -579,7 +623,8 @@ def _inject_crack(
         base = nt.nodes.new("ShaderNodeRGB")
         base.outputs["Color"].default_value = bsdf.inputs["Base Color"].default_value
         nt.links.new(base.outputs["Color"], bsdf.inputs["Base Color"])
-    if strength > 0.0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked:
+    grime_on_first = strength > 0.0 and bsdf is not None and bsdf.inputs["Base Color"].is_linked
+    if grime_on_first:
         src = bsdf.inputs["Base Color"].links[0].from_socket
         hsv = nt.nodes.new("ShaderNodeHueSaturation")
         # 0.42-0.70 of the wall's value. The old range topped out at 0.92, which
@@ -595,6 +640,26 @@ def _inject_crack(
         nt.links.new(
             _mix_rgb(nt, fac, src, hsv.outputs["Color"]), bsdf.inputs["Base Color"]
         )
+    if crack_render == "albedo":
+        # Colour is all this build has, so it reaches every BSDF the surface uses,
+        # including one with a constant colour (see _surface_bsdfs).
+        value = 1.0 - (1.0 - float(np.clip(0.42 + 0.28 * ((seed % 7) / 6.0), 0.42, 0.70))) * strength
+        outer_fac = _math(nt, "POWER", prof, float(crack_grime_focus))
+        for tree, target, group in _surface_bsdfs(nt):
+            if grime_on_first and tree == nt and target == bsdf:
+                continue
+            color = target.inputs["Base Color"]
+            if color.is_linked:
+                src_c = color.links[0].from_socket
+            else:
+                rgb = tree.nodes.new("ShaderNodeRGB")
+                rgb.outputs["Color"].default_value = color.default_value
+                src_c = rgb.outputs["Color"]
+            hsv_c = tree.nodes.new("ShaderNodeHueSaturation")
+            hsv_c.inputs["Value"].default_value = value
+            tree.links.new(src_c, hsv_c.inputs["Color"])
+            tree.links.new(_mix_rgb(tree, _into_tree(nt, tree, group, outer_fac, "crack_grime"), src_c,
+                                    hsv_c.outputs["Color"]), color)
     if crack_label_mode not in ("profile", "support"):
         raise ValueError("crack_label_mode must be profile or support")
     # prof is normalized groove depth, NOT binary surface coverage. Passing it
@@ -608,17 +673,21 @@ def _inject_crack(
     if crack_render == "pbr":
         # The same metric height as a normal map: shading changes with the light,
         # but nothing moves, so no silhouette, self-shadow or occlusion.
-        bsdf_b = _principled(nt)
-        if bsdf_b is not None:
-            bump = nt.nodes.new("ShaderNodeBump")
-            bump.inputs["Strength"].default_value = 1.0
-            bump.inputs["Distance"].default_value = -1.0 if state.flip_displacement else 1.0
-            nt.links.new(height, bump.inputs["Height"])
+        # BSDFs in one tree share the bump: tile's two have the same base normal, and
+        # a bump per BSDF overflows Cycles' SVM stack, which turns the wall black
+        # with only a log line. A height sum into one bump overflows sooner still.
+        shared = {}
+        for tree, bsdf_b, group in _surface_bsdfs(nt):
             nrm = bsdf_b.inputs["Normal"]
-            if nrm.is_linked:
-                src_n = nrm.links[0].from_socket
-                nt.links.new(src_n, bump.inputs["Normal"])
-            nt.links.new(bump.outputs["Normal"], nrm)
+            if tree.name not in shared:
+                bump = tree.nodes.new("ShaderNodeBump")
+                bump.inputs["Strength"].default_value = 1.0
+                bump.inputs["Distance"].default_value = -1.0 if state.flip_displacement else 1.0
+                tree.links.new(_into_tree(nt, tree, group, height, "crack_height"), bump.inputs["Height"])
+                if nrm.is_linked:
+                    tree.links.new(nrm.links[0].from_socket, bump.inputs["Normal"])
+                shared[tree.name] = bump.outputs["Normal"]
+            tree.links.new(shared[tree.name], nrm)
     if crack_render != "geometry":
         height = _math(nt, "MULTIPLY", height, 0.0)  # no real displacement from the crack
     _record(state, "crack", height, label, instance_id)
