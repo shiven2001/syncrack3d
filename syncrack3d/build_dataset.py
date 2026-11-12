@@ -443,14 +443,17 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     if args.awb_strength is not None:
         _awb_rng = random.Random(int(seed) ^ 0x415742)
         awb_strengths = [round(_awb_rng.uniform(*args.awb_strength), 3) for _ in poses]
+    depth = args.export_depth or args.depth_only
     configure_cycles(
         resolution=args.resolution,
-        samples=args.samples,
-        denoise=not args.no_denoise,
+        # Depth-only: the depth, position and index passes are the first sample's hit
+        # in a full render too, so one sample gives the same maps.
+        samples=1 if args.depth_only else args.samples,
+        denoise=not (args.no_denoise or args.depth_only),
         dicing_rate=args.dicing_rate,
     )
-    aov_names = setup_passes(depth=args.export_depth)
-    if args.export_depth:
+    aov_names = setup_passes(depth=depth)
+    if depth:
         mark_wall(wall)
 
     record = {
@@ -536,7 +539,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
                 manifest_path.read_text()
             )
         relight = None
-        if args.relight_per_view:
+        if args.relight_per_view and not args.depth_only:  # lights do not change depth
             record["view_lighting"] = []
 
             def relight(index, cam):
@@ -556,10 +559,11 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         record["frames"] = render_cameras(
             [p.object_name for p in poses], frames_dir, aov_names=aov_names,
             exposure_evs=exposure_evs, awb_strengths=awb_strengths, before_each=relight,
-            depth=args.export_depth,
+            depth=depth, depth_only=args.depth_only,
         )
-        record["depth_export"] = args.export_depth
-        if args.camera_isp:
+        record["depth_export"] = depth
+        record["depth_only"] = args.depth_only
+        if args.camera_isp and not args.depth_only:
             from syncrack3d.isp import process_frames
 
             record["camera_isp"] = process_frames(frames_dir, record["frames"], seed)
@@ -686,10 +690,15 @@ def main():
                         help="shift close-up aim by up to this many frame widths (0-0.5)")
     parser.add_argument("--legacy-defect-names", action="store_true",
                         help="v1 card names: every scene reuses the same defect shapes")
-    parser.add_argument("--export-depth", action="store_true",
-                        help="also write per view: Depth (camera z, uint16 PNG, 0.1 mm), WallRelief (signed "
+    parser.add_argument("--export-depth", action=argparse.BooleanOptionalAction, default=True,
+                        help="write per view: Depth (camera z, uint16 PNG, 0.1 mm), WallRelief (signed "
                              "offset from the wall plane, uint16 PNG, 0.01 mm) and Camera (K, pose) files, "
-                             "from the same render's first-sample passes; see syncrack3d/render.py")
+                             "from the same render's first-sample passes; see syncrack3d/render.py "
+                             "(default on; --no-export-depth to skip)")
+    parser.add_argument("--depth-only", action="store_true",
+                        help="rebuild the walls and render only Depth, WallRelief and Camera (1 sample, no "
+                             "RGB or labels), e.g. to add depth to walls rendered before it existed; use the "
+                             "walls' own flags and a separate --output, and compare scene.json")
     parser.add_argument("--no-denoise", action="store_true")
     parser.add_argument("--no-render", action="store_true", help="build scenes only")
     parser.add_argument("--save-blend", action="store_true")

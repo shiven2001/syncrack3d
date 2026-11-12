@@ -14,7 +14,8 @@ that is what the exporter's ``find_defect_aov_maps`` and
 ``find_instance_aov_maps`` look for - coverage is a display-range quantity, the
 instance moments are not.
 
-With ``depth=True`` (``build_dataset.py --export-depth``) each view also gets
+With ``depth=True`` (``build_dataset.py`` by default; ``--no-export-depth`` turns it off,
+``--depth-only`` writes nothing else) each view also gets
 
     <out>/Depth/camera_0/Depth_<stem>.png            uint16, camera Z, 0.1 mm per step
     <out>/WallRelief/camera_0/WallRelief_<stem>.png  uint16, wall offset, 0.01 mm per step
@@ -159,11 +160,12 @@ def _file_output(tree, slot_name: str, base_dir: Path, stem: str, fmt: str):
 
 
 def build_compositor(out_dir: Path, stem: str, aov_names: list[str], exposure_ev=None, awb_strength=1.0,
-                     depth: bool = False):
+                     depth: bool = False, depth_only: bool = False):
     """Wire Render Layers -> one File Output per pass.
 
     Built per frame rather than once, because the file-slot name carries the
-    frame stem and the exporter pairs passes by that stem.
+    frame stem and the exporter pairs passes by that stem. ``depth_only`` wires
+    the depth passes and nothing else.
     """
     scene = bpy.context.scene
     scene.use_nodes = True
@@ -171,6 +173,9 @@ def build_compositor(out_dir: Path, stem: str, aov_names: list[str], exposure_ev
     tree.nodes.clear()
 
     layers = tree.nodes.new("CompositorNodeRLayers")
+    if depth_only:
+        _depth_outputs(tree, layers, out_dir, stem)
+        return tree
 
     # White balance the RGB, but never the label passes. The apartment renders
     # get this through compositor_postprocessing; this path does not call that,
@@ -202,16 +207,21 @@ def build_compositor(out_dir: Path, stem: str, aov_names: list[str], exposure_ev
         node = _file_output(tree, name, out_dir, stem, fmt)
         tree.links.new(layers.outputs[name], node.inputs[0])
     if depth:
-        for output, slot in _DEPTH_SLOTS:
-            node = tree.nodes.new("CompositorNodeOutputFile")
-            node.base_path = str(out_dir / _DEPTH_RAW / "camera_0")
-            node.format.file_format = "OPEN_EXR"
-            node.format.color_depth = "32"
-            node.format.color_mode = "RGB"
-            node.file_slots.clear()
-            node.file_slots.new(f"{slot}_{stem}")
-            tree.links.new(layers.outputs[output], node.inputs[0])
+        _depth_outputs(tree, layers, out_dir, stem)
     return tree
+
+
+def _depth_outputs(tree, layers, out_dir: Path, stem: str) -> None:
+    """Raw depth, position and index EXRs for write_depth."""
+    for output, slot in _DEPTH_SLOTS:
+        node = tree.nodes.new("CompositorNodeOutputFile")
+        node.base_path = str(out_dir / _DEPTH_RAW / "camera_0")
+        node.format.file_format = "OPEN_EXR"
+        node.format.color_depth = "32"
+        node.format.color_mode = "RGB"
+        node.file_slots.clear()
+        node.file_slots.new(f"{slot}_{stem}")
+        tree.links.new(layers.outputs[output], node.inputs[0])
 
 
 def _read_exr(path: Path) -> np.ndarray:
@@ -319,13 +329,15 @@ def render_cameras(
     awb_strengths: list[float] | None = None,
     before_each=None,
     depth: bool = False,
+    depth_only: bool = False,
 ) -> list[str]:
     """Render one frame per named camera. Returns the stems written.
 
     ``before_each(index, camera)`` runs just before each render, e.g. to relight.
     ``depth`` also writes Depth, WallRelief and Camera files (call setup_passes and
-    mark_wall with depth first).
+    mark_wall with depth first); ``depth_only`` writes only those.
     """
+    depth = depth or depth_only
     if exposure_evs is not None and len(exposure_evs) != len(cameras):
         raise ValueError("One exposure value is required per camera")
     out_dir = Path(out_dir)
@@ -346,13 +358,15 @@ def render_cameras(
         stem = f"{index}_0_{frame:04d}_0"
         exposure_ev = None if exposure_evs is None else exposure_evs[index]
         awb = 1.0 if awb_strengths is None else awb_strengths[index]
-        build_compositor(out_dir, stem, aov_names, exposure_ev=exposure_ev, awb_strength=awb, depth=depth)
+        build_compositor(out_dir, stem, aov_names, exposure_ev=exposure_ev, awb_strength=awb, depth=depth,
+                         depth_only=depth_only)
         bpy.ops.render.render(write_still=False)
         if depth:
             write_depth(out_dir, stem, cam, scene)
-        _canonicalise_names(out_dir, stem)
-        _write_index_pair(out_dir, stem, scene)
-        write_view_metadata(out_dir, stem, cam)
+        if not depth_only:
+            _canonicalise_names(out_dir, stem)
+            _write_index_pair(out_dir, stem, scene)
+            write_view_metadata(out_dir, stem, cam)
         stems.append(stem)
         logger.info("rendered %s -> %s", cam_name, stem)
     return stems

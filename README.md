@@ -1,13 +1,10 @@
 # SynCrack3D
 
-SynCrack3D generates synthetic images of cracked walls with pixel-exact labels.
-Each wall is built in Blender, its cracks are real displaced geometry in the wall
-material, and every view is rendered with Cycles. For each view you get the RGB
-image, a crack mask, instance masks, boxes and COCO annotations. SynCrack3D
-generates cracks only.
+SynCrack3D is a synthetic scene synthesiser that can generate synthetic images of cracked walls with pixel-exact labels.
 
-One seed gives one wall. The same seed always gives the same wall, cameras and
-lights, whichever other seeds run in the same process.
+Each wall is built in Blender, its cracks are real displaced geometry in the wall material, and every view is rendered with Cycles. For each view you get the RGB image, depth image, a crack mask, instance masks, wall relief map, boxes and COCO annotations.
+
+One seed gives one wall. The same seed always gives the same wall, cameras and lights, whichever other seeds run in the same process.
 
 ## Layout
 
@@ -15,8 +12,8 @@ lights, whichever other seeds run in the same process.
 syncrack3d/        generator: wall, materials, cracks, fixtures, cameras, lighting, render
 cwg_infinigen/     modified subset of Infinigen (materials, crack injection, labels, sensor model, props)
 tools/             export to a training pack, and a label check
-isaac_port/        export walls and rooms to Isaac Sim (USD)
-eval-syncrack3d/   submodule: scorers (BD3, CUBIT-InSeg, BuildCrack, synthetic sets), studies/ and NOTICE.md
+isaac_port/        export to Isaac Sim (USD)
+eval-syncrack3d/   submodule: evaluation scorers
 ```
 
 `eval-syncrack3d` is a separate repository, private for now. With access, clone
@@ -27,15 +24,12 @@ and `tools/render_light_compare.py` use its scorer code.
 
 ## Setup
 
-Two Python environments: one renders, one trains and scores.
+Add the Python environment:
 
 ```bash
 # generator: Python 3.11 (bpy 4.2 needs it); Blender runs as a Python module
 pip install -r requirements.txt
 python -m pytest syncrack3d/tests          # 85 tests, a few seconds
-
-# training and scoring: any Python with CUDA PyTorch
-pip install -r eval-syncrack3d/requirements.txt
 ```
 
 Run every command from the repository root. Cycles renders on the first GPU it
@@ -67,11 +61,14 @@ context views. Lighting varies per wall; exposure and white balance per view.
 Output per wall:
 
 ```
-out/walls/seed_<seed>/scene.json            wall, material, cracks, fixtures, cameras, lights, settings
-out/walls/seed_<seed>/defect_instances.json one record per crack: style, width, depth, status
+out/walls/seed_<seed>/scene.json             wall, material, cracks, fixtures, cameras, lights, settings
+out/walls/seed_<seed>/defect_instances.json  one record per crack: style, width, depth, status
 out/walls/frames/seed_<seed>/Image/          RGB views
 out/walls/frames/seed_<seed>/DefectCrack/    crack coverage per view
 out/walls/frames/seed_<seed>/DefectInstance*/ instance passes, used by the export
+out/walls/frames/seed_<seed>/Depth/          camera-axis depth, uint16 PNG, value * 0.1 mm; 0 = no surface
+out/walls/frames/seed_<seed>/WallRelief/     offset from the wall plane, uint16 PNG, (value - 32768) * 0.01 mm
+out/walls/frames/seed_<seed>/Camera/         intrinsics, pose and the depth encodings
 ```
 
 Useful options (`python syncrack3d/build_dataset.py --help` lists all):
@@ -90,31 +87,20 @@ Useful options (`python syncrack3d/build_dataset.py --help` lists all):
 | `--no-render --save-blend` | build and save the scene without rendering (for the Isaac export) |
 | `--crack-render pbr` or `albedo` | ablation: crack as a normal map only, or as colour only |
 | `--hide-context all` (or `fixtures`, `props`) | ablation: leave fixtures and/or props out of the render; layout and lights unchanged |
-| `--export-depth` | also write metric depth, wall relief and camera files per view (below) |
+| `--no-export-depth` | skip the Depth, WallRelief and Camera files (written by default) |
+| `--depth-only` | rebuild walls and render only Depth, WallRelief and Camera (1 sample), for walls rendered without them |
 
-### Depth and wall relief (`--export-depth`)
+Depth and wall relief come from the same render as the RGB, from its first-sample
+passes, so they measure the displaced geometry the image shows. To add them to walls
+rendered before they existed, without re-rendering RGB or labels:
 
-Each view also gets, from the same render (RGB and labels are unchanged; about 1% more render time):
-
+```bash
+python tools/add_depth_to_dataset.py --dataset <dataset> --chunks test val train_a train_b \
+  --build-flags "--recipe unified"
 ```
-out/walls/frames/seed_<seed>/Depth/       camera z (planar), uint16 PNG, value * 0.1 mm; 0 = no surface
-out/walls/frames/seed_<seed>/WallRelief/  offset from the wall plane, uint16 PNG, (value - 32768) * 0.01 mm;
-                                          negative = into the wall (crack grooves); 0 = not the main wall
-out/walls/frames/seed_<seed>/Camera/      K, cam_to_world (OpenCV axes), encodings, per-view stats (JSON)
-```
 
-Both maps come from the first sample's depth and position passes, so they are exact
-per pixel and measure the displaced geometry the RGB was rendered from. The relief
-includes the wall material's own relief (mortar joints, stone texture) as well as the
-cracks; crack depth is the crack pixels' offset below the wall around them. Cracks
-rendered with `--crack-render pbr` or `albedo` have no relief here, as they would have
-none for a depth camera. The export step copies these files into `depth/`,
-`wall_relief/` and `cameras/` of the pack, under the same names as `images/`.
-
-Later flags override the recipe's own. Older walls rebuild with their version's
-tag (`git tag`). `--recipe unified_v1.16`, `unified_v1.17`, `unified_v1.18`,
-`unified_v1.23`, `unified_v1.28` and `unified_v1.29` keep those versions' flags but draw each
-wall's crack style from the current mix.
+It rebuilds each wall from its seed, keeps it only if the rebuilt `scene.json` equals the
+released one, and adds the files to the wall's frames and to the pack.
 
 ## 2. Export a training pack
 
@@ -126,44 +112,12 @@ python tools/check_instance_contract.py --pack out/pack
 
 `out/pack` holds `images/`, `masks/` (0 background, 60 crack), `ignore_masks/`,
 `instance_masks/`, `instances/`, `bboxes/`, `bboxes_yolo/`,
-`annotations_coco.json`, `class_names.txt` and `splits/` (and `depth/`, `wall_relief/`,
-`cameras/` for walls built with `--export-depth`). Splits are by wall, so
+`annotations_coco.json`, `class_names.txt`, `splits/`, and `depth/`, `wall_relief/` and
+`cameras/` (not for walls built with `--no-export-depth`). Splits are by wall, so
 no wall is in two splits. The contract check confirms that masks, instances and
 boxes agree.
 
-## 3. Train and score a crack model
-
-`eval-syncrack3d/studies/seg_train.py` trains a 3-class U-Net, DeepLabV3+ or SegFormer
-(class 1 is crack). The scorers take a folder of checkpoints
-(`runs/s*/last.pt`):
-
-```bash
-python eval-syncrack3d/bd3/predict.py --model path/to/model_dir
-python eval-syncrack3d/bd3/score.py --pred path/to/model_dir/pred_v2/s0
-python eval-syncrack3d/cubit/score.py --model path/to/model_dir --data path/to/CUBIT-InSeg --out out/cubit
-python eval-syncrack3d/buildcrack/score.py --model name=path/to/model_dir --data path/to/BuildCrack --out out/buildcrack
-python eval-syncrack3d/synth/score.py --set out/my_synthetic_set --model path/to/model_dir --save out/synth.json
-```
-
-The real benchmarks are not included. `eval-syncrack3d/NOTICE.md` gives the evaluation
-protocol, every version's results and the studies behind each design choice.
-
-### How many walls a model needs
-
-From v1.30 the question is measured as a learning curve: a U-Net R34 on the first
-100, 250, 500 and 1,000 training walls (nested in seed order), five seeds each. Every
-size trains for 4,000 steps, so only the amount of data changes, and the last checkpoint
-is scored. Earlier sweeps trained longer on larger sets, which mixed the two: at 4,000
-walls, real scores fall as steps rise from 4,000 to 23,982. The full curve is reported;
-no size is picked from it.
-
-```bash
-CHUNKS="train_a val train_b test" CODE=path/to/frozen_checkout \
-  eval-syncrack3d/studies/syncrack3d_dataset_render.sh v1.30.0
-STUDY_TAG=v130 eval-syncrack3d/studies/syncrack3d_learning_curve.sh v1.30.0
-```
-
-## 4. Export to Isaac Sim
+## 3. Export to Isaac Sim
 
 Cracks exist as shader displacement at render time, so the Isaac Sim 5 export
 bakes the wall's colour, roughness, relief and crack coverage and rebuilds the
@@ -185,10 +139,6 @@ meshes are labelled `crack` and `wall`.
 
 ## Licence
 
-SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the
-BSD 3-Clause License (`LICENSE`).
+SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the BSD 3-Clause License (`LICENSE`).
 
-`cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023,
-Princeton University), also BSD 3-Clause. That notice is kept unchanged in
-`LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled
-code keeps the licence file next to it. See `NOTICE`.
+`cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023, Princeton University), also BSD 3-Clause. That notice is kept unchanged in `LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled code keeps the licence file next to it. See `NOTICE`.
