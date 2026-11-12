@@ -7,6 +7,7 @@ from cwg_infinigen.assets.defect_fields import (
     fit_strong_band,
     keepout_in_crack_frame,
     sample_crack_layer,
+    scale_crack_edge,
 )
 
 MASONRY = (
@@ -35,32 +36,28 @@ def test_paint_keeps_a_film_and_stucco_breaks_its_coat():
         paint = sample_crack_layer(seed, "paint", 1.0)
         stucco = sample_crack_layer(seed, "stucco", 1.0)
         assert paint["mode"] == "paint" and stucco["mode"] == "stucco"
-        assert 0.0015 <= paint["margin"] <= 0.004
         assert 0.0002 <= paint["film"] <= 0.0007
-        assert paint["lip"] > 0
-        assert 0.003 <= stucco["margin"] <= 0.008
+        assert 0.002 <= paint["lip"] <= 0.005
         assert 0.001 <= stucco["film"] <= 0.003
-        assert stucco["lip"] == 0.0
+        assert 0.002 <= stucco["lip"] <= 0.005
         assert stucco["dark"] >= 0.62
 
 
-def test_strong_edges_on_ordinary_and_wide_cracks():
+def test_edges_on_ordinary_and_wide_cracks():
+    bands = {"paint": ((0.0015, 0.0040), (120.0, 320.0)), "stucco": ((0.003, 0.008), (70.0, 160.0))}
     for seed in range(200):
-        for mode in ("paint", "stucco"):
-            base = sample_crack_layer(seed, mode, 1.0)
-            strong = sample_crack_layer(seed, mode, 1.0, edge_profile="strong")
-            assert 0.002 <= strong["lip"] <= 0.005
-            factor = strong["margin"] / base["margin"]
-            assert 3.0 <= factor <= 5.0
-            assert strong["chip_scale"] == pytest.approx(base["chip_scale"] / factor)
-            for key in ("film", "chip_thr", "offset", "side", "dark", "core"):
-                assert strong[key] == base[key]
+        for mode, (margin, chips) in bands.items():
+            lay = sample_crack_layer(seed, mode, 1.0)
+            assert 0.002 <= lay["lip"] <= 0.005
+            assert 3.0 <= lay["factor"] <= 5.0
+            assert margin[0] <= lay["margin"] / lay["factor"] <= margin[1]
+            assert chips[0] <= lay["chip_scale"] * lay["factor"] <= chips[1]
 
 
-def test_strong_edges_on_crazing_stay_small():
+def test_edges_on_crazing_stay_small():
     for seed in range(200):
-        plaster = sample_crack_layer(seed, "paint", 1.0, edge_profile="strong", network=True)
-        stucco = sample_crack_layer(seed, "stucco", 1.0, edge_profile="strong", network=True)
+        plaster = sample_crack_layer(seed, "paint", 1.0, network=True)
+        stucco = sample_crack_layer(seed, "stucco", 1.0, network=True)
         assert 0.0005 <= plaster["lip"] <= 0.002
         assert 0.0005 <= stucco["lip"] <= 0.001
         for lay in (plaster, stucco):
@@ -70,30 +67,22 @@ def test_strong_edges_on_crazing_stay_small():
             assert lay["offset"] == 0.0  # a net has no single path to step across
 
 
-def test_strong_edges_land_on_the_same_cracks():
-    for seed in range(200):
-        for mode in ("paint", "stucco", "none"):
-            for network in (False, True):
-                base = sample_crack_layer(seed, mode, 0.7)
-                strong = sample_crack_layer(seed, mode, 0.7, edge_profile="strong", network=network)
-                assert (base is None) == (strong is None)
-
-
-def test_strong_band_fits_the_crack_width():
+def test_band_fits_the_crack_width():
     for seed in range(200):
         for mode in ("paint", "stucco"):
-            base = sample_crack_layer(seed, mode, 1.0)
-            strong = sample_crack_layer(seed, mode, 1.0, edge_profile="strong")
-            hairline = fit_strong_band(strong, 0.0001)
-            assert hairline["margin"] == pytest.approx(base["margin"])  # never below the historical band
-            assert hairline["chip_scale"] == pytest.approx(base["chip_scale"])
-            assert fit_strong_band(strong, 1.0) == strong  # an open crack keeps the whole band
-            mid = fit_strong_band(strong, strong["margin"] / STRONG_MARGIN_PER_WIDTH / 2)
-            assert base["margin"] <= mid["margin"] <= strong["margin"]
-            assert mid["margin"] * mid["chip_scale"] == pytest.approx(base["margin"] * base["chip_scale"])
+            lay = sample_crack_layer(seed, mode, 1.0)
+            base_margin = lay["margin"] / lay["factor"]
+            base_chips = lay["chip_scale"] * lay["factor"]
+            hairline = fit_strong_band(lay, 0.0001)
+            assert hairline["margin"] == pytest.approx(base_margin)  # never below the historical band
+            assert hairline["chip_scale"] == pytest.approx(base_chips)
+            assert fit_strong_band(lay, 1.0) == lay  # an open crack keeps the whole band
+            mid = fit_strong_band(lay, lay["margin"] / STRONG_MARGIN_PER_WIDTH / 2)
+            assert base_margin <= mid["margin"] <= lay["margin"]
+            assert mid["margin"] * mid["chip_scale"] == pytest.approx(base_margin * base_chips)
             for key in ("lip", "film", "chip_thr", "offset", "side", "core"):
-                assert mid[key] == strong[key]
-    crazing = sample_crack_layer(0, "paint", 1.0, edge_profile="strong", network=True)
+                assert mid[key] == lay[key]
+    crazing = sample_crack_layer(0, "paint", 1.0, network=True)
     assert fit_strong_band(crazing, 0.0001) == crazing
     assert fit_strong_band(None, 0.001) is None
 
@@ -113,11 +102,20 @@ def test_lip_keepout_rectangles_in_the_crack_frame():
     assert keepout_in_crack_frame(rects, (0.0, 1.1), (1.0, 0.0), (0.0, 1.0), reach=0.01) == []
 
 
-def test_original_edges_are_the_default():
-    for seed in range(40):
-        assert sample_crack_layer(seed, "paint", 1.0) == sample_crack_layer(seed, "paint", 1.0, edge_profile="original")
+def test_edge_scale_changes_lip_and_chips_together():
+    lay = sample_crack_layer(3, "paint", 1.0)
+    assert scale_crack_edge(lay, 1) is lay
+    assert scale_crack_edge(None, 2) is None
+    twice = scale_crack_edge(lay, 2)
+    assert twice["lip"] == pytest.approx(lay["lip"] * 2)
+    assert twice["film"] == pytest.approx(lay["film"] * 2)
+    assert twice["offset"] == pytest.approx(lay["offset"] * 2)
+    assert twice["margin"] == pytest.approx(lay["margin"] * 2)
+    assert twice["chip_scale"] == pytest.approx(lay["chip_scale"] / 2)
+    flat = scale_crack_edge(lay, 0)
+    assert (flat["lip"], flat["film"], flat["offset"], flat["margin"]) == (0.0, 0.0, 0.0, 0.0)
     with pytest.raises(ValueError):
-        sample_crack_layer(0, "paint", 1.0, edge_profile="nope")
+        scale_crack_edge(lay, -1)
 
 
 def test_fraction_can_skip_and_rejects_an_unknown_mode():

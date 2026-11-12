@@ -9,7 +9,7 @@ The script stops if the mesh does not sit on the stated grid or does not follow 
     # the room (Run from the repository root)
     python syncrack3d/build_dataset.py --recipe unified --seeds 910021 --output outputs/simulator_figure/scenes \
         --no-render --save-blend
-    python isaac_port/export_room.py outputs/simulator_figure/scenes/seed_910021 outputs/simulator_figure/export/seed_910021
+    python isaac_port/export_room.py -i outputs/simulator_figure/scenes/seed_910021 -o outputs/simulator_figure/export/seed_910021
     OMNI_KIT_ACCEPT_EULA=YES isaac-sim-5/python isaac_port/compose_room.py outputs/simulator_figure/export/seed_910021
 
     # the lit views

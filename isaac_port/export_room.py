@@ -1,8 +1,8 @@
 """Export a whole SynCrack3D room for Isaac Sim (Blender stage).
 
-    python isaac_port/export_room.py scene_dir out_dir [--px-per-m 1600] [--prop-res 1024] [--wall-only]
+    python isaac_port/export_room.py -i scene_dir -o out_dir [--px-per-m 1600] [--prop-res 1024] [--wall-only]
 
-scene_dir holds build_dataset.py --save-blend output (scene.blend, scene.json,
+-i is the room folder from build_dataset.py --save-blend (scene.blend, scene.json,
 defect_instances.json). Unlike port_wall.py, which bakes one patch per close-up,
 this keeps the full room and no cameras: an embodied agent has to find the
 cracks itself, so nothing may be posed at them.
@@ -36,7 +36,31 @@ opts = {"--px-per-m": 1600.0, "--prop-res": 1024, "--max-px": 8192}
 for k in list(opts):
     if k in argv:
         i = argv.index(k); opts[k] = type(opts[k])(argv[i + 1]); del argv[i:i + 2]
-scene_dir, out = Path(argv[0]), Path(argv[1])
+
+
+def _take_path(*flags):
+    for flag in flags:
+        if flag not in argv:
+            continue
+        i = argv.index(flag)
+        if i + 1 >= len(argv):
+            raise SystemExit(f"{flag} needs a folder")
+        value = argv[i + 1]
+        del argv[i:i + 2]
+        return value
+    return None
+
+
+scene_arg, out_arg = _take_path("-i", "--input"), _take_path("-o", "--output")
+if scene_arg and out_arg:
+    scene_dir, out = Path(scene_arg), Path(out_arg)
+elif not scene_arg and not out_arg and len(argv) >= 2:
+    scene_dir, out = Path(argv[0]), Path(argv[1])
+else:
+    raise SystemExit(
+        "usage: python isaac_port/export_room.py -i scene_dir -o out_dir "
+        "[--px-per-m 1600] [--prop-res 1024] [--wall-only]"
+    )
 (out / "wall").mkdir(parents=True, exist_ok=True)
 record = json.loads((scene_dir / "scene.json").read_text())
 W, H = record["spec"]["width_m"], record["spec"]["height_m"]

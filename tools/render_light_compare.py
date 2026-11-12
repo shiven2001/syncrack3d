@@ -8,8 +8,8 @@ room at high ISO; `--lights hard` keeps the raking light as the reference and
 adds the conditions that make a crack hard to find: head-on flash, light along
 the crack, a cable's shadow beside it, window-blind stripes, overexposure and a
 dim room, plus the camera pulled back 2x and 4x; `--lights far` puts those bad
-lights on the camera pulled back 4x. `--wall hairline` builds a single thin crack (the legacy recipe at
---crack-width-scale .4 on neutral paint) instead of the unified wall. Each tile
+lights on the camera pulled back 4x. `--wall hairline` builds one thin crack
+(--crack-width-scale .4 on neutral paint, style mix off) instead of a normal unified wall. Each tile
 is scored two ways against the crack label rendered with it (the geometry
 render's DefectCrack pass at 0.5 coverage, so a pulled-back camera has its own):
 
@@ -90,8 +90,8 @@ LIGHT_SETS = {
 LIGHTS = LIGHT_SETS["standard"]
 WALLS = {
     "unified": ["--recipe", "unified"],
-    "hairline": ["--recipe", "standard", "--material-category", "paint_neutral", "--clean-wall-scale", "0",
-                 "--crack-width-scale", ".4", "--min-defects", "1", "--max-defects", "1"],
+    "hairline": ["--recipe", "unified", "--crack-style-mix", "off", "--material-category", "paint_neutral",
+                 "--clean-wall-scale", "0", "--crack-width-scale", ".4", "--min-defects", "1", "--max-defects", "1"],
 }
 WALL = "unified"
 SUFFIX = ""  # "" for the standard lights, "_hard" for the hard set

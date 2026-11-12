@@ -78,21 +78,15 @@ def test_bad_mix_is_rejected():
     for text in ("legacy", "nope=1", "legacy=0", "redraw=1", "facade=1"):
         with pytest.raises(ValueError):
             parse_style_mix(text)
-    assert "--crack-style-mix" in RECIPES["unified"] and "--wall-materials unified" in RECIPES["unified"]
-    assert "--clean-wall-scale 0" in RECIPES["unified"] and "--shell-finish matched" in RECIPES["unified"]
-    assert "--layout-order fixtures-first" in RECIPES["unified"]
-    assert RECIPES["unified"].split().count("--crack-path-mode") == 2  # the later flag wins
-    assert RECIPES["unified"].endswith("--crack-path-mode angular_bounded")
-    assert "angular_bounded" not in RECIPES["unified_v1.29"]
-    assert "--layout-order" not in RECIPES["unified_v1.16"]
-    assert "--prop-placement" not in RECIPES["unified"]
-    assert "--fixture-mount relief" in RECIPES["unified"]
-    assert "--prop-placement" not in RECIPES["unified_v1.17"]
-    assert "--fixture-mount" not in RECIPES["unified_v1.18"]
-    assert RECIPES["unified_v1.18"] == RECIPES["unified_v1.17"]
-    assert RECIPES["unified_v1.28"] == RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
-    assert RECIPES["unified_v1.29"] == RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
-    assert "--crack-junction-fraction" not in RECIPES["unified_v1.23"]
+    assert set(RECIPES) == {"unified"}
+    flags = RECIPES["unified"]
+    assert "--crack-style-mix" in flags and "--wall-materials unified" in flags
+    assert "--clean-wall-scale 0" in flags and "--shell-finish matched" in flags
+    assert "--layout-order fixtures-first" in flags and "--fixture-mount relief" in flags
+    assert "--crack-junction-fraction .5" in flags and "--crack-edge-profile" not in flags
+    assert "--prop-placement" not in flags
+    assert flags.split().count("--crack-path-mode") == 2  # the later flag wins
+    assert flags.endswith("--crack-path-mode angular_bounded")
 
 
 def test_fixtures_first_puts_fixtures_on_every_indoor_wall():

@@ -57,7 +57,13 @@ def check(released: Path, rebuilt: Path, frames: Path, new_frames: Path) -> str 
     if not (rebuilt / "scene.json").is_file():
         return "not rebuilt"
     a, b = (json.loads((p / "scene.json").read_text()) for p in (released, rebuilt))
-    differ = sorted(k for k in (set(a) | set(b)) - NOT_COMPARED if a.get(k) != b.get(k))
+    # Walls released before --crack-edge-scale existed have no edge_scale; they
+    # were built at the default 1.
+    for rec in (a, b):
+        cfs = rec.get("crack_field_settings")
+        if isinstance(cfs, dict) and cfs.get("edge_scale", 1.0) == 1.0:
+            cfs.pop("edge_scale", None)
+    differ =sorted(k for k in (set(a) | set(b)) - NOT_COMPARED if a.get(k) != b.get(k))
     if differ:
         return f"scene.json differs in {differ}"
     views = {p.stem[len("Image_"):] for p in (frames / "Image/camera_0").glob("Image_*.png")}

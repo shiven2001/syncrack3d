@@ -358,8 +358,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
                                               plan.min_separation_m)
 
     manifest_path = scene_dir / "defect_instances.json"
-    lip_keepout = (fixture_footprints(layout_record.get("fixture_mount_m", 0.0))
-                   if args.crack_edge_profile == "strong" else ())
+    lip_keepout = fixture_footprints(layout_record.get("fixture_mount_m", 0.0))
     layout_record["lip_keepout_parts"] = len(lip_keepout)
     import gin
     import cwg_infinigen.assets.defect_injection  # noqa: F401
@@ -369,7 +368,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             gin.bind_parameter("_inject_crack.crack_render", args.crack_render)
         if args.crack_layered_fraction > 0:
             gin.bind_parameter("_inject_crack.layered_fraction", args.crack_layered_fraction)
-        gin.bind_parameter("_inject_crack.crack_edge_profile", args.crack_edge_profile)
+        gin.bind_parameter("_inject_crack.crack_edge_scale", args.crack_edge_scale)
         # Bound for every wall (an empty tuple included): gin outlives one seed.
         gin.bind_parameter("_inject_crack.lip_keepout", lip_keepout)
         gin.bind_parameter("_inject_crack.crack_profile", args.crack_profile)
@@ -501,7 +500,8 @@ def build_one(seed: int, args, out_root: Path) -> dict:
             "network_extent": args.crack_network_extent,
             "width_scale": args.crack_width_scale,
             "layered_fraction": args.crack_layered_fraction,
-            "edge_profile": args.crack_edge_profile,
+            "edge_profile": "strong",
+            "edge_scale": args.crack_edge_scale,
             "render": args.crack_render,
             "jitter_scale": args.crack_jitter_scale,
         },
@@ -629,9 +629,9 @@ def main():
     parser.add_argument("--crack-render", choices=("geometry", "pbr", "albedo"), default="geometry",
                         help="ablation: real displacement, bump/normal map only (PBR decal), or colour only")
     parser.add_argument("--crack-layered-fraction", type=float, default=0.7,
-                        help="share of coated-host cracks with an edge: paint film lips/chips, or a broken stucco coat. Brick, stone, concrete and tile stay a groove (0 disables)")
-    parser.add_argument("--crack-edge-profile", choices=("original", "strong"), default="original",
-                        help="size of that edge. strong (v1.29): lips of 2-5 mm and chips 3-5x larger on ordinary and wide cracks, and a small edge on crazing")
+                        help="share of paint and stucco cracks that get an edge (0 leaves a groove only). Brick, stone, concrete and tile stay a groove. This does not change the edge's size")
+    parser.add_argument("--crack-edge-scale", type=float, default=1.0,
+                        help="size of that edge relative to the dataset (1). Scales lip height, chip depth, the one-sided step and how far the chips spread. 0 removes the lip and chips")
     parser.add_argument("--light-profile", choices=LIGHT_PROFILES, default="default",
                         help="hard_mix adds sun, bare-bulb and raking-torch sources (opt-in)")
     parser.add_argument("--relight-per-view", action="store_true",
@@ -742,6 +742,8 @@ def main():
             parser.error(str(exc))
     if not 0 <= args.crack_layered_fraction <= 1:
         parser.error("--crack-layered-fraction must be 0-1")
+    if not 0 <= args.crack_edge_scale <= 4:
+        parser.error("--crack-edge-scale must be 0..4")
     if args.relight_per_view and args.light_profile == "default":
         parser.error("--relight-per-view needs --light-profile hard_mix")
     if not .05 <= args.defect_size_range[0] <= args.defect_size_range[1] <= 1.0:

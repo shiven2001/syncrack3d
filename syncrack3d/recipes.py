@@ -1,64 +1,14 @@
-"""Release recipes for build_dataset.py --recipe NAME.
+"""The dataset recipe for build_dataset.py --recipe unified.
 
-Each recipe is the exact flag list the v1.8.0 training walls were rendered with.
 build_dataset parses the recipe first and the command line after it, so any
-flag given explicitly overrides the recipe. Material is not part of a recipe:
-pass --material-category, or let --wall-materials diverse draw one per seed.
+flag given explicitly overrides the recipe.
 
-  standard indoor walls, the standard crack types; some walls stay plain by material
-           (the v1.0.0-v1.3.0 base walls; v1.3.0's added walls used
-           --clean-wall-scale 0, every wall cracked)
-  wide     indoor walls, wide open and wide branched cracks, every wall cracked
-  crazing  indoor paint and stucco walls with crazing,
-           organic outline, indoor structures beside the cracks (v1.7.0 on)
-  unified_v1.16  the unified recipe as of v1.16.0 (legacy layout order), to
-           rebuild those walls exactly
-  unified  v2: one recipe for everything. Each wall draws a crack style
-           (standard/wide/crazing, STYLES) that sets only what defines that
-           kind of crack; materials (--wall-materials unified: 10 crack-able
-           categories drawn uniformly, one plaster and one stucco whose coats
-           are neutral, coloured, or mid-tone, no wood or irregular stone), capture and
-           rendering are shared. Every wall is cracked (--clean-wall-scale 0),
-           chosen after the 2026-10-23 clean-wall study: more BD3 recall at the
-           cost of more false alarms than the material-aware table. Crack-free
-           views still come from context views and plain close-ups. Indoor side
-           walls carry the test wall's finish and the floor an Infinigen floor
-           material (--shell-finish matched, 2026-10-24 study). From v1.17 it
-           uses --layout-order fixtures-first, and every indoor wall gets
-           fixtures (closed room), whatever its crack style. Props always stand
-           loose on the floor (the v1.18 rule). From v1.19 fixtures and the
-           skirting stand on stone/brick relief instead of sinking into it
-           (--fixture-mount relief). From v1.20 every fixture is placed by one
-           rule (structures.sample_structure_plan): clear of every other.
-           From v1.22 every wall is indoor: the facade style and the outdoor
-           scene are gone. A wall draws standard .72, wide .17 or crazing .11,
-           so a seed's style differs from the versions that kept a slot for
-           the facade style, and the unified_v* recipes below no longer rebuild
-           those walls' styles: use that version's tag.
-           From v1.24 each crack token moves, with probability .5, to a corner
-           or edge of a window, door, vent or access panel
-           (--crack-junction-fraction .5, junctions.py).
-           From v1.29 crack edges on plaster and stucco are larger, and crazing
-           has an edge of its own (--crack-edge-profile strong). Only the edge
-           changes: a seed keeps its layout, cracks and cameras.
-           From v1.30 a crack's coarse path has no segment steeper than slope 3 or
-           shorter than the crack's full opening (--crack-path-mode angular_bounded),
-           because such a segment pinched or sheared the groove. Only the path
-           changes: a seed keeps its layout, crack types and cameras.
-  unified_v1.17, unified_v1.18, unified_v1.23, unified_v1.28, unified_v1.29  the unified recipe's
-           flags as of that version (unified_v1.23: no junction cracks; unified_v1.28:
-           the smaller edges, none on crazing; unified_v1.29: the unbounded path).
-           Prop and fixture placement no longer differ between them.
-
-The three release recipes keep the v1.x training walls' flags; use unified for
-new data. The v1.8.0 facade recipe and its outdoor walls rebuild only from the
-v1.21.0 tag.
-
-The labels and views of the released training set also passed a selection
-step per batch; releases/*.json list the views each release kept.
-Props always use the loose rule and fixtures the v1.20 rule, so rebuilding a
-wall from before v1.18 moves any prop in view, and a fixtures wall from before
-v1.20 moves its fixtures; check out that version's tag to rebuild it exactly.
+unified is the v1.30 dataset. Each wall draws a crack style (standard, wide or
+crazing; STYLES) that sets only what defines that kind of crack. Materials are
+the 10 unified categories, drawn uniformly. Every wall is an indoor room wall
+with fixtures, at most one prop, and is cracked. Half of the crack tokens move
+to a fixture corner or edge. Crack edges use the strong profile, and a crack
+path has no segment steep or short enough to pinch the groove.
 """
 
 COMMON = ("--substrate paint --max-props 1 --resolution 640 --samples 64 --wall-normal-mode explicit "
@@ -66,17 +16,6 @@ COMMON = ("--substrate paint --max-props 1 --resolution 640 --samples 64 --wall-
           "--preserve-closeup-scale --closeups-per-defect 2 --crack-fit-path --crack-label-mode support "
           "--crack-path-mode angular --crack-branch-mode local_curved --wall-materials diverse "
           "--awb-strength 0 .5 --crack-layered-fraction .7")
-STANDARD = (COMMON + " --min-defects 2 --max-defects 3 --crack-width-scale 1.3 --crack-depth-scale .5 "
-          "--defect-size-range .20 .45 --crack-profile standard")
-
-RECIPES = {
-    "standard": STANDARD + " --clean-wall-scale 1",
-    "wide": (COMMON + " --min-defects 1 --max-defects 2 --crack-width-scale 1 --crack-depth-scale 1 "
-              "--defect-size-range .30 .45 --clean-wall-scale 0 --crack-profile wide"),
-    "crazing": (COMMON + " --clean-wall-scale 0 --min-defects 2 --max-defects 3 --defect-size-range .20 .45 "
-                "--crack-profile crazing --crack-width-scale 2 --crack-depth-scale 2 --crack-network-grime .8 1 "
-                "--structures auto --structure-views 0 --crack-network-edge organic --crack-network-extent 1.4"),
-}
 
 # v2: one recipe for everything. Each wall draws a crack style; the style sets
 # only what defines that kind of crack (and its setting), everything else -
@@ -95,23 +34,14 @@ STYLES = {
 # Close to the v1.9 training mix by view; major walls carry fewer cracks and so
 # fewer views per wall.
 UNIFIED_MIX = "standard=.72,wide=.17,crazing=.11"
-RECIPES["unified_v1.16"] = (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
-                            + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX)
-# v1.17: fixtures first, and fixtures on every indoor wall (wall_style below).
-RECIPES["unified_v1.17"] = RECIPES["unified_v1.16"] + " --layout-order fixtures-first"
-# v1.18 made loose placement the rule. It is now the only placement, so the
-# recipe string no longer carries a flag for it.
-RECIPES["unified_v1.18"] = RECIPES["unified_v1.17"]
-# v1.19: fixtures mounted on the wall's relief. Keeping them clear of each other
-# is now the only fixture rule, so the recipe no longer carries a flag for it.
-RECIPES["unified_v1.23"] = RECIPES["unified_v1.18"] + " --fixture-mount relief"
-# v1.24: half the crack tokens move to a corner or edge of a window, door, vent or
-# access panel (junctions.py, its own stream), the setting of the v122jn screen.
-RECIPES["unified_v1.28"] = RECIPES["unified_v1.23"] + " --crack-junction-fraction .5"
-# v1.29: larger crack edges on plaster and stucco, and an edge on crazing.
-RECIPES["unified_v1.29"] = RECIPES["unified_v1.28"] + " --crack-edge-profile strong"
-# v1.30: no path segment steep or short enough to pinch or shear the groove. A later flag wins.
-RECIPES["unified"] = RECIPES["unified_v1.29"] + " --crack-path-mode angular_bounded"
+# COMMON still carries --crack-path-mode angular; the later flag is the one argparse keeps.
+RECIPES = {
+    "unified": (COMMON.replace("--wall-materials diverse", "--wall-materials unified")
+                + " --clean-wall-scale 0 --shell-finish matched --crack-style-mix " + UNIFIED_MIX
+                + " --layout-order fixtures-first --fixture-mount relief"
+                + " --crack-junction-fraction .5"
+                + " --crack-path-mode angular_bounded"),
+}
 
 
 def parse_style_mix(text):

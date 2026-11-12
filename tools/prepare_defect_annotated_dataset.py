@@ -1618,8 +1618,9 @@ def curate_sample_ids(
     """Keep every positive, cap negatives, drop close-ups of nothing.
 
     Negatives are thinned rather than removed: `max_negative_fraction` is the
-    share of the *returned* set they are allowed to occupy, so 0.15 means one
-    negative for roughly every six positives. Selection is a stable hash of the
+    share of the *returned* set they are allowed to occupy. 1 keeps every
+    negative. 0.15 means one negative for roughly every six positives.
+    Selection is a stable hash of the
     sample id with the split seed, so re-running is reproducible and adding new
     scenes does not reshuffle the frames already chosen.
     """
@@ -1641,7 +1642,10 @@ def curate_sample_ids(
         else:
             negatives.append(sid)
 
-    f = max(0.0, min(0.95, float(max_negative_fraction)))
+    # 1 keeps every negative. Values above 1 mean the same thing. A fraction
+    # below 1 is a cap on the share of the returned set, so 0.15 is one
+    # negative for about every six positives.
+    f = max(0.0, min(1.0, float(max_negative_fraction)))
     if positives:
         budget = int(round(f / (1.0 - f) * len(positives))) if f < 1.0 else len(negatives)
     else:
@@ -1800,15 +1804,12 @@ def main():
     parser.add_argument(
         "--max-negative-fraction",
         type=float,
-        default=0.15,
+        default=1.0,
         help=(
             "Share of the exported set allowed to be frames with no defect box "
-            "(default 0.15). Negatives are what teach the model that clean "
-            "plaster, skirting and sockets are not defects, so some are needed - "
-            "but the real test set is phone close-ups OF a defect, so a set that "
-            "is mostly empty rooms trains for the wrong distribution. "
-            "Positives are never dropped; only negatives are thinned. Use 1.0 to "
-            "keep every frame."
+            "(default 1, which keeps every such frame). A smaller value thins "
+            "them: 0.15 keeps enough for 15% of the set. Frames that show a "
+            "defect are never dropped."
         ),
     )
     parser.add_argument(

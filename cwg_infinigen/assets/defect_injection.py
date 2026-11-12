@@ -41,6 +41,7 @@ from cwg_infinigen.assets.defect_fields import (
     fit_strong_band,
     keepout_in_crack_frame,
     sample_crack_layer,
+    scale_crack_edge,
     sample_crack_morphology,
 )
 from cwg_infinigen.core.rendering.defect_aov import (
@@ -466,14 +467,15 @@ def _inject_crack(
     crack_path_mode="original",
     layered_fraction=0.0,
     crack_render="geometry",
-    crack_edge_profile="original",
+    crack_edge_scale=1.0,
     lip_keepout=(),
 ):
     """Inject one crack. Opt-in: layered_fraction > 0 gives that share of cracks
-    a two-layer look (see below). crack_edge_profile="strong" makes that edge
-    larger, and gives crazing an edge of its own (defect_fields.EDGE_PROFILES).
-    lip_keepout: world (x0, x1, z0, z1) footprints of fixtures on the wall (the
-    y = 0 plane), under which a strong edge's lip fades out.
+    a two-layer look (see below). The edge is the larger lip and chips, and
+    crazing has an edge of its own. crack_edge_scale multiplies that edge
+    (1 is the dataset size, 0 flattens the lip and chips). lip_keepout: world
+    (x0, x1, z0, z1) footprints of fixtures on the wall (the y = 0 plane),
+    under which that lip fades out.
 
     crack_render (ablation of how the crack is built, labels identical):
       "geometry" - groove, chips, lips and offset are real displacement (default);
@@ -521,11 +523,10 @@ def _inject_crack(
     # (e.g. minor_crack_0401/0304).
     gen = state.host.get("cwg_material_generator")
     lay = sample_crack_layer(seed, crack_layer_mode(gen, state.host.get("surface_finish")), layered_fraction,
-                             edge_profile=crack_edge_profile, network=network)
-    if network and crack_edge_profile == "original":
-        lay = None  # Crazing is shallow: no broad chips or one-sided wall step.
+                             network=network)
     if lay is not None and not network:
         lay = fit_strong_band(lay, p["w_max"])
+    lay = scale_crack_edge(lay, crack_edge_scale)
     chips = None
     if lay is not None:
         from cwg_infinigen.assets.defect_fields import _nodes
@@ -543,7 +544,7 @@ def _inject_crack(
         lifted = _math(nt, "MULTIPLY", _math(nt, "MULTIPLY", mrange(band_prof, 0.02, 0.30, 0.0, 1.0, "SMOOTHSTEP"),
                                              outside, clamp=True),
                        _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", 1.0, chips), runs, clamp=True), clamp=True)
-        if crack_edge_profile == "strong" and lip_keepout:
+        if lip_keepout:
             keep, lay["lip_keepout_rects"] = _lip_keepout(nt, uv, state.host, frame, p, lay, lip_keepout, mrange)
             if keep is not None:
                 lifted = _math(nt, "MULTIPLY", lifted, keep, clamp=True)
@@ -718,7 +719,7 @@ def _inject_crack(
         "path_knots_m": p.get("path_knots"),
         "label_mode": crack_label_mode,
         "render": crack_render,
-        "edge_profile": crack_edge_profile,
+        "edge_profile": "strong",
         "label_support_profile_floor": .02 if crack_label_mode == "support" else None,
         "lip_width_m": round(float(p.get("w_lip", 0.0)), 6),
         "lip_height_m": round(float(p.get("h_lip", 0.0)), 6),

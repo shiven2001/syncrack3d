@@ -369,12 +369,11 @@ def crack_layer_mode(generator, surface_finish=None) -> str:
     return "none"
 
 
-# v1.29 "strong" crack edges (--crack-edge-profile strong). Ordinary and wide
-# cracks: a lip of 2-5 mm, and chips 3-5x the historical size (blobs that much
-# larger, in a band that much wider). Chip depth keeps its historical draw.
-# Crazing: its own small edge, because the ordinary band and chips are several
-# times wider and deeper than a crazing groove. Lengths are metres.
-EDGE_PROFILES = ("original", "strong")
+# Crack edges. Ordinary and wide cracks: a lip of 2-5 mm, and chips 3-5x the
+# historical size (blobs that much larger, in a band that much wider). Chip
+# depth keeps its historical draw. Crazing: its own small edge, because the
+# ordinary band and chips are several times wider and deeper than a crazing
+# groove. Lengths are metres.
 STRONG_LIP_M = (0.002, 0.005)
 STRONG_CHIP_FACTOR = (3.0, 5.0)
 CRAZING_LIP_M = {"paint": (0.0005, 0.002), "stucco": (0.0005, 0.001)}
@@ -412,7 +411,7 @@ def fit_strong_band(lay, w_max):
     """Narrow a strong edge's band to the crack it surrounds (STRONG_MARGIN_PER_WIDTH).
 
     The chips shrink by the same factor, so they keep their size relative to the
-    band. Edges without a factor (original profile, crazing) are returned as given.
+    band. Edges without a factor (crazing) are returned as given.
     """
     if lay is None or "factor" not in lay:
         return lay
@@ -422,6 +421,26 @@ def fit_strong_band(lay, w_max):
         return lay
     factor = margin / base
     return dict(lay, margin=margin, chip_scale=lay["chip_scale"] * lay["factor"] / factor, factor=factor)
+
+
+def scale_crack_edge(lay, scale):
+    """Multiply the finished edge. 1 leaves it as drawn.
+
+    Lip height, chip depth, the one-sided step and the band width all move
+    together. Chip blobs grow with the band. 0 flattens the lip and chips.
+    """
+    if lay is None or scale == 1:
+        return lay
+    if scale < 0:
+        raise ValueError("crack edge scale must be >= 0")
+    if scale == 0:
+        return dict(lay, lip=0.0, film=0.0, offset=0.0, margin=0.0)
+    out = dict(lay, lip=lay["lip"] * scale, film=lay["film"] * scale,
+               offset=lay["offset"] * scale, margin=lay["margin"] * scale,
+               chip_scale=lay["chip_scale"] / scale)
+    if "factor" in lay:
+        out["factor"] = lay["factor"] * scale
+    return out
 
 
 def keepout_in_crack_frame(rects, centre, axis_u, axis_v, reach):
@@ -446,18 +465,16 @@ def keepout_in_crack_frame(rects, centre, axis_u, axis_v, reach):
     return out
 
 
-def sample_crack_layer(seed, mode, fraction, edge_profile="original", network=False):
+def sample_crack_layer(seed, mode, fraction, network=False):
     """Coating-edge parameters, or None. Own RNG, so the crack shape is unchanged.
 
-    Paint keeps the historical film, lip and chip draws. Stucco uses a thicker
-    broken coat and no lifted film. ``mode="none"`` never samples an edge.
-    ``edge_profile="strong"`` resizes the edge (see _strong_crack_layer), and
-    gives stucco a lip too; ``network`` says the crack is crazing.
+    Paint keeps the historical film and chip draws, then the edge is enlarged.
+    Stucco uses a thicker broken coat and gets a lip too. ``mode="none"`` never
+    samples an edge. ``network`` says the crack is crazing, which gets its own
+    small edge.
     """
     if mode not in ("paint", "stucco", "none"):
         raise ValueError("crack layer mode must be paint, stucco or none")
-    if edge_profile not in EDGE_PROFILES:
-        raise ValueError(f"crack edge profile must be one of {EDGE_PROFILES}")
     if mode == "none" or fraction <= 0.0:
         return None
     lr = np.random.default_rng(int_hash((seed, "crack_layered")))
@@ -497,7 +514,7 @@ def sample_crack_layer(seed, mode, fraction, edge_profile="original", network=Fa
             side=float(lr.choice([-1.0, 1.0])),
             dark=float(lr.uniform(0.62, 0.82)),
         )
-    return _strong_crack_layer(lay, seed, network) if edge_profile == "strong" else lay
+    return _strong_crack_layer(lay, seed, network)
 
 
 def adapt_crack_branches(p, mode="original"):
