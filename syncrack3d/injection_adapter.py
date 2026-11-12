@@ -1,4 +1,4 @@
-"""Adapter from explicit controlled placements to Infinigen defect injection.
+"""Adapter from explicit SynCrack3D placements to Infinigen defect injection.
 
 This module does not create defects.  It is the future integration boundary:
 the caller supplies already-created defect card objects and the exact host for
@@ -35,20 +35,20 @@ class _ObjectState:
 
 
 @dataclass
-class _ControlledState:
+class _BindingState:
     objs: dict[str, _ObjectState] = field(default_factory=dict)
 
 
 def _state_for_bindings(bindings):
     from cwg_infinigen.core import tags as t
 
-    state = _ControlledState()
+    state = _BindingState()
     host_by_name = {}
     for index, binding in enumerate(bindings):
         host = binding.host
         if not host.name.endswith((".wall", ".ceiling", ".floor")):
             raise ValueError(
-                f"Controlled injection host must end in a surface suffix: {host.name}"
+                f"Injection host must end in a surface suffix: {host.name}"
             )
         room_name = host.name.rsplit(".", 1)[0]
         host_by_name[host.name] = host
@@ -64,7 +64,7 @@ def _state_for_bindings(bindings):
     return state, host_by_name
 
 
-def run_controlled_injection(
+def run_explicit_injection(
     bindings: list[DefectBinding],
     *,
     manifest_path: str | Path | None = None,

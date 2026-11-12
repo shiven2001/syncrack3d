@@ -1,0 +1,26 @@
+SynCrack3D
+Copyright (c) 2025-2026 Shiven Garg
+Licensed under the BSD 3-Clause License. See LICENSE.
+
+This repository also contains third-party code. Those portions keep their own
+copyright and licence. They are not covered by the copyright in LICENSE.
+
+Infinigen
+Copyright (c) 2023 Princeton University
+BSD 3-Clause License. See LICENSE-INFINIGEN.
+cwg_infinigen/ is a modified subset. Imports are renamed from infinigen to
+cwg_infinigen. Files whose header names Princeton University are derived from
+Infinigen; that notice stays. SynCrack3D changes in those files are licensed
+under the same BSD 3-Clause terms and do not replace the Princeton notice.
+
+OcMesher
+Copyright (c) 2023 Princeton Vision & Learning Lab
+BSD 3-Clause License. See cwg_infinigen/OcMesher/LICENSE.
+
+mesh_to_sdf
+Copyright (c) 2020 Marian Kleineberg
+MIT License. See cwg_infinigen/terrain/mesh_to_sdf/LICENSE.
+
+Fonts
+SIL Open Font License. Each family keeps its OFL.txt under
+cwg_infinigen/assets/fonts/.

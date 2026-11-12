@@ -10,7 +10,7 @@ currently own defects, render-engine settings, output settings, color management
 The only implemented module is `flat`: one uninterrupted rectangular injection host. There are no
 windows, doors, openings, corners, booleans, or bevels. Skirting is optional and disabled by default.
 
-Implemented substrates are controlled painted plaster, concrete, and masonry. Their shaders contain
+Implemented substrates are painted plaster, concrete, and masonry. Their shaders contain
 fine metric variation and bump only: no broad dirt, material-level ambient occlusion, booleans, bevel
 modifiers, or true displacement. Defect injection can add true displacement later.
 
@@ -62,16 +62,16 @@ When defect card objects are ready, bind each card to an exact host and call the
 ```python
 from syncrack3d.injection_adapter import (
     DefectBinding,
-    run_controlled_injection,
+    run_explicit_injection,
 )
 
 bindings = [
     DefectBinding(defect=crack_card, host=chosen_wall, surface="wall"),
 ]
-run_controlled_injection(
+run_explicit_injection(
     bindings,
     manifest_path="defect_instances.json",
-    scene_id="controlled_0001",
+    scene_id="seed_0001",
     scene_seed=1,
 )
 ```

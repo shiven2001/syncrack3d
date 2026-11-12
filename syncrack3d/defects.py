@@ -8,7 +8,7 @@ size, spacing and class mix are the *experiment*, so they are sampled directly
 and recorded in the manifest.
 
 Everything downstream of placement is the existing implementation, unchanged:
-``run_controlled_injection`` calls ``run_injection``, which rebuilds each defect
+``run_explicit_injection`` calls ``run_injection``, which rebuilds each defect
 as a field inside the wall's own material, displaces it with Cycles, and emits
 the same per-class and per-instance AOVs. The labels this produces are therefore
 identical in kind to the apartment set, and the same exporter reads both.
@@ -24,7 +24,7 @@ import bpy
 
 from syncrack3d.injection_adapter import (
     DefectBinding,
-    run_controlled_injection,
+    run_explicit_injection,
 )
 
 # Class -> factory, resolved lazily so importing this module does not pull in
@@ -258,7 +258,7 @@ def inject_defects(
         for p in placements
         if p.object_name in bpy.data.objects
     ]
-    return run_controlled_injection(
+    return run_explicit_injection(
         bindings,
         manifest_path=manifest_path,
         scene_id=scene_id,

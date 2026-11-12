@@ -70,6 +70,7 @@ from syncrack3d.room_shell import (  # noqa: E402
 )
 from syncrack3d.render import (  # noqa: E402
     configure_cycles,
+    mark_wall,
     render_cameras,
     setup_passes,
 )
@@ -200,11 +201,11 @@ def build_one(seed: int, args, out_root: Path) -> dict:
 
     spec = sample_scene_spec(seed, module="flat", substrate=args.substrate)
     if args.paint_profile != "baseline":
-        if args.wall_materials != "controlled" or args.surface_detail:
-            raise ValueError("--paint-profile requires controlled materials without --surface-detail")
+        if args.wall_materials != "syncrack3d" or args.surface_detail:
+            raise ValueError("--paint-profile requires --wall-materials syncrack3d without --surface-detail")
         spec = replace(spec, material=adapt_paint_material(spec.material, seed, args.paint_profile))
-    if args.surface_detail and args.wall_materials != "controlled":
-        raise ValueError("--surface-detail requires --wall-materials controlled")
+    if args.surface_detail and args.wall_materials != "syncrack3d":
+        raise ValueError("--surface-detail requires --wall-materials syncrack3d")
     if args.surface_detail and spec.material.finish == "paint":
         # Independent draw: do not change placement, lighting, or camera RNG.
         fine = random.Random(seed ^ 0x53555246).uniform(250, 650)
@@ -252,7 +253,7 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         clean_wall = is_clean_wall(seed, material_record["category"], args.clean_wall_scale,
                                    palette=args.wall_materials, uniform=args.clean_wall_uniform)
     else:
-        generator_name, surface_finish = "controlled", spec.material.finish
+        generator_name, surface_finish = "syncrack3d", spec.material.finish
     clean_wall = clean_wall or structure_clean_wall(seed, args.structures, args.structure_clean_fraction)
     shell_plan = sample_shell_plan(rng)  # drawn for every wall: keeps the shared RNG stream
     if args.structures != "off":
@@ -448,7 +449,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         denoise=not args.no_denoise,
         dicing_rate=args.dicing_rate,
     )
-    aov_names = setup_passes()
+    aov_names = setup_passes(depth=args.export_depth)
+    if args.export_depth:
+        mark_wall(wall)
 
     record = {
         "schema": "syncrack3d/cwg_scene/1",
@@ -553,7 +556,9 @@ def build_one(seed: int, args, out_root: Path) -> dict:
         record["frames"] = render_cameras(
             [p.object_name for p in poses], frames_dir, aov_names=aov_names,
             exposure_evs=exposure_evs, awb_strengths=awb_strengths, before_each=relight,
+            depth=args.export_depth,
         )
+        record["depth_export"] = args.export_depth
         if args.camera_isp:
             from syncrack3d.isp import process_frames
 
@@ -567,6 +572,18 @@ def build_one(seed: int, args, out_root: Path) -> dict:
     return record
 
 
+def _wall_materials(value: str) -> str:
+    """Shader palette. The previous stand-in flag value still maps here."""
+    if value == "controlled":
+        value = "syncrack3d"
+    allowed = ("infinigen", "syncrack3d", "diverse", "unified")
+    if value not in allowed:
+        raise argparse.ArgumentTypeError(
+            "wall materials must be infinigen, syncrack3d, diverse, or unified"
+        )
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seeds", default="0-9", help="e.g. 0-49 or 1,4,9")
@@ -575,12 +592,12 @@ def main():
     parser.add_argument(
         "--wall-materials",
         default="infinigen",
-        choices=("infinigen", "controlled", "diverse", "unified"),
+        type=_wall_materials,
         help=(
             "Which shader the wall carries. 'infinigen' uses the same "
             "Plaster/Concrete/Brick/NonWoodTile palette the apartment walls do, "
             "so a SynCrack3D dataset is comparable against the apartment "
-            "one; 'controlled' keeps the base generator's deterministic stand-in; "
+            "one; 'syncrack3d' keeps this generator's deterministic stand-in; "
             "'diverse' is the v1.x palette; 'unified' (v2) draws the 10 crack-able "
             "categories uniformly with one clean-wall table, no wood or irregular stone."
         ),
@@ -669,6 +686,10 @@ def main():
                         help="shift close-up aim by up to this many frame widths (0-0.5)")
     parser.add_argument("--legacy-defect-names", action="store_true",
                         help="v1 card names: every scene reuses the same defect shapes")
+    parser.add_argument("--export-depth", action="store_true",
+                        help="also write per view: Depth (camera z, uint16 PNG, 0.1 mm), WallRelief (signed "
+                             "offset from the wall plane, uint16 PNG, 0.01 mm) and Camera (K, pose) files, "
+                             "from the same render's first-sample passes; see syncrack3d/render.py")
     parser.add_argument("--no-denoise", action="store_true")
     parser.add_argument("--no-render", action="store_true", help="build scenes only")
     parser.add_argument("--save-blend", action="store_true")

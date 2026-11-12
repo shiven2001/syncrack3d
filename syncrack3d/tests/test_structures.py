@@ -152,11 +152,11 @@ def test_clean_scene_has_explicit_empty_annotation_contract(tmp_path):
     import json
     import bpy
     from syncrack3d.build_dataset import clear_scene
-    from syncrack3d.injection_adapter import run_controlled_injection
+    from syncrack3d.injection_adapter import run_explicit_injection
     from syncrack3d.render import setup_passes
     clear_scene()
     manifest = tmp_path / 'defect_instances.json'
-    assert run_controlled_injection([], manifest_path=manifest, scene_id='clean', scene_seed=2) == 0
+    assert run_explicit_injection([], manifest_path=manifest, scene_id='clean', scene_seed=2) == 0
     assert json.loads(manifest.read_text())['count'] == 0
     names = setup_passes()
     assert set(names) == {'DefectCrack', 'DefectInstance', 'DefectInstanceCoverage', 'DefectInstanceSquared'}

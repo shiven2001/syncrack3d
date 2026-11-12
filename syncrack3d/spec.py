@@ -40,7 +40,7 @@ _MASONRY_PALETTE = (
 
 @dataclass(frozen=True)
 class MaterialSpec:
-    """Controlled substrate parameters, recorded verbatim in the manifest."""
+    """Substrate parameters, recorded verbatim in the manifest."""
 
     finish: str
     base_color: tuple[float, float, float, float]

@@ -89,6 +89,27 @@ Useful options (`python syncrack3d/build_dataset.py --help` lists all):
 | `--resolution`, `--samples` | image size and Cycles samples (unified: 640 px, 64 samples) |
 | `--no-render --save-blend` | build and save the scene without rendering (for the Isaac export) |
 | `--crack-render pbr` or `albedo` | ablation: crack as a normal map only, or as colour only |
+| `--hide-context all` (or `fixtures`, `props`) | ablation: leave fixtures and/or props out of the render; layout and lights unchanged |
+| `--export-depth` | also write metric depth, wall relief and camera files per view (below) |
+
+### Depth and wall relief (`--export-depth`)
+
+Each view also gets, from the same render (RGB and labels are unchanged; about 1% more render time):
+
+```
+out/walls/frames/seed_<seed>/Depth/       camera z (planar), uint16 PNG, value * 0.1 mm; 0 = no surface
+out/walls/frames/seed_<seed>/WallRelief/  offset from the wall plane, uint16 PNG, (value - 32768) * 0.01 mm;
+                                          negative = into the wall (crack grooves); 0 = not the main wall
+out/walls/frames/seed_<seed>/Camera/      K, cam_to_world (OpenCV axes), encodings, per-view stats (JSON)
+```
+
+Both maps come from the first sample's depth and position passes, so they are exact
+per pixel and measure the displaced geometry the RGB was rendered from. The relief
+includes the wall material's own relief (mortar joints, stone texture) as well as the
+cracks; crack depth is the crack pixels' offset below the wall around them. Cracks
+rendered with `--crack-render pbr` or `albedo` have no relief here, as they would have
+none for a depth camera. The export step copies these files into `depth/`,
+`wall_relief/` and `cameras/` of the pack, under the same names as `images/`.
 
 Later flags override the recipe's own. Older walls rebuild with their version's
 tag (`git tag`). `--recipe unified_v1.16`, `unified_v1.17`, `unified_v1.18`,
@@ -105,7 +126,8 @@ python tools/check_instance_contract.py --pack out/pack
 
 `out/pack` holds `images/`, `masks/` (0 background, 60 crack), `ignore_masks/`,
 `instance_masks/`, `instances/`, `bboxes/`, `bboxes_yolo/`,
-`annotations_coco.json`, `class_names.txt` and `splits/`. Splits are by wall, so
+`annotations_coco.json`, `class_names.txt` and `splits/` (and `depth/`, `wall_relief/`,
+`cameras/` for walls built with `--export-depth`). Splits are by wall, so
 no wall is in two splits. The contract check confirms that masks, instances and
 boxes agree.
 
@@ -163,6 +185,10 @@ meshes are labelled `crack` and `wall`.
 
 ## Licence
 
-`cwg_infinigen/` is a modified subset of Infinigen (Princeton University, BSD
-3-Clause; see `LICENSE-INFINIGEN`). The notices for it and the other included
-third-party code are in `eval-syncrack3d/NOTICE.md`.
+SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the
+BSD 3-Clause License (`LICENSE`).
+
+`cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023,
+Princeton University), also BSD 3-Clause. That notice is kept unchanged in
+`LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled
+code keeps the licence file next to it. See `NOTICE`.

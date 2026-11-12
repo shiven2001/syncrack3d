@@ -1,4 +1,4 @@
-"""Small, controlled substrate shaders compatible with defect injection.
+"""Small SynCrack3D substrate shaders compatible with Infinigen defect injection.
 
 Every host shader keeps a linked Base Color and a Principled BSDF.  Those are
 the two assumptions used when crack injection adds grime, roughness changes,
@@ -39,7 +39,7 @@ def _paint_or_concrete_nodes(nodes, links, texcoord, spec, bsdf):
     links.new(texcoord.outputs["Object"], noise.inputs["Vector"])
 
     ramp = nodes.new("ShaderNodeValToRGB")
-    ramp.name = "CWG_Controlled_Albedo_Range"
+    ramp.name = "CWG_Albedo_Range"
     variation = spec.color_variation
     ramp.color_ramp.elements[0].position = 0.18
     ramp.color_ramp.elements[0].color = _scaled_color(spec.base_color, 1.0 - variation)
@@ -49,7 +49,7 @@ def _paint_or_concrete_nodes(nodes, links, texcoord, spec, bsdf):
     links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
 
     rough_map = nodes.new("ShaderNodeMapRange")
-    rough_map.name = "CWG_Controlled_Roughness_Range"
+    rough_map.name = "CWG_Roughness_Range"
     rough_map.inputs["From Min"].default_value = 0.0
     rough_map.inputs["From Max"].default_value = 1.0
     rough_map.inputs["To Min"].default_value = max(0.0, spec.roughness - 0.035)

@@ -3,7 +3,7 @@
 Why a bare wall is not enough. A detector trained only on clean plaster with a
 defect in the middle learns "anomaly on flat surface", and then fires on every
 socket, skirting joint, pipe bracket and furniture edge in a real photo. The
-apartment pipeline supplied those distractors for free; a flat-wall generator
+apartment pipeline supplied those distractors for free; SynCrack3D
 has to put them back deliberately, or it trades one narrow distribution for a
 narrower one.
 

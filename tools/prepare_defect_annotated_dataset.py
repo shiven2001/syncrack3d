@@ -1066,6 +1066,26 @@ def realism_postprocess_rgb(
     return out.round().astype(np.uint8)
 
 
+DEPTH_FILES = (("Depth", "depth", ".png"), ("WallRelief", "wall_relief", ".png"), ("Camera", "cameras", ".json"))
+
+
+def copy_depth_files(image_path: Path, sample_id: str, pack_root: Path) -> None:
+    """Copy a view's Depth / WallRelief / Camera files (build_dataset.py --export-depth) into the pack.
+
+    They sit beside Image/ as <frames>/<Pass>/camera_0/<Pass>_<stem><ext>; renders without them are skipped.
+    The pixels are not changed, so they stay aligned with the exported image.
+    """
+    import shutil
+
+    frames_root = image_path.parents[2]
+    stem = image_path.stem.replace("Image_", "", 1)
+    for folder, out_name, ext in DEPTH_FILES:
+        source = frames_root / folder / image_path.parent.name / f"{folder}_{stem}{ext}"
+        if source.is_file():
+            (pack_root / out_name).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, pack_root / out_name / f"{sample_id}{ext}")
+
+
 def process_sample(
     image_path: Path,
     npy_path: Path,
@@ -1321,6 +1341,7 @@ def process_sample(
         out_images.mkdir(parents=True, exist_ok=True)
         out_masks.mkdir(parents=True, exist_ok=True)
         imwrite(out_images / f"{sample_id}.png", rgb)
+        copy_depth_files(image_path, sample_id, out_masks.parent)
         # Spread grayscale: visible in viewers; distinct from legacy 85/170/255 (see class_names.txt)
         _, profile_names = class_profile(class_profile_name)
         mask_step = max(1, 180 // (len(profile_names) - 1))
