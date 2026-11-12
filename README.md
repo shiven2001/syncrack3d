@@ -1,10 +1,8 @@
 # SynCrack3D
 
-SynCrack3D is a synthetic scene synthesiser that can generate synthetic images of rooms with cracked walls and pixel-exact labels.
+SynCrack3D is a synthetic scene generator that can generate synthetic images of rooms with cracked walls and pixel-exact labels. Each room is built in Blender. Cracks are real displaced geometry in the inspection wall, and every view is rendered with Cycles. For each view you get the RGB image, depth image, a crack mask, instance masks, wall relief map, boxes and COCO annotations. One seed gives one room. The same seed always gives the same room, cameras and lights.
 
-Each room is built in Blender. Cracks are real displaced geometry in the inspection wall, and every view is rendered with Cycles. For each view you get the RGB image, depth image, a crack mask, instance masks, wall relief map, boxes and COCO annotations.
-
-One seed gives one room. The same seed always gives the same room, cameras and lights, whichever other seeds run in the same process.
+![Demo Animation](demo.gif)
 
 ## Layout
 
@@ -16,11 +14,7 @@ isaac_port/        export to Isaac Sim (USD)
 eval-syncrack3d/   submodule: evaluation scorers
 ```
 
-`eval-syncrack3d` is a separate repository, private for now. With access, clone
-with `git clone --recurse-submodules`, or run `git submodule update --init
-eval-syncrack3d` in an existing checkout. The generator, export and Isaac port
-work without it; only the detector diagnostics `isaac_port/room_false_alarms.py`
-and `tools/render_light_compare.py` use its scorer code.
+`eval-syncrack3d` is a separate repository, private for now. With access, clone with `git clone --recurse-submodules`, or run `git submodule update --init eval-syncrack3d` in an existing checkout. The generator, export and Isaac port work without it; only the detector diagnostics `isaac_port/room_false_alarms.py` and `tools/render_light_compare.py` use its scorer code.
 
 ## Setup
 
@@ -32,26 +26,25 @@ pip install -r requirements.txt
 python -m pytest syncrack3d/tests          # 85 tests, a few seconds
 ```
 
-Run every command from the repository root. Cycles renders on the first GPU it
-finds (OptiX, CUDA, HIP, Metal, oneAPI) and otherwise on the CPU. Blender prints
-`Error: Not freed memory blocks` when a run exits; it is harmless.
+Run every command from the repository root. Cycles renders on the first GPU it finds (OptiX, CUDA, HIP, Metal, oneAPI) and otherwise on the CPU. Blender prints`Error: Not freed memory blocks` when a run exits; it is harmless.
 
 ## 1. Generate rooms
 
 To build one room of a single seed:
+
 ```bash
 python syncrack3d/build_dataset.py --recipe unified --seeds 0 --output out/rooms
 ```
 
 To build multiple rooms with one command:
+
 ```bash
 python syncrack3d/build_dataset.py --recipe unified --seeds 0-99 --output out/rooms --resume
 ```
 
 The `--resume` flag skips a seed whose scene.json is already in the output folder. That file is written after the room finishes, so the flag is for continuing a batch that stopped partway. Without it, running the same command again rebuilds that seed.
 
-`--recipe unified` is the dataset recipe. Every room is indoors. Its inspection wall has fixtures (doors, windows, vents, pipes, cables, panel seams), at most one
-prop, and one to three cracks. Each room draws one of 10 materials (plaster, stucco, concrete, brick, tile, large tile, marble, stone block, cobble wall,
+`--recipe unified` is the dataset recipe. Every room is indoors. Its inspection wall has fixtures (doors, windows, vents, pipes, cables, panel seams), at most one prop, and one to three cracks. Each room draws one of 10 materials (plaster, stucco, concrete, brick, tile, large tile, marble, stone block, cobble wall,  
 sandstone) and one crack style:
 
 | style | share | cracks |
@@ -60,9 +53,7 @@ sandstone) and one crack style:
 | wide | about 0.17 | open and wide branched cracks |
 | crazing | about 0.11 | fine crack networks, on plaster and stucco only |
 
-About half of the cracks start at a corner or edge of a window, door, vent or
-access panel. Each crack gets two close-up views, and each room also gets wider
-context views. Lighting varies per room; exposure and white balance per view.
+About half of the cracks start at a corner or edge of a window, door, vent or access panel. Each crack gets two close-up views, and each room also gets wider context views. Lighting varies per room; exposure and white balance per view.
 
 Output per room:
 
@@ -110,20 +101,13 @@ python tools/check_instance_contract.py --pack out/pack
 
 `--instance-masks on` gives each crack its own id, from the instance passes and `defect_instances.json`, and stops if either is missing. `off` writes no instance ids and no ignore mask. With `--with-bboxes`, the boxes then come from connected blobs in the coverage pass, so two cracks that touch become one box. The default, `auto`, writes the ids when those files are there.
 
-`--with-bboxes` also writes one box per crack: `bboxes/`, `bboxes_yolo/` and `annotations_coco.json`. Leaving the flag out writes images, masks and the split only.
+`--with-bboxes` also writes one box per crack: `bboxes/`, `bboxes_yolo/` and `annotations_coco.json`. Leaving the flag out writes images, masks and the split only. `--max-negative-fraction 1` keeps every view with no crack. `0` drops all of them. The default is `1`. Views that show a crack are always kept. `check_instance_contract.py --pack` checks that the mask, the instance ids and the boxes describe the same cracks. 
 
-`--max-negative-fraction 1` keeps every view with no crack. `0` drops all of them. The default is `1`. Views that show a crack are always kept.
-
-`check_instance_contract.py --pack` checks that the mask, the instance ids and the boxes describe the same cracks. 
-
-`out/pack` holds `images/`, `masks/` (0 background, 60 crack), `ignore_masks/`, `instance_masks/`, `instances/`, `bboxes/`, `bboxes_yolo/`, `annotations_coco.json`, `class_names.txt`, `splits/`, and `depth/`, `wall_relief/` and
-`cameras/` (not for rooms built with `--no-export-depth`). Splits are by room, so no room is in two splits. The contract check confirms that masks, instances and boxes agree.
+`out/pack` holds `images/`, `masks/` (0 background, 60 crack), `ignore_masks/`, `instance_masks/`, `instances/`, `bboxes/`, `bboxes_yolo/`, `annotations_coco.json`, `class_names.txt`, `splits/`, and `depth/`, `wall_relief/` and `cameras/` (not for rooms built with `--no-export-depth`). Splits are by room, so no room is in two splits. The contract check confirms that masks, instances and boxes agree.
 
 ## 3. Export to Isaac Sim
 
-Cracks exist as shader displacement at render time, so the Isaac Sim 5 export
-bakes the wall's colour, roughness, relief and crack coverage and rebuilds the
-wall as a displaced, labelled USD mesh.
+Cracks exist as shader displacement at render time, so the Isaac Sim 5 export bakes the wall's colour, roughness, relief and crack coverage and rebuilds the wall as a displaced, labelled USD mesh.
 
 Tested and working with Isaac Sim v5.0.0. 
 
@@ -136,13 +120,8 @@ python isaac_port/export_room.py -i out/rooms/seed_910004 -o out/isaac/seed_9100
 OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim/python isaac_port/compose_room.py out/isaac/seed_910004 --preview
 ```
 
-`-i` (`--input`) is the room folder (`scene.blend` and `scene.json`) and `-o` (`--output`) is the Isaac export folder. `--wall-only` bakes the wall alone.
-
-USD scenes are in metres with Z up. The test wall faces -Y at y = 0, and its
-meshes are labelled `crack` and `wall`.
+`-i` (`--input`) is the room folder (`scene.blend` and `scene.json`) and `-o` (`--output`) is the Isaac export folder. `--wall-only` bakes the wall alone. USD scenes are in metres with Z up. The test wall faces -Y at y = 0, and its meshes are labelled `crack` and `wall`.
 
 ## Licence
 
-SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the BSD 3-Clause License (`LICENSE`).
-
-`cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023, Princeton University), also BSD 3-Clause. That notice is kept unchanged in `LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled code keeps the licence file next to it. See `NOTICE`.
+SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the BSD 3-Clause License (`LICENSE`). `cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023, Princeton University), also BSD 3-Clause. That notice is kept unchanged in `LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled code keeps the licence file next to it. See `NOTICE`.
