@@ -122,6 +122,26 @@ OMNI_KIT_ACCEPT_EULA=YES path/to/isaac-sim/python isaac_port/compose_room.py out
 
 `-i` (`--input`) is the room folder (`scene.blend` and `scene.json`) and `-o` (`--output`) is the Isaac export folder. `--wall-only` bakes the wall alone. USD scenes are in metres with Z up. The test wall faces -Y at y = 0, and its meshes are labelled `crack` and `wall`.
 
-## Licence
+## Licence and citation
 
 SynCrack3D is Copyright (c) 2025-2026 Shiven Garg and is released under the BSD 3-Clause License (`LICENSE`). `cwg_infinigen/` is a modified subset of Infinigen (Copyright (c) 2023, Princeton University), also BSD 3-Clause. That notice is kept unchanged in `LICENSE-INFINIGEN` and in the headers of the derived files. Other bundled code keeps the licence file next to it. See `NOTICE`.
+
+SynCrack3D builds on Infinigen. If you use the generator code, please cite:
+
+    @inproceedings{infinigen2023infinite,
+      title     = {Infinite Photorealistic Worlds Using Procedural Generation},
+      author    = {Raistrick, Alexander and Lipson, Lahav and Ma, Zeyu and Mei, Lingjie and Wang, Mingzhe and Zuo, Yiming and Kayan, Karhan and Wen, Hongyu and Han, Beining and Wang, Yihan and Newell, Alejandro and Law, Hei and Goyal, Ankit and Yang, Kaiyu and Deng, Jia},
+      booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+      pages     = {12630--12641},
+      year      = {2023}
+    }
+
+    @inproceedings{infinigen2024indoors,
+      title     = {Infinigen Indoors: Photorealistic Indoor Scenes Using Procedural Generation},
+      author    = {Raistrick, Alexander and Mei, Lingjie and Kayan, Karhan and Yan, David and Zuo, Yiming and Han, Beining and Wen, Hongyu and Parakh, Meenal and Alexandropoulos, Stamatis and Lipson, Lahav and Ma, Zeyu and Deng, Jia},
+      booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+      pages     = {21783--21794},
+      year      = {2024}
+    }
+
+<mark>TODO: Add the SynCrack3D paper here.</mark>
