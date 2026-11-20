@@ -24,7 +24,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 CHUNKS = {"train_a": (910000, 910499), "train_b": (910500, 910999)}
 COLUMN_WIDTH_IN = 3.297
 CRACK = 60
-INK, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7"
+INK, GRID = "#0b0b0b", "#e1e0d9"
+TITLE_PT, LABEL_PT, TICK_PT = 7, 7, 6.5  # same in Figures 8, 10 and 11
 BAR = "#2a78d6"
 FAMILIES = {"standard": ("Ordinary", "#2a78d6"), "wide": ("Wide", "#eb6834"), "crazing": ("Crazing", "#1baf7a")}
 MATERIALS = {"plaster": "Plaster", "stucco": "Stucco", "brick": "Brick", "marble": "Marble", "large_tile": "Large tile",
@@ -50,8 +51,8 @@ def style_axes(ax, grid_axis):
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
-        ax.spines[side].set_color(AXIS)
-    ax.tick_params(which="both", colors=MUTED, labelcolor=INK)
+        ax.spines[side].set_color(INK)
+    ax.tick_params(which="both", colors=INK, labelcolor=INK, labelsize=TICK_PT)
     ax.grid(axis=grid_axis, color=GRID, lw=0.5)
     ax.set_axisbelow(True)
 
@@ -114,8 +115,8 @@ def main(root, out):
     ax.barh(y, [v for _, v in items], height=0.72, color=BAR, edgecolor="white", linewidth=0.5)
     ax.set_yticks(y, [MATERIALS[k] for k, _ in items])
     ax.set_ylim(-0.6, len(items) - 0.4)
-    ax.set_xlabel("Training rooms", color=MUTED, labelpad=1.5)
-    ax.set_title("(a) Inspection-wall material", loc="left", fontsize=7, color=INK, pad=3)
+    ax.set_xlabel("Training rooms", color=INK, fontsize=LABEL_PT, labelpad=1.5)
+    ax.set_title("(a) Inspection-wall material", loc="left", fontsize=TITLE_PT, color=INK, pad=3)
     style_axes(ax, "x")
     ax.tick_params(axis="y", length=0)
 
@@ -130,10 +131,12 @@ def main(root, out):
     ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.set_ylim(0, 0.17)  # headroom so the legend clears the curves
     ax.set_yticks([0, 0.05, 0.10, 0.15])
-    ax.set_xlabel("Mean crack width per view (px, area / centreline length)", color=MUTED, labelpad=1.5)
-    ax.set_ylabel("Share of cracked views", color=MUTED, labelpad=2)
-    ax.set_title("(b) Crack width in the image, by crack family", loc="left", fontsize=7, color=INK, pad=3)
-    ax.legend(frameon=False, fontsize=6, handlelength=1.4, loc="upper right", borderaxespad=0.1, labelspacing=0.3)
+    # The caption says how the width is measured (label area / centreline length).
+    ax.set_xlabel("Mean crack width per view (px)", color=INK, fontsize=LABEL_PT, labelpad=1.5)
+    ax.set_ylabel("Share of cracked views", color=INK, fontsize=LABEL_PT, labelpad=2)
+    ax.set_title("(b) Crack width in the image, by crack family", loc="left", fontsize=TITLE_PT, color=INK, pad=3)
+    ax.legend(frameon=False, fontsize=TICK_PT, handlelength=1.4, loc="upper right", borderaxespad=0.1,
+              labelspacing=0.3)
     style_axes(ax, "y")
 
     for suffix in ("png", "pdf"):
